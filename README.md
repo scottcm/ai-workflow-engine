@@ -3,7 +3,7 @@
 **A portfolio project demonstrating enterprise architecture patterns in an AI-assisted development workflow engine**
 
 > ⚠️ **Project Status: Active Development (Phase 1 – Foundation)**  
-> This project is intentionally designed to showcase clean architecture, extensibility, and advanced design patterns suitable for technical evaluation across backend, platform, and architecture-focused roles.
+> This is a portfolio project designed to demonstrate clean architecture, extensibility, and advanced design patterns suitable for technical evaluation across backend, platform, and architecture-focused roles.
 
 ---
 
@@ -61,6 +61,19 @@ The AI Workflow Engine addresses these issues by:
 - Allowing different AI providers to be assigned to different roles  
 - Supporting both fully automated and partially manual execution modes  
 - Encapsulating domain-specific behavior in **profiles** rather than in core logic
+
+---
+
+## Why This Approach?
+
+**Budget Reality**: Many startups can't afford pay-as-you-go AI APIs. This engine works with:
+- Consumer subscription products (ChatGPT, Claude Pro, Gemini Advanced)
+- Local CLI agents (claude, gemini)
+- Manual copy-paste workflows
+
+**Collaboration Ready**: Designed with clear contracts for a VS Code extension developer to build against.
+
+**Real-World Use**: Built to drive actual Java/Spring Boot ORM code generation at SkillsHarbor (first profile).
 
 ---
 
