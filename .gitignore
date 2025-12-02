@@ -205,3 +205,52 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# === Project-Specific ===
+
+# Workflow state and artifacts (sessions are runtime data)
+.ai-workflow/
+*.session.json
+profiles/*/artifacts/
+
+# AI provider credentials
+.env
+.env.local
+*.key
+api_keys.json
+
+# Generated prompts and bundles during development
+/scratch/
+/temp/
+/output/
+
+# IDE-specific (VS Code)
+.vscode/
+*.code-workspace
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Distribution / packaging (Poetry/pip)
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Documentation build artifacts (in case I use Sphinx later)
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
