@@ -1,0 +1,46 @@
+name: Bug Report
+description: Report a reproducible issue or unexpected behavior
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect to happen?
+      placeholder: |
+        Example:
+        - Running aiwf new crashes when no profile is provided.
+        - CLI command throws unexpected exception.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+      description: Provide exact steps that trigger the issue.
+      placeholder: |
+        1. Run aiwf new --profile skillsharbor-orm --type vertical --entity Foo
+        2. Execute aiwf step plan --session <session-id>
+        3. Observe error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or Output
+      description: Paste relevant error messages or CLI output.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: System details
+      placeholder: |
+        - OS:
+        - Python version:
+        - aiwf version:
