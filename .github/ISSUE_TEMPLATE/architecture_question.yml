@@ -1,0 +1,29 @@
+name: Architecture Question
+description: Ask about design decisions, patterns, layering, or workflow architecture
+title: "[Architecture] "
+labels:
+  - architecture
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Describe the architectural concept or decision you're asking about.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Link to ADRs, handlers, providers, profiles, or relevant files.
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior / Alternatives
+      description: What behavior were you expecting? What alternatives are you considering?
+    validations:
+      required: false
