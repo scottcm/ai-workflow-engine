@@ -3,7 +3,9 @@
 **A portfolio project demonstrating enterprise architecture patterns in an AI-assisted development workflow engine**
 
 > ⚠️ **Project Status: Active Development (Phase 1 – Foundation)**  
-> This is a portfolio project designed to demonstrate clean architecture, extensibility, and advanced design patterns suitable for technical evaluation across backend, platform, and architecture-focused roles.
+> A production workflow engine demonstrating enterprise architecture patterns
+Built to orchestrate AI-assisted code generation for a multi-tenant SaaS application. Designed around budget constraints (works with consumer AI subscriptions), real architectural complexity (multi-tenant patterns, state management), and tight timelines.
+The architecture deliberately demonstrates Strategy, Factory, Chain of Responsibility, Builder, Command, Adapter, and Template Method patterns - not because patterns are the goal, but because they solve real extensibility, testability, and maintainability challenges in this domain.
 
 ---
 
@@ -12,8 +14,8 @@
 The AI Workflow Engine orchestrates multi-phase code generation workflows across multiple AI providers.  
 It supports both:
 
-- **Interactive mode** — generates prompt files for manual use with web UIs  
-- **Automated mode** — executes workflows using local CLI agents
+- **Interactive mode** – generates prompt files for manual use with web UIs  
+- **Automated mode** – executes workflows using local CLI agents
 
 The system is architected as a modular, extensible engine with clear responsibilities and deliberate use of enterprise design patterns.
 
@@ -33,6 +35,8 @@ The system is architected as a modular, extensible engine with clear responsibil
   JSON-based workflow state with checkpoints
 - **Dual execution modes**  
   Manual (prompt/paste) and automated (CLI provider calls)
+- **Language-agnostic design**  
+  Core engine supports any target language through profiles
 
 The structure and documentation are designed to make architectural decisions, design rationale, and system-level thinking easy to evaluate at a glance.
 
@@ -73,7 +77,7 @@ The AI Workflow Engine addresses these issues by:
 
 **Collaboration Ready**: Designed with clear contracts for a VS Code extension developer to build against.
 
-**Real-World Use**: Built to drive actual Java/Spring Boot ORM code generation at SkillsHarbor (first profile).
+**Real-World Use**: Built to drive actual code generation with multi-tenant patterns for a SaaS application.
 
 ---
 
@@ -101,12 +105,79 @@ Full explanations are available in the ADRs.
 
 ---
 
+## Language and Framework Agnostic
+
+The engine core is **language-agnostic**. Profiles encapsulate all language and framework-specific logic:
+
+**Current Profiles:**
+- Java/Spring Data JPA profiles (multi-tenant patterns)
+
+**Possible Future Profiles:**
+- Python/SQLAlchemy
+- C#/Entity Framework Core  
+- TypeScript/Prisma
+- Go/GORM
+- Ruby/ActiveRecord
+
+Each profile defines its own templates, standards, and validation rules appropriate to its target stack. The engine orchestrates phases and manages state regardless of the target language.
+
+---
+
+## Profile System
+
+Profiles encapsulate complete workflow configurations for different code generation domains.
+
+### Current Profiles
+
+**`jpa-mt-domain`** – Multi-tenant JPA domain layer generation
+- **Target Stack:** Java 21, Spring Data JPA, PostgreSQL
+- **Generates:** Entity + Repository with tenant isolation
+- **Tenancy:** Multi-tenant with row-level security patterns
+- **Standards:** JPA, database, entity, repository, naming conventions
+- **Use Case:** SaaS applications requiring tenant data isolation
+
+### Planned Profiles
+
+**`jpa-mt-vertical`** – Multi-tenant full-stack generation
+- **Target Stack:** Java 21, Spring Boot, PostgreSQL
+- **Generates:** Entity → Repository → Service → Controller → DTOs
+- **Tenancy:** Multi-tenant throughout the stack
+- **Standards:** Full-stack including API, DTOs, service layer patterns
+
+### First Implementation: `jpa-mt-domain`
+
+We're starting with a Java/Spring Data JPA profile because:
+1. Demonstrates real-world complexity (multi-tenancy, RLS)
+2. Matches actual production use case
+3. Java's verbosity showcases code generation value
+4. Multi-tenant patterns are common in enterprise SaaS
+
+The same architectural patterns apply to other languages/ORMs through additional profiles.
+
+### Profile Architecture
+
+Profiles are self-contained and define:
+- **Prompt templates** – How to structure AI requests
+- **Standards bundles** – Domain-specific coding standards
+- **Validation rules** – What to check in generated code
+- **Workflow phases** – Planning, generation, review, revision sequences
+
+**Key Design Decision:** Standards selection and bundling is a **profile responsibility**, not an engine concern. This allows different profiles to use different approaches:
+- Static file concatenation
+- Tag-based dynamic selection
+- Template-based assembly
+- External tool invocation
+
+See `docs/creating-profiles.md` for guidance on creating custom profiles.
+
+---
+
 ## Current Implementation Status
 
 - [x] Architecture defined and documented (ADR-0001)
 - [ ] Core models (WorkflowState, Artifact)
 - [ ] Provider and Profile interfaces
-- [ ] SkillsHarbor ORM profile (first concrete profile)
+- [ ] `jpa-mt-domain` profile (first concrete profile)
 - [ ] Handler chain and builder
 - [ ] CLI interface
 
@@ -120,16 +191,16 @@ See documentation:
 
 The engine exposes four primary CLI commands:
 
-1. aiwf new  
+1. **aiwf new**  
    Initializes a workflow session without running any phases.
 
-2. aiwf run  
+2. **aiwf run**  
    Creates a session and executes either the full workflow or all phases applicable in the current mode.
 
-3. aiwf step <phase>  
+3. **aiwf step <phase>**  
    Runs an individual workflow phase (interactive mode only).
 
-4. aiwf resume  
+4. **aiwf resume**  
    Continues a previously-started workflow session.
 
 ---
@@ -138,30 +209,73 @@ The engine exposes four primary CLI commands:
 
 These commands illustrate the intended interface once the engine is fully implemented.
 
-    # Initialize a workflow
-    aiwf run --profile skillsharbor-orm --type vertical --entity Client
+```bash
+# Initialize a multi-tenant domain workflow
+aiwf run --profile jpa-mt-domain --entity Product
 
-    # Resume from a checkpoint
-    aiwf resume <session-id>
+# Resume from a checkpoint
+aiwf resume <session-id>
 
-    # Run a single phase (interactive mode)
-    aiwf step generate --session <session-id>
+# Run a single phase (interactive mode)
+aiwf step generate --session <session-id>
+
+# Generate full vertical slice (when profile available)
+aiwf run --profile jpa-mt-vertical --feature OrderProcessing
+```
+
+---
+
+## Standards Management
+
+The engine provides reference tools and patterns for standards management, but profiles control implementation.
+
+### Reference Implementation
+
+`example-tools/select_standards.py` demonstrates:
+- Metadata tagging of standards files
+- Tag-based selection rules
+- Bundle generation for AI consumption
+- Critical section extraction
+
+### Profile Integration
+
+Profiles determine their own standards approach:
+
+```python
+class JpaMtDomainProfile(Profile):
+    def prepare_standards_bundle(self, context: dict) -> str:
+        """
+        This profile uses tag-based selection.
+        Others might use static files or different approaches.
+        """
+        return self._select_and_bundle_standards(
+            required_tags=["jpa", "entity", "repository", "naming"],
+            context=context
+        )
+```
+
+See `docs/creating-profiles.md` for standards management patterns.
 
 ---
 
 ## Documentation
 
-- Architecture & ADRs  
+- **Architecture & ADRs**  
   - docs/adr/0001-architecture-overview.md
-- Design Patterns Justification (coming soon)  
+- **Creating Custom Profiles**  
+  - docs/creating-profiles.md
+- **Standards Management Patterns**  
+  - docs/standards-patterns.md
+- **Design Patterns Justification**  
   - docs/patterns.md
-- Creating Custom Profiles (coming soon)  
-  - docs/profiles.md
+- **CLI API Contract**  
+  - API-CONTRACT.md
 
 Additional design rationale and commentary are available in GitHub Discussions under:
 
 - Architecture  
 - ADRs  
+- Profiles & Workflows
 
 ---
 
@@ -175,6 +289,32 @@ Additional design rationale and commentary are available in GitHub Discussions u
 
 ---
 
+## Project Structure
+
+```
+ai-workflow-engine/
+├─ aiwf/                        # Engine core
+│   ├─ domain/                  # Models, interfaces, patterns
+│   ├─ application/             # Services, orchestration
+│   ├─ infrastructure/          # Providers, adapters
+│   └─ interface/               # CLI commands
+├─ profiles/                    # Profile implementations
+│   └─ jpa-mt-domain/           # First profile
+│       ├─ profile.py           # Profile implementation
+│       ├─ templates/           # Prompt templates
+│       ├─ standards/           # Generic standards files
+│       └─ README.md            # Profile documentation
+├─ example-tools/               # Reference implementations
+│   └─ select_standards.py      # Standards selection pattern
+├─ docs/
+│   ├─ adr/                     # Architecture Decision Records
+│   ├─ creating-profiles.md     # Profile development guide
+│   └─ standards-patterns.md    # Standards management patterns
+└─ tests/
+```
+
+---
+
 ## Project Goals
 
 This project is intentionally built to demonstrate:
@@ -185,6 +325,43 @@ This project is intentionally built to demonstrate:
 4. Comprehensive documentation (ADRs and Discussions)  
 5. Extensibility for additional workflows and providers  
 6. A stable integration surface for a VS Code extension and other tools
+7. Language-agnostic design allowing profiles for any tech stack
+
+---
+
+## Extending the Engine
+
+### Adding New Profiles
+
+1. Create profile directory under `profiles/`
+2. Implement `Profile` interface
+3. Define prompt templates and standards
+4. Configure validation rules and workflow phases
+5. Document profile capabilities and target stack
+
+Profiles can target any language/framework. See `docs/creating-profiles.md` for detailed guidance.
+
+### Adding New AI Providers
+
+1. Implement `AIProvider` interface
+2. Handle provider-specific authentication and API calls
+3. Register provider in factory
+4. Update configuration schema
+
+Providers are Strategy pattern implementations swapped at runtime.
+
+---
+
+## Companion VS Code Extension
+
+This engine has a companion VS Code extension:  
+https://github.com/scottcm/aiwf-vscode-extension
+
+**Division of Responsibilities:**
+- **Engine** – All workflow orchestration, AI provider integration, state persistence  
+- **Extension** – UI/UX layer, command surface, editor integration  
+
+The extension communicates with the engine exclusively through its CLI interface following the contract defined in `API-CONTRACT.md`.
 
 ---
 
