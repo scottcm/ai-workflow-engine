@@ -55,8 +55,8 @@ class WorkflowState(BaseModel):
   last_error: str | None = None
 
   # Timestamps
-  created_at: datetime
-  updated_at: datetime
+  created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+  updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
   # Phase history
   phase_history: list[WorkflowPhase] = Field(default_factory=list)

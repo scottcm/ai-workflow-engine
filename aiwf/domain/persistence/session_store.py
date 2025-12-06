@@ -1,5 +1,6 @@
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
+from pydantic import Field
 import json
 import shutil
 from typing import Any
@@ -43,7 +44,7 @@ class SessionStore:
         session_file = session_dir / SESSION_FILENAME
         temp_file = session_file.with_suffix(SESSION_TEMP_SUFFIX)
 
-        state.updated_at = datetime.now()
+        state.updated_at = datetime.now(timezone.utc)  # Add timezone.utc
 
         # Serialize to JSON
         data = self._serialize(state)

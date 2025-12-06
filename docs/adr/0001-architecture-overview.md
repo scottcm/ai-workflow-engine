@@ -310,7 +310,23 @@ Profiles are **strategies**, not just config files. They encapsulate:
 
 **Trade-off**: Two formats vs. human-editable state files. We prioritize machine reliability for state, human convenience for config.
 
-### 4. CLI-Only (No HTTP)
+### 4. Phase vs State Naming Convention
+### Phase vs State Naming Convention
+
+**Internal Domain Model:** Uses `phase: WorkflowPhase` with past-tense enum values representing completed workflow stages:
+- `INITIALIZED`, `PLANNED`, `GENERATED`, `REVIEWED`, `REVISED`, `COMPLETE`, `FAILED`
+
+**External API Contract:** Uses `state` field with present-tense/progressive values representing current workflow status:
+- `"initialized"`, `"awaiting_planning_response"`, `"awaiting_generation_response"`, `"processing_generate"`, `"completed"`, `"failed"`
+
+**Rationale:** The domain model tracks what has been accomplished (phases completed), while the external API communicates what the system is currently doing or waiting for (operational state). This separation allows:
+- Domain logic to remain focused on workflow progression
+- API responses to provide actionable status for users/integrations
+- Different granularity at each layer (coarse-grained phases internally, fine-grained states externally)
+
+**Mapping:** The Application/Interface layer is responsible for translating between internal `WorkflowPhase` and external `state` strings. This mapping will be implemented in the engine service and CLI response builders.
+
+### 5. CLI-Only (No HTTP)
 
 **Implementation**: CLI + library interface only
 **Rationale**:
@@ -322,7 +338,7 @@ Profiles are **strategies**, not just config files. They encapsulate:
 
 **Trade-off**: No web UI or real-time progress updates vs. faster delivery and simpler collaboration.
 
-### 5. File-Based Prompts (Not stdin)
+### 6. File-Based Prompts (Not stdin)
 
 **Decision**: Write prompts to disk rather than streaming via stdin.
 
@@ -335,7 +351,7 @@ Profiles are **strategies**, not just config files. They encapsulate:
 
 **Trade-off**: More filesystem I/O vs. user visibility and debuggability.
 
-### 6. Legacy Script Integration via Adapters
+### 7. Legacy Script Integration via Adapters
 
 Existing scripts are **not rewritten**, they're **wrapped** as adapters or refactored into commands where appropriate.
 
