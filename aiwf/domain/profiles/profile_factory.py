@@ -1,0 +1,54 @@
+from typing import Any
+from .workflow_profile import WorkflowProfile
+
+class ProfileFactory:
+    """Factory for creating workflow profile instances (Factory pattern)"""
+
+    _registry: dict[str, type[WorkflowProfile]] = {}
+
+    @classmethod
+    def register(cls, key: str, profile_class: type[WorkflowProfile]) -> None:
+        """
+        Register a profile implementation.
+        
+        Args:
+            key: Profile identifier (e.g., "jpa-mt-domain")
+            profile_class: The profile class to register
+        """
+        cls._registry[key] = profile_class
+
+    @classmethod
+    def create(cls, profile_key: str, config: dict[str, Any] | None = None) -> WorkflowProfile:
+        """
+        Create a profile instance.
+        
+        Args:
+            profile_key: Registered profile identifier
+            config: Optional configuration for the profile
+            
+        Returns:
+            Instantiated WorkflowProfile
+            
+        Raises:
+            KeyError: If profile_key is not registered
+        """
+        if profile_key not in cls._registry:
+            available = ", ".join(cls._registry.keys())
+            raise KeyError(
+                f"Profile: '{profile_key}' not found. "
+                f"Available profiles: {available}"
+            )
+        
+        profile_class = cls._registry[profile_key]
+        config = config or {}
+        return profile_class(**config)
+    
+    @classmethod
+    def list_profiles(cls) -> list[str]:
+        """
+        Get list of registered profile keys.
+        
+        Returns:
+            List of registered profile identifiers
+        """
+        return list(cls._registry.keys())
