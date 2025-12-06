@@ -114,11 +114,15 @@ class AIProvider(ABC):
 ```python
 class WorkflowProfile(ABC):
     def prompt_template_for(self, phase: WorkflowPhase) -> Path: ...
-    def standards_bundle_for(self) -> Path: ...
+    def standards_bundle_for(self, context: dict) -> str: ...  # NEW
     def parse_bundle(self, content: str) -> dict[str, str]: ...
     def artifact_dir_for(self, entity: str) -> Path: ...
     def review_config_for(self) -> dict: ...
 ```
+**Note on `standards_bundle_for`:** This method returns the *generated bundle content* 
+as a string, not a path. This allows profiles to dynamically assemble standards based on 
+context (entity name, workflow phase, etc.) using tag-based selection, templates, or 
+other approaches. The profile owns the standards bundling strategy.
 
 ### 3. Factory Pattern
 **Problem**: Need runtime instantiation of providers and profiles based on configuration.
