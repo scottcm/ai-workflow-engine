@@ -1,3 +1,5 @@
+"""Domain models for AI Workflow Engine."""
+
 from .workflow_state import (
     ExecutionMode,
     WorkflowPhase,

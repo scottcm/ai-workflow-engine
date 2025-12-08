@@ -8,7 +8,7 @@ class WorkflowProfile(ABC):
     """Abstract interface for workflow profiles (Strategy pattern)"""
     
     @abstractmethod
-    def prompt_template_for(self, phase: WorkflowPhase) -> Path:
+    def prompt_template_for(self, phase: WorkflowPhase, scope: str) -> Path:
         """
         Get the path to the prompt template for the given phase.
         
@@ -23,13 +23,17 @@ class WorkflowProfile(ABC):
     @abstractmethod
     def standards_bundle_for(self, context: dict[str, Any]) -> str:
         """
-        Generate standards bundle content for this profile.
-        
+        Generate a standards bundle for this profile.
+
         Args:
-            context: Workflow context (entity name, etc.)
-            
+            context: Workflow context containing:
+                - entity (str): Entity name
+                - scope (str): Generation scope
+                - session_id (str, optional): Session identifier
+                - timestamp (str, optional): ISO timestamp
+
         Returns:
-            Standards bundle content as a string
+            Standards bundle content as a single string.
         """
         ...
     

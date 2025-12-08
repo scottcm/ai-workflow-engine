@@ -1,5 +1,5 @@
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 class ExecutionMode(str, Enum):
@@ -30,10 +30,12 @@ class WorkflowState(BaseModel):
   # Identity
   session_id: str
   profile: str
+  scope: str  # e.g., "domain", "vertical"
 
   # State
   phase: WorkflowPhase
   execution_mode: ExecutionMode
+  current_iteration: int = 1  # Starts at 1, increments on revision
 
   # Profile-specific Context
   entity: str
@@ -42,7 +44,7 @@ class WorkflowState(BaseModel):
   dev: str | None = None
 
   # Multi-provider strategy
-  providers: dict[str, str] # role -> provider_key
+  providers: dict[str, str]  # role -> provider_key
 
   # Outputs
   ## Avoid mutability bug that list[] = [] would cause

@@ -1,0 +1,225 @@
+# profiles/jpa-mt/config.yml
+#
+# Configuration for JPA Multi-Tenant Profile
+#
+# This profile generates multi-tenant JPA code for:
+# - Domain scope: Entity + Repository
+# - Vertical scope: Full stack (Entity → Controller)
+#
+# Validation: This file is validated against a Pydantic schema on load.
+# See profiles/jpa-mt/README.md for complete documentation.
+
+# ============================================================================
+# STANDARDS CONFIGURATION
+# ============================================================================
+# Controls where coding standards files are located.
+#
+# Requirements:
+# - root: Must be absolute path or environment variable
+# - Directory must exist and be readable
+# - Standards are loaded once per session and are immutable
+#
+# Environment variable expansion:
+#   ${VAR_NAME} expands from shell environment
+#   Only ${VAR} syntax with braces is validated
+#   Using $VAR without braces may result in unexpected behavior
+#   Undefined variables cause startup error
+
+standards:
+  # Path to standards directory
+  # Can be absolute, relative, or environment variable.Relative paths resolve from current working directory
+  root: "${STANDARDS_DIR}"
+  
+  # Examples:
+  # root: "C:/Users/User/projects/my-app/docs/standards"
+  # root: "/home/user/projects/my-app/standards"
+  # root: "${HOME}/projects/standards"
+
+
+# ============================================================================
+# ARTIFACTS CONFIGURATION
+# ============================================================================
+# Controls where session data and final code are stored.
+#
+# session_root:
+#   - Directory for all session state and temporary files
+#   - Relative paths resolved from current working directory
+#   - Default: ".aiwf/sessions"
+#
+# target_root:
+#   - Optional: Directory for final approved code
+#   - If not set, code remains in session directory only
+#   - If set, final code copies to {target_root}/{target_structure}/
+#   - Use when integrating with version control
+#
+# - **`target_structure`** (required) - Directory pattern within target_root
+#  - Default: `"{entity}/{scope}"`
+#  - **Available variables:**
+#    - `{entity}` - Entity name (e.g., "Tier", "Product")
+#    - `{scope}` - Scope name (e.g., "domain", "vertical")
+#    - `{timestamp}` - ISO timestamp (format: YYYY-MM-DDTHHMMSSZ, no colons)
+#    - `{session_id}` - Unique session identifier
+#    - **Note:** All variable values must contain only alphanumeric characters, hyphens, and underscores
+#   - Examples:
+#       "{entity}/{scope}"           → Tier/domain/
+#       "{scope}/{entity}"           → domain/Tier/
+#       "{entity}"                   → Tier/
+#       "generated/{entity}/{scope}" → generated/Tier/domain/
+#
+# copy_strategy:
+#   - iterations: true = copy all iterations, false = final only
+#   - audit_trail: true = copy prompts & responses, false = neither
+#   - standards: true = copy standards-bundle.md to target
+
+artifacts:
+  session_root: ".aiwf/sessions"
+  
+  # Optional: Set to copy final code to project directory
+  target_root: "${ARTIFACT_ROOT}"
+  
+  # Examples:
+  # target_root: "C:/Users/User/projects/my-app/ai-artifacts"
+  # target_root: "/home/user/projects/my-app/ai-artifacts"
+  # target_root: null  # Keep code in session directory only
+  
+  # Directory structure within target_root. Allowed placeholders:
+  # {entity}, {scope}, {timestamp}, {session_id}
+  target_structure: "{entity}/{scope}"
+  
+  # What to copy to target_root (ignored if target_root not set)
+  copy_strategy:
+    iterations: true      # Copy all iterations (full audit trail)
+    audit_trail: true     # Copy prompts & responses
+    standards: true       # Copy standards-bundle.md
+
+
+# ============================================================================
+# SCOPE DEFINITIONS
+# ============================================================================
+# Defines what code generation scopes this profile supports.
+#
+# Each scope:
+#   - description: Human-readable explanation
+#   - layers: List of architectural layers to generate
+#             Must match keys in layer_standards section
+#             Order matters for organization
+#
+# Validation:
+#   - Engine warns if layer has no standards defined
+#   - Allows custom scopes (user responsibility for completeness)
+
+scopes:
+  domain:
+    description: "Multi-tenant JPA domain layer (Entity + Repository)"
+    layers: [entity, repository]
+    
+  vertical:
+    description: "Complete feature implementation (all layers)"
+    layers: [entity, repository, service, controller, dto, mapper]
+
+
+# ============================================================================
+# LAYER STANDARDS MAPPING
+# ============================================================================
+# Maps architectural layers to the standards files that govern them.
+#
+# Structure:
+#   _universal: Applied to ALL scopes (loaded first)
+#   {layer_name}: Standards for specific layer
+#
+# File references:
+#   - Relative to standards.root
+#   - Can include subdirectories: "java/JPA_STANDARDS.md"
+#   - Files must exist at {standards.root}/{filename}
+#
+# Deduplication:
+#   - Files referenced multiple times are loaded only once
+#   - Engine automatically deduplicates when building bundle
+#
+# Bundle format:
+#   Files concatenated with separator:
+#   --- FILENAME.md ---
+#   [content]
+#
+# Standards immutability:
+#   - Loaded once at session creation
+#   - Cannot change during session (validated)
+#   - If standards need updating, create new session
+
+layer_standards:
+  # Universal standards applied to ALL scopes and layers (loaded first)
+  _universal:
+    - ORG.md
+    - PACKAGES_AND_LAYERS.md
+  
+  # Entity layer standards
+  entity:
+    - JPA_AND_DATABASE.md
+    - ARCHITECTURE_AND_MULTITENANCY.md
+    - NAMING_AND_API.md
+  
+  # Repository layer standards
+  repository:
+    - JPA_AND_DATABASE.md
+    - NAMING_AND_API.md
+  
+  # Service layer standards
+  service:
+    - BOILERPLATE_AND_DI.md
+    - ARCHITECTURE_AND_MULTITENANCY.md
+    - NAMING_AND_API.md
+  
+  # Controller layer standards
+  controller:
+    - NAMING_AND_API.md
+    - BOILERPLATE_AND_DI.md
+  
+  # DTO layer standards
+  dto:
+    - NAMING_AND_API.md
+  
+  # Mapper layer standards
+  mapper:
+    - NAMING_AND_API.md
+    - BOILERPLATE_AND_DI.md
+
+
+# ============================================================================
+# VALIDATION NOTES
+# ============================================================================
+#
+# This config is validated on profile load using Pydantic schema.
+#
+# Validation Levels:
+#
+# ERROR (stops execution):
+#   - Missing required sections
+#   - Invalid file paths
+#   - Undefined environment variables
+#   - Invalid YAML syntax
+#   - standards.root doesn't exist
+#   - target_structure missing {entity} variable
+#
+# WARNING (logs but continues):
+#   - Layer in scope but not in layer_standards
+#   - Unused layer_standards entries
+#   - Non-standard target_structure pattern
+#
+# Security Validations:
+#   - Entity names sanitized (alphanumeric, hyphen, underscore only)
+#   - No path traversal in file references
+#   - All paths validated for existence and accessibility
+#   - Environment variables expanded safely
+#
+# Common Errors:
+#
+#   "standards.root path does not exist"
+#   → Set STANDARDS_DIR environment variable or use absolute path
+#
+#   "Layer 'mapper' in scope 'vertical' has no standards defined"
+#   → Add mapper entry to layer_standards section
+#
+#   "Environment variable ARTIFACT_ROOT is not defined"
+#   → Set environment variable or use absolute path / null
+#
+# See profiles/jpa-mt/README.md for complete documentation.

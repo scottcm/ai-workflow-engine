@@ -1,534 +1,585 @@
-# AI Workflow Engine - API Contract
+# AI Workflow Engine
 
-**Version:** 1.0.0-draft  
-**Status:** Specification (Implementation Pending)  
-**Last Updated:** December 5, 2024
+**A project demonstrating enterprise architecture patterns in an AI-assisted development workflow engine**
+
+> ⚙️ **Project Status: Active Development**  
+> A production workflow engine demonstrating enterprise architecture patterns built to orchestrate AI-assisted code generation for multi-tenant SaaS applications. Designed around budget constraints (works with consumer AI subscriptions), real architectural complexity (multi-tenant patterns, state management), and tight timelines.
+
+The architecture deliberately demonstrates Strategy, Factory, Chain of Responsibility, Builder, Command, Adapter, and Template Method patterns - not because patterns are the goal, but because they solve real extensibility, testability, and maintainability challenges in this domain.
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [What This Project Demonstrates](#what-this-project-demonstrates)
+- [The Problem It Solves](#the-problem-it-solves)
+- [Why This Approach?](#why-this-approach)
+- [Architecture Overview](#architecture-overview)
+  - [Key Patterns](#key-patterns)
+- [Language and Framework Agnostic](#language-and-framework-agnostic)
+- [Profile System](#profile-system)
+  - [JPA Multi-Tenant Profile (`jpa-mt`)](#jpa-multi-tenant-profile-jpa-mt)
+  - [Why Java/Spring Data JPA First?](#why-javaspring-data-jpa-first)
+  - [Profile Architecture](#profile-architecture)
+- [Session Workflow](#session-workflow)
+  - [Directory Structure](#directory-structure)
+  - [Workflow Phases](#workflow-phases)
+  - [Interactive Mode Example](#interactive-mode-example)
+- [CLI Overview](#cli-overview)
+- [Configuration](#configuration)
+- [Standards Management](#standards-management)
+  - [Immutability](#immutability)
+  - [Bundling Strategy](#bundling-strategy)
+  - [Validation](#validation)
+- [Security](#security)
+  - [Input Validation](#input-validation)
+  - [Path Validation](#path-validation)
+- [Documentation](#documentation)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Project Goals](#project-goals)
+- [Extending the Engine](#extending-the-engine)
+  - [Adding New Profiles](#adding-new-profiles)
+  - [Adding New AI Providers](#adding-new-ai-providers)
+  - [Adding New Scopes](#adding-new-scopes)
+- [Companion VS Code Extension](#companion-vs-code-extension)
+- [Development Setup](#development-setup)
+- [License](#license)
+- [Support](#support)
 
 ---
 
 ## Overview
 
-This document defines the CLI interface contract between the AI Workflow Engine and external integrations (such as the VS Code extension). The engine exposes its functionality exclusively through CLI commands with structured output formats.
+The AI Workflow Engine orchestrates multi-phase code generation workflows across multiple AI providers.  
+It supports both:
 
-**Key Principles:**
-- Engine is the authoritative source of workflow state
-- All state persistence is engine-managed
-- Extension is a UI layer that consumes engine output
-- Profiles determine workflow capabilities and phases
-- Prompts are file-based (not stdin) due to multi-file complexity
+- **Interactive mode** — generates prompt files for manual use with web UIs  
+- **Automated mode** — executes workflows using local CLI agents
+
+The system is architected as a modular, extensible engine with clear responsibilities and deliberate use of enterprise design patterns.
 
 ---
 
-## Command Reference
+## What This Project Demonstrates
 
-### 1. `aiwf new`
+- **Deliberate application of 8 design patterns**  
+  Strategy, Factory, Chain of Responsibility, Builder, Command, Adapter, Template Method
+- **Layered architecture**  
+  Interface → Application → Domain → Infrastructure
+- **Extensible profile system**  
+  Swap entire workflow domains without modifying the engine core
+- **Pluggable AI providers**  
+  Claude, Gemini, Manual (prompt-only), with future expansions
+- **Stateful, resumable workflows**  
+  JSON-based workflow state with checkpoints and iteration tracking
+- **Dual execution modes**  
+  Manual (prompt/paste) and automated (CLI provider calls)
+- **Language-agnostic design**  
+  Core engine supports any target language through profiles
+- **Security by design**  
+  Input sanitization, path validation, and environment variable safety
 
-Initialize a new workflow session without executing any phases.
+The structure and documentation are designed to make architectural decisions, design rationale, and system-level thinking easy to evaluate at a glance.
 
-**Syntax:**
+---
+
+## The Problem It Solves
+
+AI-assisted development often requires:
+
+1. Planning  
+2. Code generation  
+3. Code review or critique  
+4. One or more revision loops
+
+Most ad-hoc workflows:
+
+- Hard-code a single AI provider  
+- Mix prompts, scripts, and output logic together  
+- Do not explicitly model workflow phases  
+- Cannot switch between manual and automated execution  
+- Cannot reuse logic across different domains (e.g., ORM vs API generation)
+- Lose audit trail of what was generated and why
+
+The AI Workflow Engine addresses these issues by:
+
+- Modeling workflows as a **phase pipeline** using Chain of Responsibility  
+- Allowing different AI providers to be assigned to different roles  
+- Supporting both fully automated and partially manual execution modes  
+- Encapsulating domain-specific behavior in **profiles** rather than in core logic
+- Preserving complete audit trail in iteration-based directories
+- Making standards immutable within a session to prevent corruption
+
+---
+
+## Why This Approach?
+
+**Budget Reality**: Many startups can't afford pay-as-you-go AI APIs. This engine works with:
+- Consumer subscription products (ChatGPT, Claude Pro, Gemini Advanced)
+- Local CLI agents (claude, gemini)
+- Manual copy-paste workflows
+
+**Collaboration Ready**: Designed with clear contracts for a VS Code extension developer to build against.
+
+**Real-World Use**: Built to drive actual code generation with multi-tenant patterns for a SaaS application.
+
+**Auditability**: Full audit trail preserved - every prompt, response, and iteration tracked for debugging and improvement.
+
+---
+
+## Architecture Overview
+
+    Interface Layer (CLI)
+          ↓
+    Application Layer (Services & Execution)
+          ↓
+    Domain Layer (Core Models, Patterns, Profiles)
+          ↓
+    Infrastructure Layer (Adapters: AI providers, filesystem, legacy scripts)
+
+### Key Patterns
+
+- **Strategy** — Swap AI providers and workflow profiles at runtime  
+- **Factory** — Instantiate providers and profiles from configuration  
+- **Chain of Responsibility** — Compose workflow phases as a pipeline  
+- **Builder** — Fluent, safe construction of handler chains  
+- **Command** — Encapsulate operations such as prompt prep and bundle extraction  
+- **Adapter** — Integrate CLI tools and legacy scripts behind stable interfaces  
+- **Template Method** — Shared prompt skeletons with overridable sections  
+
+Full explanations are available in the ADRs.
+
+---
+
+## Language and Framework Agnostic
+
+The engine core is **language-agnostic**. Profiles encapsulate all language and framework-specific logic:
+
+**Current Profile:**
+- `jpa-mt` - Java/Spring Data JPA with multi-tenant patterns
+
+**Possible Future Profiles:**
+- Python/SQLAlchemy
+- C#/Entity Framework Core  
+- TypeScript/Prisma
+- Go/GORM
+- Ruby/ActiveRecord
+
+Each profile defines its own templates, standards, and validation rules appropriate to its target stack. The engine orchestrates phases and manages state regardless of the target language.
+
+---
+
+## Profile System
+
+Profiles encapsulate complete workflow configurations for different code generation domains.
+
+### JPA Multi-Tenant Profile (`jpa-mt`)
+
+**Target Stack:** Java 21, Spring Data JPA, PostgreSQL  
+**Tenancy Model:** Multi-tenant with row-level security
+
+**Supported Scopes:**
+
+1. **`domain`** — Entity + Repository only
+   - Generates: JPA Entity, Spring Data Repository
+   - Use case: Domain layer for existing applications
+
+2. **`vertical`** — Complete feature implementation
+   - Generates: Entity → Repository → Service → Controller + DTOs/Mappers
+   - Use case: Full-stack feature implementation
+
+### Why Java/Spring Data JPA First?
+
+1. Demonstrates real-world complexity (multi-tenancy, RLS)
+2. Matches actual production use case at Skills Harbor
+3. Java's verbosity showcases code generation value
+4. Multi-tenant patterns are common in enterprise SaaS
+
+The same architectural patterns apply to other languages/ORMs through additional profiles.
+
+### Profile Architecture
+
+Profiles are self-contained and define:
+- **Configuration** — Scopes, layers, standards mapping
+- **Prompt templates** — How to structure AI requests (phase + scope specific)
+- **Standards bundles** — Domain-specific coding standards (immutable per session)
+- **Bundle parsing** — Extract generated code from AI responses
+- **Validation rules** — What to check in generated code
+
+**Key Design Decision:** Standards selection and bundling is a **profile responsibility**, not an engine concern. Profiles can use:
+- Layer-based standards mapping (jpa-mt approach)
+- Static file concatenation
+- Tag-based dynamic selection
+- Template-based assembly
+
+---
+
+## Session Workflow
+
+### Directory Structure
+
+**Session directory** (`.aiwf/sessions/{session-id}/`):
+```
+.aiwf/sessions/20241206-143045-b7k2/
+├── session.json                # State tracking
+├── workflow.log                # Execution log
+├── standards-bundle.md         # Immutable standards
+│
+├── iteration-1/                # First generation attempt
+│   ├── planning-prompt.md
+│   ├── planning-response.md
+│   ├── generation-prompt.md
+│   ├── generation-response.md
+│   ├── review-prompt.md
+│   ├── review-response.md
+│   └── code/
+│       ├── Entity.java
+│       └── EntityRepository.java
+│
+└── iteration-2/                # Revision (if needed)
+    └── [same structure]
+```
+
+**Target directory** (if configured):
+```
+{target_root}/Tier/domain/
+├── standards-bundle.md         # Standards used
+├── Tier.java                   # Final code (easy access)
+├── TierRepository.java
+├── iteration-1/                # Full audit trail
+└── iteration-2/
+```
+
+### Workflow Phases
+
+1. **Planning** — Design entity structure and relationships
+2. **Generation** — Generate code following approved plan
+3. **Review** — Validate against standards and best practices
+4. **Revision** — Fix issues identified in review (loops until pass)
+
+### Interactive Mode Example
+
 ```bash
-aiwf new --profile <profile> [options]
+# Set up environment
+export STANDARDS_DIR="/path/to/your/standards"
+export ARTIFACT_ROOT="/path/to/your/project/ai-artifacts"
+
+# Start workflow
+aiwf run --profile jpa-mt --scope domain --entity Tier
+
+# Engine creates iteration-1/planning-prompt.md and standards-bundle.md
+# You attach files to AI, save response to iteration-1/planning-response.md
+
+# Continue to generation
+aiwf step generate --session {session-id}
+
+# Attach generation-prompt.md, planning-response.md, standards-bundle.md to AI
+# Save code bundle to generation-response.md
+
+# Review generated code
+aiwf step review --session {session-id}
+
+# If review fails, revise
+aiwf step revise --session {session-id}
+# Creates iteration-2/ with revision prompts and responses
 ```
-
-**Required Arguments:**
-- `--profile <n>` – Profile to use (e.g., `jpa-mt-domain`, `jpa-mt-vertical`)
-
-**Profile-Specific Arguments:**
-
-*For domain profiles (jpa-mt-domain):*
-- `--entity <n>` – Entity name in PascalCase (e.g., `Product`, `Customer`)
-
-*For vertical profiles (jpa-mt-vertical):*
-- `--feature <n>` – Feature name (e.g., `OrderProcessing`, `UserManagement`)
-
-**Optional Arguments:**
-- `--mode <interactive|automated>` – Execution mode (default: `interactive`)
-- `--session-dir <path>` – Custom session directory (default: `.aiwf/sessions/<timestamp>`)
-- `--config <path>` – Custom configuration file
-
-**Output (JSON):**
-```json
-{
-  "status": "success",
-  "session_id": "20241205-143022-a3f8",
-  "session_dir": "/path/to/.aiwf/sessions/20241205-143022-a3f8",
-  "profile": "jpa-mt-domain",
-  "mode": "interactive",
-  "entity": "Product",
-  "state": "initialized",
-  "next_phase": "planning"
-}
-```
-
-**Error Output (JSON):**
-```json
-{
-  "status": "error",
-  "error_code": "PROFILE_NOT_FOUND",
-  "message": "Profile 'invalid-profile' not found",
-  "available_profiles": ["jpa-mt-domain"]
-}
-```
-
-**Exit Codes:**
-- `0` – Success
-- `1` – Invalid arguments
-- `2` – Profile not found
-- `3` – Configuration error
 
 ---
 
-### 2. `aiwf run`
+## CLI Overview
 
-Create a new session and execute the full workflow (or applicable phases based on mode).
+The engine exposes seven primary CLI commands:
 
-**Syntax:**
+1. **aiwf new** — Initialize workflow session without executing phases
+2. **aiwf run** — Create session and start workflow
+3. **aiwf step <phase>** — Execute single workflow phase (interactive mode)
+4. **aiwf resume** — Continue existing workflow from current state
+5. **aiwf status** — Get detailed session status
+6. **aiwf list** — List all workflow sessions
+7. **aiwf profiles** — List available profiles and their capabilities
+
+See `API-CONTRACT.md` for complete CLI specification.
+
+---
+
+## Configuration
+
+Profiles use YAML configuration with environment variable support:
+
+```yaml
+# profiles/jpa-mt/config.yml
+
+standards:
+  root: "${STANDARDS_DIR}"
+
+artifacts:
+  session_root: ".aiwf/sessions"
+  target_root: "${ARTIFACT_ROOT}"
+  target_structure: "{entity}/{scope}"
+  
+  copy_strategy:
+    iterations: true      # Copy all iterations (audit trail)
+    audit_trail: true     # Include prompts & responses
+    standards: true       # Copy standards bundle
+
+scopes:
+  domain:
+    description: "Multi-tenant JPA domain layer (Entity + Repository)"
+    layers: [entity, repository]
+    
+  vertical:
+    description: "Complete feature implementation (all layers)"
+    layers: [entity, repository, service, controller, dto, mapper]
+
+layer_standards:
+  _universal:
+    - PACKAGES_AND_LAYERS.md
+  entity:
+    - ORG.md
+    - JPA_AND_DATABASE.md
+    - ARCHITECTURE_AND_MULTITENANCY.md
+    - NAMING_AND_API.md
+  # ... additional layer mappings
+```
+
+**Key Features:**
+- Environment variable expansion (`${VAR_NAME}`)
+- Pydantic validation for early error detection
+- Layer-based standards deduplication
+- Flexible target directory structure
+- Configurable artifact copying
+
+---
+
+## Standards Management
+
+### Immutability
+
+Standards are bundled once at session creation and **cannot change** during the workflow. This prevents corruption from mid-session standards updates.
+
+### Bundling Strategy
+
+The `jpa-mt` profile uses layer-based standards mapping:
+
+1. Collect all layers for requested scope (e.g., `[entity, repository]`)
+2. Gather standards files for each layer from `layer_standards` config
+3. Add universal standards (`_universal` key)
+4. Deduplicate (files referenced multiple times loaded once)
+5. Concatenate with separators: `--- FILENAME.md ---`
+
+**Example bundle for `domain` scope:**
+```markdown
+--- PACKAGES_AND_LAYERS.md ---
+[content]
+
+--- ORG.md ---
+[content]
+
+--- JPA_AND_DATABASE.md ---
+[content]
+```
+
+### Validation
+
+Engine validates:
+- Standards root exists and is accessible
+- All referenced files exist
+- No path traversal in filenames
+- Bundle hasn't changed between iterations
+
+---
+
+## Security
+
+### Input Validation
+
+The engine includes shared validation utilities (`aiwf/domain/validation/path_validator.py`):
+
+- **Entity names** — Alphanumeric, hyphens, underscores only
+- **Path components** — No `../`, `/`, or `\` in user inputs
+- **Environment variables** — Safe expansion with undefined var detection
+- **Template variables** — Only allowed variables in target structure
+- **Standards files** — Must be within standards root (no traversal)
+
+### Path Validation
+
+All paths validated for:
+- Absolute path requirements
+- Existence checks
+- Read/write permissions
+- Path traversal prevention
+
+Profiles can extend base validation with domain-specific rules.
+
+---
+
+## Documentation
+
+**Architecture:**
+- `docs/adr/0001-architecture-overview.md` — Complete architecture decisions
+- `docs/adr/0001-architecture-overview-phase2.md` — Phase 2 design updates
+
+**API:**
+- `API-CONTRACT.md` — CLI interface specification
+- `API-CONTRACT-phase2-updates.md` — Session structure updates
+
+**Profiles:**
+- `profiles/jpa-mt/README.md` — Complete jpa-mt profile guide
+- `profiles/jpa-mt/config.yml` — Configuration with inline documentation
+
+**Development:**
+- `aiwf/domain/validation/path_validator.py` — Security utilities reference
+
+Additional design rationale and commentary are available in GitHub Discussions.
+
+---
+
+## Tech Stack
+
+- **Python 3.13** — Modern Python with full Pydantic v2 support
+- **Pydantic** — Data modeling and validation
+- **Click** — CLI interface
+- **Poetry** — Dependency management
+- **pytest** — Testing framework
+
+---
+
+## Project Structure
+
+```
+ai-workflow-engine/
+├── aiwf/                        # Engine core
+│   ├── domain/                  # Models, interfaces, patterns
+│   │   ├── models/              # WorkflowState, Artifact
+│   │   ├── providers/           # AIProvider interface + factory
+│   │   ├── profiles/            # WorkflowProfile interface + factory
+│   │   ├── persistence/         # SessionStore
+│   │   └── validation/          # Security utilities
+│   ├── application/             # Services, orchestration
+│   ├── infrastructure/          # Providers, adapters
+│   │   └── ai/                  # AI provider implementations
+│   └── interface/               # CLI commands
+├── profiles/                    # Profile implementations
+│   └── jpa-mt/                  # JPA multi-tenant profile
+│       ├── config.yml           # Profile configuration
+│       ├── profile.py           # Profile implementation
+│       ├── templates/           # Prompt templates
+│       │   ├── planning/
+│       │   ├── generation/
+│       │   ├── review/
+│       │   └── revision/
+│       └── README.md            # Profile documentation
+├── docs/
+│   └── adr/                     # Architecture Decision Records
+├── tests/
+│   ├── unit/
+│   └── integration/
+├── API-CONTRACT.md              # CLI specification
+└── README.md                    # This file
+```
+
+---
+
+## Project Goals
+
+This project is intentionally built to demonstrate:
+
+1. Thoughtful, enterprise-grade architectural decisions  
+2. Appropriate and justified use of design patterns  
+3. Clean, maintainable code aligned with SOLID principles  
+4. Comprehensive documentation (ADRs, profiles, API contracts)  
+5. Extensibility for additional workflows and providers  
+6. A stable integration surface for a VS Code extension and other tools
+7. Language-agnostic design allowing profiles for any tech stack
+8. Security by design with shared validation utilities
+
+---
+
+## Extending the Engine
+
+### Adding New Profiles
+
+1. Create profile directory under `profiles/`
+2. Create `config.yml` with scopes and standards mapping
+3. Implement `WorkflowProfile` interface in `profile.py`
+4. Create prompt templates for each phase and scope
+5. Document profile in `README.md`
+
+Profiles can target any language/framework. Use `jpa-mt` as a reference implementation.
+
+### Adding New AI Providers
+
+1. Implement `AIProvider` interface
+2. Handle provider-specific authentication and API calls
+3. Register provider in `ProviderFactory`
+4. Update configuration schema
+
+Providers are Strategy pattern implementations swapped at runtime.
+
+### Adding New Scopes
+
+Add scope to profile's `config.yml`:
+
+```yaml
+scopes:
+  custom-scope:
+    description: "Your custom generation scope"
+    layers: [layer1, layer2, layer3]
+```
+
+Create corresponding templates in `templates/planning/custom-scope.md`, etc.
+
+---
+
+## Companion VS Code Extension
+
+This engine has a companion VS Code extension:  
+https://github.com/scottcm/aiwf-vscode-extension
+
+**Division of Responsibilities:**
+- **Engine** — All workflow orchestration, AI provider integration, state persistence  
+- **Extension** — UI/UX layer, command surface, editor integration  
+
+The extension communicates with the engine exclusively through its CLI interface following the contract defined in `API-CONTRACT.md`.
+
+---
+
+## Development Setup
+
 ```bash
-aiwf run --profile <profile> [options]
-```
+# Clone repository
+git clone https://github.com/scottcm/ai-workflow-engine.git
+cd ai-workflow-engine
 
-**Arguments:**
-Same as `aiwf new`, plus:
-- `--auto-approve` – Skip plan approval step in interactive mode (use with caution)
-- `--provider <n>` – Override default AI provider for this session
+# Install dependencies with Poetry
+poetry install
 
-**Behavior:**
+# Activate virtual environment
+poetry shell
 
-*Interactive Mode:*
-1. Creates session
-2. Generates planning prompt
-3. **Stops and waits** for user to provide AI response
-4. User places response in `responses/planning.md`
-5. User runs `aiwf step generate --session <id>` to continue
+# Set environment variables
+export STANDARDS_DIR="/path/to/your/standards"
+export ARTIFACT_ROOT="/path/to/your/artifacts"
 
-*Automated Mode:*
-1. Creates session
-2. Executes full workflow automatically
-3. Streams progress to stdout
-4. Returns final state
+# Run tests (when available)
+pytest
 
-**Output (JSON):**
-```json
-{
-  "status": "success",
-  "session_id": "20241205-143045-b7k2",
-  "session_dir": "/path/to/.aiwf/sessions/20241205-143045-b7k2",
-  "profile": "jpa-mt-domain",
-  "mode": "interactive",
-  "state": "awaiting_planning_response",
-  "prompt_file": "/path/to/.aiwf/sessions/20241205-143045-b7k2/prompts/planning.md",
-  "standards_file": "/path/to/.aiwf/sessions/20241205-143045-b7k2/prompts/standards-bundle.md",
-  "instructions": "Copy the contents of planning.md and standards-bundle.md to your AI interface, then paste the response into responses/planning.md and run: aiwf step generate --session 20241205-143045-b7k2"
-}
-```
-
-**Exit Codes:**
-- `0` – Success (session created, awaiting next step)
-- `1` – Invalid arguments
-- `2` – Profile not found
-- `3` – Configuration error
-- `4` – Workflow execution error (automated mode)
-
----
-
-### 3. `aiwf step <phase>`
-
-Execute a single workflow phase for an existing session (interactive mode only).
-
-**Syntax:**
-```bash
-aiwf step <phase> --session <session-id> [options]
-```
-
-**Required Arguments:**
-- `<phase>` – Phase name: `planning`, `generate`, `review`, `revise`
-- `--session <id>` – Session identifier
-
-**Optional Arguments:**
-- `--response-file <path>` – Custom path to AI response (default: `responses/<phase>.md`)
-
-**Phases:**
-
-1. **planning** – Generate planning prompt
-2. **generate** – Process planning response and generate code prompt
-3. **review** – Generate review prompt for generated code
-4. **revise** – Process review feedback and generate revision prompt
-
-**Output (JSON):**
-```json
-{
-  "status": "success",
-  "session_id": "20241205-143045-b7k2",
-  "phase": "generate",
-  "state": "awaiting_generation_response",
-  "prompt_file": "/path/to/prompts/generate.md",
-  "previous_artifacts": [
-    "plans/planning-output.md"
-  ],
-  "instructions": "Copy generate.md to your AI interface with the planning output, paste response into responses/generate.md, then run: aiwf step review --session 20241205-143045-b7k2"
-}
-```
-
-**Exit Codes:**
-- `0` – Success
-- `1` – Invalid arguments
-- `2` – Session not found
-- `3` – Invalid phase for current state
-- `4` – Phase execution error
-
----
-
-### 4. `aiwf resume`
-
-Continue an existing workflow session from its current state.
-
-**Syntax:**
-```bash
-aiwf resume <session-id> [options]
-```
-
-**Required Arguments:**
-- `<session-id>` – Session identifier
-
-**Optional Arguments:**
-- `--from-phase <phase>` – Restart from specific phase (discards later state)
-
-**Behavior:**
-- Loads session state
-- Determines next required action
-- In interactive mode: tells user what to do next
-- In automated mode: continues execution from checkpoint
-
-**Output (JSON):**
-```json
-{
-  "status": "success",
-  "session_id": "20241205-143045-b7k2",
-  "profile": "jpa-mt-domain",
-  "current_state": "awaiting_generation_response",
-  "completed_phases": ["planning"],
-  "next_action": "Provide AI response in responses/generate.md, then run: aiwf step review --session 20241205-143045-b7k2",
-  "session_dir": "/path/to/.aiwf/sessions/20241205-143045-b7k2"
-}
-```
-
-**Exit Codes:**
-- `0` – Success
-- `2` – Session not found
-- `3` – Session state corrupted
-
----
-
-### 5. `aiwf list`
-
-List all workflow sessions.
-
-**Syntax:**
-```bash
-aiwf list [options]
-```
-
-**Optional Arguments:**
-- `--status <active|completed|failed|all>` – Filter by status (default: `all`)
-- `--profile <n>` – Filter by profile
-- `--format <json|table>` – Output format (default: `table`)
-
-**Output (JSON):**
-```json
-{
-  "status": "success",
-  "sessions": [
-    {
-      "session_id": "20241205-143045-b7k2",
-      "profile": "jpa-mt-domain",
-      "entity": "Product",
-      "state": "awaiting_generation_response",
-      "created_at": "2024-12-05T14:30:45Z",
-      "updated_at": "2024-12-05T14:32:10Z",
-      "session_dir": "/path/to/.aiwf/sessions/20241205-143045-b7k2"
-    }
-  ]
-}
-```
-
-**Exit Codes:**
-- `0` – Success
-
----
-
-### 6. `aiwf status`
-
-Get detailed status for a specific session.
-
-**Syntax:**
-```bash
-aiwf status <session-id>
-```
-
-**Output (JSON):**
-```json
-{
-  "status": "success",
-  "session_id": "20241205-143045-b7k2",
-  "profile": "jpa-mt-domain",
-  "entity": "Product",
-  "mode": "interactive",
-  "state": "awaiting_generation_response",
-  "completed_phases": [
-    {
-      "phase": "planning",
-      "completed_at": "2024-12-05T14:31:20Z",
-      "artifacts": ["plans/planning-output.md"]
-    }
-  ],
-  "current_phase": {
-    "phase": "generate",
-    "started_at": "2024-12-05T14:32:10Z",
-    "awaiting": "AI response in responses/generate.md"
-  },
-  "session_dir": "/path/to/.aiwf/sessions/20241205-143045-b7k2",
-  "created_at": "2024-12-05T14:30:45Z",
-  "updated_at": "2024-12-05T14:32:10Z"
-}
-```
-
-**Exit Codes:**
-- `0` – Success
-- `2` – Session not found
-
----
-
-### 7. `aiwf profiles`
-
-List available profiles and their capabilities.
-
-**Syntax:**
-```bash
-aiwf profiles [options]
-```
-
-**Optional Arguments:**
-- `--profile <n>` – Show details for specific profile
-- `--format <json|table>` – Output format (default: `table`)
-
-**Output (JSON):**
-```json
-{
-  "status": "success",
-  "profiles": [
-    {
-      "name": "jpa-mt-domain",
-      "description": "Multi-tenant JPA domain layer generation (Entity + Repository)",
-      "target_stack": "Java 21, Spring Data JPA, PostgreSQL",
-      "scope": "domain",
-      "tenancy": "multi-tenant",
-      "generates": ["Entity", "Repository"],
-      "required_args": ["entity"],
-      "phases": ["planning", "generate", "review", "revise"],
-      "supports_automated": true
-    },
-    {
-      "name": "jpa-mt-vertical",
-      "description": "Multi-tenant full-stack vertical slice generation",
-      "target_stack": "Java 21, Spring Boot, PostgreSQL",
-      "scope": "vertical",
-      "tenancy": "multi-tenant",
-      "generates": ["Entity", "Repository", "Service", "Controller", "DTOs"],
-      "required_args": ["feature"],
-      "phases": ["planning", "generate", "review", "revise"],
-      "supports_automated": true
-    }
-  ]
-}
-```
-
-**Exit Codes:**
-- `0` – Success
-
----
-
-## Session State Model
-
-Sessions persist state in `<session-dir>/session.json`:
-
-```json
-{
-  "session_id": "20241205-143045-b7k2",
-  "profile": "jpa-mt-domain",
-  "entity": "Product",
-  "mode": "interactive",
-  "state": "awaiting_generation_response",
-  "created_at": "2024-12-05T14:30:45Z",
-  "updated_at": "2024-12-05T14:32:10Z",
-  "phases": {
-    "planning": {
-      "status": "completed",
-      "started_at": "2024-12-05T14:30:45Z",
-      "completed_at": "2024-12-05T14:31:20Z",
-      "prompt_file": "prompts/planning.md",
-      "response_file": "responses/planning.md",
-      "artifacts": ["plans/planning-output.md"]
-    },
-    "generate": {
-      "status": "in_progress",
-      "started_at": "2024-12-05T14:32:10Z",
-      "prompt_file": "prompts/generate.md"
-    }
-  },
-  "config": {
-    "provider": "claude",
-    "custom_settings": {}
-  }
-}
-```
-
-**State Values:**
-- `initialized` – Session created, no phases started
-- `awaiting_<phase>_response` – Waiting for AI response in interactive mode
-- `processing_<phase>` – Engine processing phase (automated mode)
-- `completed` – All phases successfully completed
-- `failed` – Workflow encountered unrecoverable error
-
----
-
-## Session Directory Structure
-
-```
-.aiwf/
-  sessions/
-    <session-id>/
-      session.json              # Session state and metadata
-      prompts/
-        planning.md             # Generated prompts for each phase
-        generate.md
-        review.md
-        revise.md
-        standards-bundle.md     # Standards context (profile-generated)
-      responses/                # AI responses (interactive mode)
-        planning.md
-        generate.md
-        review.md
-        revise.md
-      plans/
-        planning-output.md      # Extracted planning artifacts
-      artifacts/
-        Product.java            # Generated code files
-        ProductRepository.java
-        gen-context.md          # Generation metadata
-      logs/
-        workflow.log            # Execution logs
+# Validate profile configuration
+python -c "from aiwf.domain.profiles import ProfileFactory; ProfileFactory.load('jpa-mt')"
 ```
 
 ---
 
-## Error Handling
+## License
 
-All commands return JSON with consistent error format:
-
-```json
-{
-  "status": "error",
-  "error_code": "ERROR_TYPE",
-  "message": "Human-readable error message",
-  "details": {
-    "additional": "context"
-  },
-  "recovery_suggestion": "What the user should do next"
-}
-```
-
-**Common Error Codes:**
-- `PROFILE_NOT_FOUND` – Specified profile doesn't exist
-- `SESSION_NOT_FOUND` – Session ID not found
-- `INVALID_STATE` – Operation not valid for current session state
-- `MISSING_RESPONSE` – Expected AI response file not found
-- `VALIDATION_FAILED` – Generated code failed validation
-- `CONFIG_ERROR` – Configuration issue
+MIT License
 
 ---
 
-## Integration Guidelines for VS Code Extension
+## Support
 
-### 1. Command Execution
-```typescript
-const result = await execAiwf(['run', '--profile', 'jpa-mt-domain', '--entity', 'Product']);
-const output = JSON.parse(result.stdout);
-if (output.status === 'success') {
-  // Handle success
-} else {
-  // Handle error
-}
-```
-
-### 2. Session Tracking
-- Parse `session.json` to display current state
-- Watch `session.json` for changes to update UI
-- Use `aiwf status <session-id>` for detailed info
-
-### 3. Interactive Workflow
-```typescript
-// 1. Start workflow
-const session = await execAiwf(['run', '--profile', 'jpa-mt-domain', '--entity', 'Product']);
-
-// 2. Open prompt file for user
-await openFile(session.prompt_file);
-
-// 3. Monitor for response file creation
-watchFile(session.response_path, () => {
-  // 4. Continue to next phase
-  await execAiwf(['step', 'generate', '--session', session.session_id]);
-});
-```
-
-### 4. Error Display
-- Parse `error_code` for programmatic handling
-- Display `message` to user
-- Show `recovery_suggestion` as actionable guidance
-
----
-
-## Versioning and Compatibility
-
-**Contract Version:** 1.0.0-draft
-
-**Compatibility Promise:**
-- Breaking changes will increment major version
-- New optional arguments are minor version changes
-- Bug fixes are patch version changes
-
-**Version Check:**
-```bash
-aiwf --version
-# Output: aiwf 1.0.0 (contract 1.0.0)
-```
-
-The extension should verify contract compatibility at startup.
-
----
-
-## Future Enhancements (Not in v1.0)
-
-- Streaming output for automated mode
-- WebSocket connection for real-time updates
-- Parallel phase execution
-- Session templates and presets
-- Multi-entity workflows
-- Custom phase definitions
-
----
-
-## Notes for Implementation
-
-1. **All output must be valid JSON** (except when `--format table` specified)
-2. **Filesystem paths should be absolute** in JSON output
-3. **Session IDs must be globally unique** (timestamp + random suffix)
-4. **Profile validation happens early** (fail fast on invalid profile)
-5. **State transitions are atomic** (session.json updates are transactional)
-
----
-
-## Support and Feedback
-
-- GitHub Issues: https://github.com/scottcm/ai-workflow-engine/issues
-- Discussions: https://github.com/scottcm/ai-workflow-engine/discussions
-- Extension Issues: https://github.com/scottcm/aiwf-vscode-extension/issues
+- **GitHub Issues:** https://github.com/scottcm/ai-workflow-engine/issues
+- **Discussions:** https://github.com/scottcm/ai-workflow-engine/discussions
+- **Extension Issues:** https://github.com/scottcm/aiwf-vscode-extension/issues
