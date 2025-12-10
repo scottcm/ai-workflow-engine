@@ -44,6 +44,7 @@ The architecture deliberately demonstrates Strategy, Factory, Chain of Responsib
   - [Adding New AI Providers](#adding-new-ai-providers)
   - [Adding New Scopes](#adding-new-scopes)
 - [Companion VS Code Extension](#companion-vs-code-extension)
+- [Development Database (Postgres via Docker)](#development-database-postgres-via-docker)
 - [Development Setup](#development-setup)
 - [License](#license)
 - [Support](#support)
@@ -543,6 +544,56 @@ https://github.com/scottcm/aiwf-vscode-extension
 - **Extension** — UI/UX layer, command surface, editor integration  
 
 The extension communicates with the engine exclusively through its CLI interface following the contract defined in `API-CONTRACT.md`.
+
+---
+
+## Development Database (Postgres via Docker)
+
+This project includes a small, realistic PostgreSQL schema to test AI-generated
+code (especially for the `jpa-mt` profile’s domain layer: entities + repositories)
+against a real multi-tenant database.
+
+The database is provided via Docker and lives under `docker/postgres/`.
+
+### Starting the database
+
+From the project root:
+
+    cd docker/postgres
+    docker compose up -d
+
+This will:
+
+- Start a PostgreSQL 16 container
+- Create the `aiwf_test` database
+- Run `db/init/01-schema.sql` to create schemas, tables, RLS, and triggers
+- Run `db/init/02-seed.sql` to insert sample tenants, tiers, and products
+
+### Stopping and resetting
+
+To stop the database **without** deleting data:
+
+    cd docker/postgres
+    docker compose down
+
+To stop the database **and delete all data** (fresh re-init on next start):
+
+    cd docker/postgres
+    docker compose down -v
+
+On the next `docker compose up -d`, the initialization scripts will rerun and
+recreate the schema + seed data from scratch.
+
+### Connection details
+
+- Host: `localhost`
+- Port: `5432`
+- Database: `aiwf_test`
+- User: `aiwf_user`
+- Password: `aiwf_pass`
+
+See `docker/postgres/README.md` for a full description of the schema, RLS
+behavior, and seed data.
 
 ---
 

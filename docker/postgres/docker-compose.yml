@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: aiwf_postgres
+    environment:
+      POSTGRES_DB: aiwf_test
+      POSTGRES_USER: aiwf_user
+      POSTGRES_PASSWORD: aiwf_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      # Initialization scripts for schema + seed data
+      - ./db/init:/docker-entrypoint-initdb.d
+      # Persist Postgres data between runs
+      - aiwf_pgdata:/var/lib/postgresql/data
+
+volumes:
+  aiwf_pgdata:

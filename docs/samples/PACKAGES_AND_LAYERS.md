@@ -9,10 +9,10 @@ ai-profile: [domain, vertical, service, api, code-review, unit, integration, sch
 
 ### Requirements
 - The Control Plane MUST follow the canonical directory structure under  
-  `com.skillsharbor.backend.controlplane`:
+  `com.example.app`:
 
 ```text
-com.skillsharbor.backend.controlplane/
+com.example.app/
 ├── api/
 │   ├── controller/
 │   └── dto/
