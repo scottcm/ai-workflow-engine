@@ -1,91 +1,158 @@
-## Code Generation Phase Guidelines
+# Generation Phase Guidelines (JPA MT Profile)
 
-Your task is to generate production-quality Java source code based on the approved planning document.
-
-**Input Files:**
-1. **planning-response.md** — Approved design from Phase 1
-2. **standards-bundle.md** — Coding standards and patterns
-3. **Schema DDL** — Database table definition (reference only)
+> These guidelines define how the AI must behave during the **code generation phase** for the JPA multi-tenant profile.  
+> They are phase-specific and assume that planning has been completed and approved.
 
 ---
 
-### You MUST:
+## 1. Role & Inputs
 
-- **Follow the approved plan exactly** — Entity name, fields, relationships per planning doc
-- **Apply standards rigorously** — Package structure, annotations, formatting per standards
-- **Generate complete, compilable code** — No placeholders, TODOs, or incomplete sections
-- **Use proper JPA annotations** — @Entity, @Table, @Column, @ManyToOne, etc.
-- **Include all necessary imports** — Fully-qualified or proper import statements
-- **Follow Java conventions** — Proper indentation (4 spaces), JavaDoc where appropriate
-- **Generate code bundle format** — Use `<<<FILE: filename>>>` separators
+During the generation phase, the AI acts as:
 
----
+- An expert Java backend developer with deep knowledge of:
+  - Java 21
+  - Spring Data JPA
+  - Hibernate
+  - PostgreSQL
+- A strict follower of:
+  - The approved planning document (e.g., `planning-response.md`)
+  - The standards bundle (organization-wide standards)
+  - The database schema DDL
 
-### You MUST NOT:
+**Required inputs for generation:**
 
-- **Deviate from the plan** — Don't add fields, change names, or modify relationships
-- **Add unplanned features** — No extra methods, fields, or annotations beyond plan
-- **Make assumptions** — If plan is unclear, flag it as error (shouldn't happen at this stage)
-- **Generate test files** — Only production code (Entity + Repository)
-- **Include build files** — No pom.xml, build.gradle, etc.
+- Approved planning document for the current entity/scope (e.g., `planning-response.md`).
+- Standards bundle (e.g., `standards-bundle.md`).
+- Relevant schema DDL for the target table(s), when provided.
 
----
-
-### Code Quality Standards:
-
-**Entity Requirements:**
-- Extends correct base class (per standards)
-- Proper @Entity and @Table annotations with schema
-- All fields from plan with correct types and annotations
-- Relationships mapped per plan with proper fetch strategies
-- No redeclaration of base class fields
-- Proper equals/hashCode/toString (per standards)
-
-**Repository Requirements:**
-- Extends correct base interface (per standards)
-- Proper package and naming
-- All query methods from plan
-- Proper method signatures (parameter names, return types)
-- Spring Data method naming conventions OR @Query annotations
-- No implementation code (interface only)
+If any required input is missing, the AI MUST treat this as a validation failure (see Section 5).
 
 ---
 
-### Output Format:
+## 2. Core Responsibilities
 
-Generate a **code bundle** with this exact format:
-```
-<<<FILE: path/to/Entity.java>>>
-    package com.example.domain;
-    
-    [4-space indented code]
+During generation, the AI MUST:
 
-<<<FILE: path/to/EntityRepository.java>>>
-    package com.example.domain;
-    
-    [4-space indented code]
-```
+- Implement the design described in the approved planning document **exactly**:
+  - No additional fields, methods, relationships, or behaviors beyond what the plan defines.
+  - All planned fields, relationships, repository methods, and constraints MUST be implemented.
+- Follow the standards bundle for:
+  - Package naming
+  - JPA annotations
+  - Timestamp handling
+  - Multi-tenancy conventions
+  - Repository patterns
+- Apply global fallback rules (from `_shared/fallback-rules.md`) **only** when:
+  - The standards bundle is silent, and
+  - The planning document does not override the behavior.
 
-**Critical:**
-- Each file starts with `<<<FILE: path>>>` (no indentation)
-- Code content is **4-space indented** (entire file)
-- Blank line between files
-- Path must match package structure from plan
+The AI MUST NOT:
+
+- Change the design intent expressed in the planning document.
+- Introduce new domain concepts (enums, value objects, etc.) not present in plan or standards.
+- Generate code that conflicts with the schema DDL.
+
+---
+
+## 3. Output Format: Code Bundle
+
+All generation output MUST use a strict **code bundle** format that can be parsed by the engine.
+
+**Rules:**
+
+- Each file MUST be emitted using a `<<<FILE: ...>>>` marker on its own line.
+- For this profile, the file marker MUST contain **filename only** (no package path).  
+  Example:
+  - `<<<FILE: Tier.java>>>`
+  - `<<<FILE: TierRepository.java>>>`
+- The file marker line MUST be followed by a newline and then the file’s content, indented by exactly 4 spaces.
+- The content of each file:
+  - MUST be valid Java code.
+  - MUST include a correct `package` declaration.
+  - MUST compile in isolation given the project’s standard dependencies.
+
+Example (illustrative only, not prescriptive):
+
+<<<FILE: Tier.java>>>
+    package com.aiwf.example.catalog.domain;
+
+    import jakarta.persistence.Entity;
+    import jakarta.persistence.Table;
+
+    @Entity
+    @Table(schema = "global", name = "tiers")
+    public class Tier {
+        // ...
+    }
+
+<<<FILE: TierRepository.java>>>
+    package com.aiwf.example.catalog.domain;
+
+    import org.springframework.data.jpa.repository.JpaRepository;
+
+    public interface TierRepository extends JpaRepository<Tier, Long> {
+        // ...
+    }
+
+The AI MUST NOT:
+
+- Emit prose, commentary, or explanations outside of the code bundle.
+- Interleave non-code text between file markers.
+- Emit any markers other than the `<<<FILE: ...>>>` lines that declare files.
 
 ---
 
-### Pre-Generation Validation:
+## 4. Repository Behavior & Query Generation
 
-Before generating code, verify:
+When generating repositories:
 
-1. ✅ Planning document loaded and understood
-2. ✅ Standards bundle loaded and understood
-3. ✅ Entity design is clear (name, fields, relationships)
-4. ✅ Repository design is clear (base interface, methods)
-5. ✅ Package structure determined from standards
-6. ✅ All types and annotations known
-7. ✅ No ambiguities remaining (plan should be complete)
+- The AI MUST implement **only** the repository methods specified in the approved planning document.
+- The AI MUST NOT add “helpful” or “convenience” queries beyond the plan (for example, extra `findAllBy...` methods).
+- Method signatures MUST:
+  - Use types consistent with the planning document and schema DDL.
+  - Respect tenant identifier types and patterns defined in the standards.
 
-If validation fails: `VALIDATION FAILED: [issue]. Cannot generate code because: [explanation].`
+For tenant behavior and classification (tenant-scoped vs global vs tenant-entity), the AI MUST:
+
+- Follow the multi-tenancy and repository rules defined in the JPA/database standards document.
+- NOT introduce cross-tenant queries or parameters unless explicitly defined in the plan and standards.
 
 ---
+
+## 5. Validation Failures (Generation Phase)
+
+If the AI determines that generation cannot proceed safely because of missing or contradictory inputs, it MUST:
+
+- **NOT** emit any `<<<FILE: ...>>>` markers.
+- Emit a single-line error message in plain text (no Markdown, no code fences), such as:
+
+  - `VALIDATION FAILED: missing planning document.`
+  - `VALIDATION FAILED: inconsistent field types between plan and schema.`
+
+Characteristics of the error message:
+
+- Single line.
+- Clearly identifies the issue.
+- Contains no file markers or partial code bundles.
+
+This allows the engine to distinguish cleanly between:
+
+- A valid code bundle that can be extracted, and
+- An error condition that requires human intervention.
+
+---
+
+## 6. Use of Global Fallback Rules
+
+Whenever the standards bundle and planning document are silent on a specific convention, the AI MUST:
+
+- Consult and apply the shared fallback rules defined in:
+  - `templates/_shared/fallback-rules.md`
+
+Examples include:
+
+- Import style when not specified in standards.
+- Constructor and accessor patterns when not defined by plan.
+- Minimal JavaDoc requirements when not defined elsewhere.
+
+The AI MUST NOT redefine those rules here; it must **reference** and follow them.

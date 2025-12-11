@@ -1,292 +1,151 @@
-{{include: _shared/base.md}}
-{{include: _shared/fallback-rules.md}}
-{{include: _phases/generation-guidelines.md}}
+{{include: ../_shared/base.md}}
+{{include: ../_shared/fallback-rules.md}}
+{{include: ../_phases/generation-guidelines.md}}
 
 ---
 
-# Domain Layer Code Generation Request
+# Domain Layer Code Generation Request (Entity + Repository)
 
-_Version: 1.0_  
-_Last updated: 2024-12-09_
+## 1. Context
 
-This template generates production-quality Java code for a **domain layer** (Entity + Repository) based on an approved planning document.
+You are in the **Generation** phase for the JPA multi-tenant profile.
 
----
+- The planning phase has already been completed.
+- An approved planning document (e.g., `planning-response.md`) exists for a single domain entity and its repository.
+- The standards bundle and schema DDL are available as supporting references.
 
-## Context for This Request
+Your task is to generate:
 
-You are in **Phase 2: Code Generation**.
+- Exactly **one JPA entity class**, and
+- Exactly **one Spring Data repository interface**,
 
-**Phase 1 (Planning) is complete.** The developer has:
-1. Reviewed the planning document
-2. Approved the design
-3. Answered any questions you raised
+for the target table and entity described in the planning document.
 
-Your task now is to **generate the code exactly as planned**.
-
----
-
-## Required Files
-
-### Planning Document (required)
-
-**File:** `planning-response.md`
-
-This contains the approved design for the entity and repository. You MUST follow this design exactly:
-- Entity name, package, and base class
-- All fields with types and annotations
-- All relationships with join columns and fetch strategies
-- Repository name, package, and base interface
-- All query methods with signatures
-
-### Standards Bundle (required)
-
-**File:** `standards-bundle.md`
-
-Apply these standards to ensure code quality:
-- Formatting rules (indentation, imports, etc.)
-- Annotation requirements
-- Naming conventions
-- JavaDoc requirements (if any)
-
-### Schema DDL (reference)
-
-The schema DDL file is available for reference if needed, but the planning document is authoritative for what to generate.
-
-**VALIDATION:**
-If `planning-response.md` is missing: `VALIDATION FAILED: missing planning-response.md. Cannot generate code without approved plan.`
+You MUST implement the design from the planning document exactly, following the standards bundle and applying shared fallback rules only where those sources are silent.
 
 ---
 
-## Generation Instructions
+## 2. Required Inputs
 
-### Step 1: Load and Parse Planning Document
+The following files MUST be available and treated as authoritative:
 
-Extract from the planning document:
-1. **Entity Design:**
-   - Class name
-   - Package location
-   - Base class (if any) and inherited fields
-   - Fields to declare (with types, annotations, constraints)
-   - Relationships (type, field name, join column, fetch strategy)
+- **Planning Document**  
+  - The most recent approved planning response for this entity and repository  
+  - Example: `planning-response.md`
+- **Standards Bundle**  
+  - Consolidated standards document (e.g., `standards-bundle.md`)
+- **Schema DDL**  
+  - SQL definition for the target table(s), when provided
 
-2. **Repository Design:**
-   - Interface name
-   - Package location
-   - Base interface
-   - Query methods (names, parameters, return types)
-
-### Step 2: Apply Standards
-
-From the standards bundle, apply:
-- Package structure rules
-- Import organization
-- Annotation patterns
-- Code formatting (indentation, spacing)
-- JavaDoc requirements
-- equals/hashCode/toString patterns (if specified)
-
-### Step 3: Generate Entity Class
-
-**Structure:**
-```java
-package [from plan];
-
-[imports - organized per standards]
-
-/**
- * [Entity description from plan or standards template]
- */
-@Entity
-@Table(name = "[table_name]", schema = "[schema_name]")
-public class [EntityName] extends [BaseClass] {
-
-    [Field declarations with annotations]
-    
-    [Relationship declarations with annotations]
-    
-    [Constructors - per standards]
-    
-    [Getters/Setters - per standards]
-    
-    [equals/hashCode/toString - per standards]
-}
-```
-
-**Key Requirements:**
-- ✅ All fields from plan
-- ✅ Correct JPA annotations (@Column, @ManyToOne, @JoinColumn, etc.)
-- ✅ No redeclaration of base class fields
-- ✅ Proper Java types (OffsetDateTime for TIMESTAMPTZ, etc.)
-- ✅ Fetch strategies from plan (LAZY/EAGER)
-- ✅ Validation annotations if mentioned in plan
-
-### Step 4: Generate Repository Interface
-
-**Structure:**
-```java
-package [from plan];
-
-[imports]
-
-/**
- * [Repository description]
- */
-public interface [EntityName]Repository extends [BaseInterface]<[EntityName], Long> {
-
-    [Query methods from plan]
-}
-```
-
-**Query Method Format:**
-```java
-// Spring Data method name
-Optional<Entity> findByCode(String code);
-
-// Or with @Query if complex
-@Query("SELECT e FROM Entity e WHERE ...")
-List<Entity> customQuery(Long param);
-```
-
-**Key Requirements:**
-- ✅ All methods from plan
-- ✅ Correct method names (Spring Data conventions OR @Query)
-- ✅ Proper parameter types and names
-- ✅ Proper return types (Optional<T>, List<T>, etc.)
-- ✅ Tenant parameter included for tenant-scoped entities
+If any required input is missing or obviously inconsistent, you MUST follow the validation failure behavior described in the generation phase guidelines and MUST NOT emit any `<<<FILE: ...>>>` markers.
 
 ---
 
-## Output Format
+## 3. Artifacts to Generate
 
-### File: `generation-response.md`
+For the domain scope, you MUST generate:
 
-**Document Header:**
-```yaml
+1. **Entity Class**
+   - A JPA entity mapped to the target table described in the planning document.
+   - The entity MUST:
+     - Use the schema and table names from the DDL (via `@Table(schema = "...", name = "...")`).
+     - Declare all non-inherited fields described in the plan and schema.
+     - Map relationships (`@ManyToOne`, etc.) exactly as described in the plan.
+     - Respect ID, timestamp, and versioning rules from the standards.
+     - Use tenant-related types as defined by the schema and standards.
+
+2. **Repository Interface**
+   - A Spring Data repository interface for the entity.
+   - The repository MUST:
+     - Extend the appropriate Spring Data base interface (e.g., `JpaRepository<Entity, IdType>`), as defined by the standards.
+     - Declare only the finder/query methods specified in the planning document.
+     - Respect any tenant behavior and query rules defined in the standards and planning document.
+
+You MUST NOT:
+
+- Generate additional classes or interfaces (e.g., DTOs, services, controllers).
+- Add extra repository methods that are not in the plan.
+- Introduce cross-tenant behaviors not defined by the standards.
+
 ---
-Generated by: [Your AI model name and version]
-Generated at: [UTC timestamp, ISO 8601 format]
+
+## 4. Domain-Specific Generation Rules
+
+When interpreting the planning document for this domain scope:
+
+- Treat the planning document as the blueprint for:
+  - Field names and types
+  - Nullability and constraints
+  - Relationships and cardinality
+  - Repository method signatures and semantics
+- Use the schema DDL to:
+  - Confirm column types and nullability
+  - Confirm primary key and foreign key constraints
+- Use the standards bundle and fallback rules to:
+  - Determine timestamp types
+  - Determine ID types
+  - Decide on import style, constructors, accessors, and minimal JavaDoc
+
+If the planning document and schema conflict, you MUST follow the validation failure behavior described in the generation guidelines rather than guessing.
+
 ---
-```
 
-**Code Bundle:**
-```
-<<<FILE: [package-path]/[EntityName].java>>>
-    package [package.name];
-    
-    [complete entity class, 4-space indented]
+## 5. Output Format (Domain Scope Code Bundle)
 
-<<<FILE: [package-path]/[EntityName]Repository.java>>>
-    package [package.name];
-    
-    [complete repository interface, 4-space indented]
-```
+Your output MUST consist only of a code bundle with exactly two files:
 
-**Example:**
-```
-<<<FILE: com/skillsharbor/backend/controlplane/domain/catalog/Tier.java>>>
-    package com.skillsharbor.backend.controlplane.domain.catalog;
-    
-    import jakarta.persistence.*;
-    import java.util.UUID;
-    
+1. The entity class file (e.g., `Tier.java`)
+2. The repository interface file (e.g., `TierRepository.java`)
+
+You MUST follow the bundle format defined in the generation phase guidelines:
+
+- One `<<<FILE: ...>>>` marker line per file, using filename only.
+- 4-space indentation for all code lines that belong to that file.
+- No prose, explanations, or commentary outside the file markers.
+
+Illustrative example (Entity + Repository):
+
+<<<FILE: Tier.java>>>
+    package com.aiwf.example.catalog.domain;
+
+    import jakarta.persistence.Entity;
+    import jakarta.persistence.Table;
+
     @Entity
-    @Table(name = "tiers", schema = "global")
-    public class Tier extends BaseEntity {
-        
-        @Column(name = "code", length = 50, unique = true, nullable = false)
-        private String code;
-        
-        // ... rest of class
+    @Table(schema = "global", name = "tiers")
+    public class Tier {
+        // Fields and mappings exactly as defined in the planning document
     }
 
-<<<FILE: com/skillsharbor/backend/controlplane/domain/catalog/TierRepository.java>>>
-    package com.skillsharbor.backend.controlplane.domain.catalog;
-    
+<<<FILE: TierRepository.java>>>
+    package com.aiwf.example.catalog.domain;
+
     import org.springframework.data.jpa.repository.JpaRepository;
-    import java.util.Optional;
-    import java.util.UUID;
-    
+
     public interface TierRepository extends JpaRepository<Tier, Long> {
-        
-        Optional<Tier> findByCode(String code);
-        
-        Optional<Tier> findByPublicId(UUID publicId);
-        
-        // ... rest of methods
+        // Repository methods exactly as defined in the planning document
     }
-```
+
+This example is illustrative only.  
+Your actual entity and repository MUST reflect the specific design and naming from the planning document and standards.
 
 ---
 
-## Pre-Output Validation
+## 6. Validation & Non-Deviation
 
-Before generating the code bundle, verify:
+Before emitting the bundle:
 
-1. ✅ Planning document loaded and parsed
-2. ✅ Standards bundle loaded and understood
-3. ✅ Entity class name, package, base class determined
-4. ✅ All entity fields extracted from plan
-5. ✅ All relationships extracted from plan
-6. ✅ Repository interface name, package, base interface determined
-7. ✅ All query methods extracted from plan
-8. ✅ All JPA annotations known and correct
-9. ✅ Code follows standards formatting rules
-10. ✅ No deviations from approved plan
+- Verify that:
+  - All planned fields are mapped.
+  - All planned relationships are implemented.
+  - All planned repository methods are present and correctly typed.
+- Verify that:
+  - No extra fields or methods were introduced.
+  - No assumptions were made beyond the planning document, standards bundle, and schema DDL.
 
-If validation fails: `VALIDATION FAILED: [issue]. Cannot proceed because: [explanation].`
+If you cannot satisfy these conditions without guessing, you MUST:
 
----
+- Emit a single-line validation failure message (as defined in the generation guidelines).
+- Emit no file markers.
 
-## Important Reminders
-
-### From Planning Document
-
-The planning document is your **blueprint**. Do NOT:
-- Add fields not in the plan
-- Change field types from the plan
-- Add or remove relationships from the plan
-- Add methods not in the plan
-- Change entity or repository names from the plan
-
-### From Standards Bundle
-
-The standards bundle defines **how to write the code**. Do:
-- Follow package structure rules
-- Use specified annotation patterns
-- Apply formatting conventions
-- Include required JavaDoc (if specified)
-- Follow naming patterns
-
-### Code Quality
-
-Generate **production-ready code**:
-- Compiles without errors
-- No placeholders or TODOs
-- Complete imports
-- Proper indentation (4 spaces)
-- Clean, readable code
-
----
-
-## Critical Rules
-
-1. **Follow the plan exactly** — No creativity, no improvements, no additions
-2. **Apply standards rigorously** — Code must match conventions
-3. **Generate complete code** — No partial implementations
-4. **Use correct bundle format** — Engine needs to parse this
-5. **Include proper paths** — Package structure must be correct
-
----
-
-## What Happens Next
-
-After you generate the code:
-1. Developer extracts files from bundle
-2. Code is compiled and tested
-3. **Phase 3: Code Review** — Another AI reviews the code
-4. If review fails → **Phase 4: Revision** → regenerate with fixes
-
-Your code WILL be reviewed, so quality matters!
-
----
+Otherwise, emit exactly the two files in a single bundle and nothing else.

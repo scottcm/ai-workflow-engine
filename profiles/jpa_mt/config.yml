@@ -150,37 +150,33 @@ layer_standards:
   # Universal standards applied to ALL scopes and layers (loaded first)
   _universal:
     - ORG.md
+    - NAMING_AND_API.md
     - PACKAGES_AND_LAYERS.md
   
   # Entity layer standards
   entity:
     - JPA_AND_DATABASE.md
     - ARCHITECTURE_AND_MULTITENANCY.md
-    - NAMING_AND_API.md
   
   # Repository layer standards
   repository:
     - JPA_AND_DATABASE.md
-    - NAMING_AND_API.md
   
   # Service layer standards
   service:
     - BOILERPLATE_AND_DI.md
     - ARCHITECTURE_AND_MULTITENANCY.md
-    - NAMING_AND_API.md
   
   # Controller layer standards
   controller:
-    - NAMING_AND_API.md
     - BOILERPLATE_AND_DI.md
   
   # DTO layer standards
   dto:
-    - NAMING_AND_API.md
+
   
   # Mapper layer standards
   mapper:
-    - NAMING_AND_API.md
     - BOILERPLATE_AND_DI.md
 
 

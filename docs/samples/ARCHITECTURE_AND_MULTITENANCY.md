@@ -1,55 +1,59 @@
-# Architecture And Multitenancy (AI-Optimized)
+# Architecture and Multitenancy (AI-Optimized)
 <!--
 tags: [architecture, multitenancy, transactions, rls, admin-pool, tenant-pool, service-layer]
 ai-profile: [domain, vertical, service, code-review]
 -->
 
-> This document defines **Control Plane multi-tenancy**, connection pools, and transaction rules.  
-> **IMPORTANT:** In this system, the *multi-tenant identifier is called `client_id`*,  
-> even though it represents the **tenant**.  
-> The database table is named **`app.clients`**, and its key column is **`client_id`**.  
-> AI MUST treat **client = tenant** everywhere in this architecture.
+## Tenant Model Requirements
+- **`tenant_id` is the canonical tenant identifier.**
+- Table: `app.tenants`
+  - Column: `tenant_id`
+- `tenant_id` MUST appear first in multi-tenant API method signatures where applicable:
+  - `(UUID tenantId, UUID id, …)`
+  - `(UUID tenantId, UUID resourceId, …)` when it enhances clarity.
 
-### Requirements (Tenant Model)
-- The Control Plane **IS a multi-tenant architecture**, even though the schema uses the term *client*.
-    - **`client_id` is the tenant identifier.**
-    - Table: `app.clients`  
-      Column: `client_id`  
-      → These MUST be interpreted as the **tenant** for all RLS and isolation logic.
+---
 
-### Requirements (Connection Pools)
-- **Admin / Provisioning Repositories**
-    - MUST use the **Admin Connection Pool**.
-    - Admin connections **bypass RLS**.
-    - MAY ONLY be used for:
-        - tenant/client creation
-        - provisioning tasks
-        - administrative metadata
-    - MUST NOT be used for tenant-scoped runtime operations.
+## Connection Pool Requirements
 
-- **Tenant Runtime Repositories**
-    - MUST use the **Tenant Connection Pool**.
-    - RLS MUST be **enabled and enforced** through `SET LOCAL app.current_client_id = :clientId`.
-    - All business logic serving API requests MUST run in this context.
+### Admin / Provisioning Repositories
+- MUST use the **Admin Connection Pool**.
+- Admin connections **bypass RLS**.
+- MAY ONLY be used for:
+  - tenant creation
+  - provisioning tasks
+  - administrative metadata
+- MUST NOT be used for tenant-scoped runtime operations.
 
-- A single method MUST NOT mix admin-pool and tenant-pool work.
-    - If both are required, they MUST be split into separate service-layer methods.
+### Tenant Runtime Repositories
+- MUST use the **Tenant Connection Pool**.
+- RLS MUST be **enabled and enforced** via:
+  ```
+  SET LOCAL app.current_tenant_id = :tenantId
+  ```
+- All API-serving business logic MUST run in the tenant pool context.
+- A single method MUST NOT mix admin-pool and tenant-pool operations.
+  - If both are required, they MUST be split into separate service-layer methods.
 
-### Requirements
-- Transaction boundaries MUST exist only in the **Service layer**, never in controllers or repositories.
+---
+
+## Transaction Requirements
+- Transactions MUST be declared **only** in the Service Layer.
+- Controllers and repositories MUST NOT declare transactional boundaries.
 - Tenant-scoped operations:
-    - MUST use `@Transactional` with the tenant pool.
-    - MUST NOT disable or bypass RLS.
+  - MUST use `@Transactional` with the **tenant pool**.
+  - MUST NOT disable or bypass RLS.
 - Admin/provisioning operations:
-    - MUST use `@AdminTransactional`.
-    - SHOULD use `REQUIRES_NEW` where it prevents tenant-pool interaction.
+  - MUST use `@AdminTransactional`.
+  - SHOULD use `REQUIRES_NEW` when it prevents tenant/tenant pool mixing.
+- Long-running operations MUST use batching/pagination.
+- Transactions MUST NOT be used to circumvent RLS protections.
 
-- Long-running tasks MUST be chunked (pagination/batching).
-- Transactions MUST NOT be used to work around RLS enforcement.
+---
 
-### Requirements
-- Because **client_id = tenant_id**, API signatures MUST reflect this consistent ordering:
-    - `(UUID clientId, UUID id, …)`
-    - or when naming clarity matters: `(UUID tenantId, UUID resourceId, …)`
+## API Signature & Naming Requirements
+- Because **tenant_id is the canonical tenant identifier**, method signatures MUST reflect consistent ordering:
+  - `(UUID tenantId, UUID id, …)`
+  - `(UUID tenantId, UUID resourceId, …)`
 - Method verbs MUST be consistent across the codebase:
-    - `createX`, `updateX`, `deleteX`, `getX`, `listX`
+  - `createX`, `updateX`, `deleteX`, `getX`, `listX`
