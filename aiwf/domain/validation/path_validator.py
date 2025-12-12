@@ -94,6 +94,61 @@ class PathValidator:
         return component
     
     @classmethod
+    def sanitize_filename(cls, filename: str) -> str:
+        """
+        Sanitize a filename for safe file writing.
+        
+        Args:
+            filename: Filename to validate (e.g., "Product.java")
+            
+        Returns:
+            Sanitized filename (unchanged if valid)
+            
+        Raises:
+            PathValidationError: If filename is invalid
+            
+        Examples:
+            >>> PathValidator.sanitize_filename("Product.java")
+            'Product.java'
+            
+            >>> PathValidator.sanitize_filename("../File.java")
+            PathValidationError: Invalid filename
+        """
+        if not filename:
+            raise PathValidationError("Filename cannot be empty")
+            
+        if '/' in filename or '\\' in filename:
+            raise PathValidationError(f"Invalid filename: '{filename}'. Path separators not allowed.")
+            
+        if '..' in filename:
+            raise PathValidationError(f"Invalid filename: '{filename}'. Parent directory references not allowed.")
+            
+        if filename.startswith('.'):
+            raise PathValidationError(f"Invalid filename: '{filename}'. Hidden files or dot-only names not allowed.")
+            
+        # Split into name and extension parts
+        # "Product.java" -> "Product", ".java"
+        # "Test.spec.java" -> "Test.spec", ".java" - wait, requirements say:
+        # "Name part = everything before the last dot"
+        # "Extension is allowed to contain dots (e.g., "file.test.java" is valid if "file" passes)" 
+        # Actually, looking at requirements again: "Name part = everything before the last dot" usually implies extension is the last part.
+        # But looking at example "file.test.java" valid if "file" passes suggests we might split on FIRST dot?
+        # Let's re-read carefully: "Extension is allowed to contain dots... file.test.java is valid if file passes".
+        # This implies we split at the FIRST dot. 
+        # "Name part" (to check against SAFE_NAME_PATTERN) is the first segment.
+        
+        parts = filename.split('.', 1)
+        name_part = parts[0]
+        
+        if not cls.SAFE_NAME_PATTERN.match(name_part):
+             raise PathValidationError(
+                f"Invalid filename format: '{filename}'. "
+                f"Name part '{name_part}' must contain only alphanumeric characters, hyphens, and underscores."
+            )
+            
+        return filename
+
+    @classmethod
     def expand_env_vars(cls, path: str) -> str:
         """
         Safely expand environment variables in path.
