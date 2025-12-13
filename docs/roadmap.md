@@ -1,176 +1,120 @@
-# AI Workflow Engine - Roadmap
+# AI Workflow Engine — Roadmap (Milestones)
 
-## Current Status: MVP Development (Phase 1-3)
-
-**Goal:** Deliver core workflow orchestration with JPA multi-tenant profile
-
----
-
-## Phase 1: Foundation ✅ COMPLETE
-- [x] Architecture design (ADR-0001)
-- [x] Domain models (WorkflowState, WorkflowPhase, ExecutionMode)
-- [x] Session persistence (SessionStore)
-- [x] Profile system (WorkflowProfile interface, ProfileFactory)
-- [x] Provider system (AIProvider interface, ProviderFactory)
-- [x] Security validation (PathValidator)
+This roadmap is organized around **capability milestones**, not dates.
+Statuses reflect current progress and intended sequencing.
+Dates are intentionally omitted; this is a side project intended to:
+- support Skills Harbor development, and
+- serve as a portfolio-quality engineering artifact.
 
 ---
 
-## Phase 2: Profile Configuration ✅ COMPLETE
-- [x] JPA-MT profile configuration (config.yml)
-- [x] Layered template system (ADR-0002)
-- [x] Template composition (_shared/, _phases/, scope templates)
-- [x] Template renderer with include resolution
-- [x] Planning template (domain scope)
-- [x] Standards bundling and validation
+## M1 — Foundation ✅ Complete
+
+**Goal:** Establish architectural invariants and core scaffolding.
+
+- Core repository structure
+- Architecture Decision Records (ADRs)
+- Workflow state model and invariants
+- Test framework and fixtures
+- Baseline documentation
+
+**Exit criteria:** Core domain concepts are defined, testable, and stable.
 
 ---
 
-## Phase 3: Code Generation (IN PROGRESS)
-- [ ] Generation phase template (_phases/generation-guidelines.md)
-- [ ] Domain generation template (generation/domain.md)
-- [ ] BundleExtractor (infrastructure/parsing)
-- [ ] FileWriter (infrastructure/filesystem)
-- [ ] Manual generation helper scripts
-- [ ] End-to-end generation workflow test
+## M2 — First Profile: `jpa-mt` ✅ Complete
 
-**Target:** December 2024
+**Goal:** Prove the profile/plugin model with a real, non-trivial profile.
 
----
+- `jpa-mt` profile implementation
+- Bundle extractor
+- File writer
+- Template renderer
+- Profile-specific unit tests
 
-## Phase 4: Review & Revision
-- [ ] Review phase template
-- [ ] Revision phase template
-- [ ] Issue tracking in WorkflowState
-- [ ] Iteration management
-- [ ] Review validation rules
-
-**Target:** January 2025
+**Exit criteria:** A complete vertical slice can be generated via a profile.
 
 ---
 
-## Phase 5: Workflow Orchestration
-- [ ] Workflow executor (handler chain)
-- [ ] Phase transition logic
-- [ ] State management between phases
-- [ ] Error handling and recovery
-- [ ] Interactive mode checkpoints
+## M3 — Patterns & Pipeline ✅ Complete
 
-**Target:** January 2025
+**Goal:** Validate the immutable, profile-driven generation pipeline.
 
----
+- Immutable generation step (`process_generation_response`)
+- Profile delegation pattern
+- Manual prompt rendering helper
+- Manual code extraction helper (TDD-driven)
+- Phase 3 smoke test (CLI-level workflow guard)
 
-## Phase 6: CLI Interface
-- [ ] `aiwf new` - Initialize session
-- [ ] `aiwf run` - Start workflow
-- [ ] `aiwf step` - Execute single phase
-- [ ] `aiwf resume` - Continue workflow
-- [ ] `aiwf status` - Display session status
-- [ ] `aiwf list` - List sessions
-- [ ] `aiwf profiles` - List available profiles
-
-**Target:** February 2025
+**Exit criteria:** End-to-end generation works reliably in a human-in-the-loop workflow.
 
 ---
 
-## Phase 7: VS Code Extension Integration
-- [ ] CLI API stabilization
-- [ ] Extension integration testing
-- [ ] Session management UI
-- [ ] File preview and review
-- [ ] Extension documentation
+## M4 — Review & Revision Loop ⏳ Planned
 
-**Target:** February-March 2025
+**Goal:** Support iterative refinement of generated artifacts.
 
----
+- Review artifacts and feedback capture
+- Revision prompts and iteration handling
+- Clear separation between generation, review, and revision steps
 
-## Future Enhancements (Post-MVP)
-
-### High Priority
-
-#### Cross-Entity Workflow Memory
-**Status:** Proposed  
-**Description:** Persistent memory system for multi-table projects  
-**Documentation:** [docs/enhancements/cross-entity-memory.md](enhancements/cross-entity-memory.md)  
-**Benefit:** Consistent code generation across 20+ related entities  
-**Effort:** 1-2 weeks  
-**Target:** v2.0
-
-#### Vertical Scope Implementation
-**Status:** Designed, Not Implemented  
-**Description:** Full-stack generation (Entity → Controller)  
-**Templates:** Designed in Phase 2, need implementation  
-**Effort:** 2-3 weeks  
-**Target:** v2.0
-
-#### Automated Provider Integration
-**Status:** Architecture Complete, Not Implemented  
-**Description:** Direct CLI agent execution (claude, gemini)  
-**Components:** Provider implementations, automated mode  
-**Effort:** 1-2 weeks  
-**Target:** v2.0
-
-### Medium Priority
-
-#### Additional Profiles
-- [ ] Python/SQLAlchemy profile
-- [ ] C#/Entity Framework Core profile
-- [ ] TypeScript/Prisma profile
-
-#### Batch Operations
-- [ ] Generate multiple entities in sequence
-- [ ] Dependency-aware ordering
-- [ ] Bulk review and approval
-
-#### Standards Management Tools
-- [ ] Standards validation
-- [ ] Standards versioning
-- [ ] Profile-specific standards generator
-
-### Low Priority
-
-#### Advanced Features
-- [ ] Multi-bounded-context support
-- [ ] Custom workflow phases
-- [ ] Plugin system for custom handlers
-- [ ] Web UI for workflow management
-- [ ] Team collaboration features
+**Exit criteria:** A full generate → review → revise loop is supported.
 
 ---
 
-## Release Planning
+## M5 — Orchestration Engine & State Validation ⏳ Planned
 
-### v1.0 - MVP (Q1 2025)
-- Core workflow orchestration
-- JPA-MT profile (domain scope)
-- Interactive mode
-- CLI interface
+**Goal:** Automate workflow execution while hardening state correctness.
+
+- Orchestration logic (no manual steps)
+- Resume / retry / failure handling
+- **Adopt Pydantic for WorkflowState validation and serialization**
+- Schema versioning and forward-compatibility strategy
+
+**Exit criteria:** Workflows can run unattended with strong state guarantees.
+
+---
+
+## M6 — CLI & Polish ⏳ Planned
+
+**Goal:** Provide a production-quality command-line interface.
+
+- Consolidated CLI entrypoint
+- Subcommands (new, run, resume, status, etc.)
+- Improved argument validation and UX
+- **Adopt Click for CLI implementation**
+- CLI-focused tests and documentation
+
+**Exit criteria:** The system is usable via a clean, documented CLI.
+
+---
+
+## M7 — Editor / Tooling Integration ⏳ Planned
+
+**Goal:** Improve developer ergonomics.
+
 - VS Code extension integration
+- Prompt preview and artifact inspection
+- Workflow visibility from the editor
 
-### v2.0 - Enhanced (Q2 2025)
-- Cross-entity memory
-- Vertical scope
-- Automated providers
-- Additional profiles (1-2)
-- Batch operations
+**Exit criteria:** Core workflows are accessible from common developer tools.
 
-### v3.0 - Enterprise (Q3 2025)
-- Team collaboration
-- Advanced customization
-- Multiple profiles
+---
+
+## Enhancements (Post-MVP)
+
+These are desirable but not required for initial completion.
+
+- Additional generation profiles
+- Plugin discovery / registration
+- Advanced validation and linting
 - Performance optimizations
-- Enterprise documentation
+- Packaging / distribution improvements
 
 ---
 
-## Contributing
+## Notes
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on:
-- Proposing new features
-- Submitting enhancements
-- Development workflow
-- Testing requirements
-
----
-
-**Last Updated:** December 11, 2024
+- Milestones represent **capability boundaries**, not rigid phases.
+- Status reflects current reality, not aspirational timelines.
+- Architectural decisions are documented separately in ADRs.

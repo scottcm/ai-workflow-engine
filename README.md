@@ -29,20 +29,12 @@ The architecture deliberately demonstrates Strategy, Factory, Chain of Responsib
 - [CLI Overview](#cli-overview)
 - [Configuration](#configuration)
 - [Standards Management](#standards-management)
-  - [Immutability](#immutability)
-  - [Bundling Strategy](#bundling-strategy)
-  - [Validation](#validation)
 - [Security](#security)
-  - [Input Validation](#input-validation)
-  - [Path Validation](#path-validation)
 - [Documentation](#documentation)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Project Goals](#project-goals)
 - [Extending the Engine](#extending-the-engine)
-  - [Adding New Profiles](#adding-new-profiles)
-  - [Adding New AI Providers](#adding-new-ai-providers)
-  - [Adding New Scopes](#adding-new-scopes)
 - [Companion VS Code Extension](#companion-vs-code-extension)
 - [Development Database (Postgres via Docker)](#development-database-postgres-via-docker)
 - [Development Setup](#development-setup)
@@ -53,92 +45,54 @@ The architecture deliberately demonstrates Strategy, Factory, Chain of Responsib
 
 ## Overview
 
-The AI Workflow Engine orchestrates multi-phase code generation workflows across multiple AI providers.  
-It supports both:
+The AI Workflow Engine orchestrates multi-phase code generation workflows across multiple AI providers.
 
-- **Interactive mode** — generates prompt files for manual use with web UIs  
-- **Automated mode** — executes workflows using local CLI agents
-
-The system is architected as a modular, extensible engine with clear responsibilities and deliberate use of enterprise design patterns.
+It currently supports **human-in-the-loop workflows** using manual helper scripts, with automation and orchestration planned in later milestones.
 
 ---
 
 ## What This Project Demonstrates
 
-- **Deliberate application of 8 design patterns**  
-  Strategy, Factory, Chain of Responsibility, Builder, Command, Adapter, Template Method
-- **Layered architecture**  
-  Interface → Application → Domain → Infrastructure
-- **Extensible profile system**  
-  Swap entire workflow domains without modifying the engine core
-- **Pluggable AI providers**  
-  Claude, Gemini, Manual (prompt-only), with future expansions
-- **Stateful, resumable workflows**  
-  JSON-based workflow state with checkpoints and iteration tracking
-- **Dual execution modes**  
-  Manual (prompt/paste) and automated (CLI provider calls)
-- **Language-agnostic design**  
-  Core engine supports any target language through profiles
-- **Security by design**  
-  Input sanitization, path validation, and environment variable safety
-
-The structure and documentation are designed to make architectural decisions, design rationale, and system-level thinking easy to evaluate at a glance.
+- Deliberate application of enterprise design patterns
+- Layered architecture with explicit domain boundaries
+- Profile-driven extensibility
+- Stateful, resumable workflows
+- Manual-first design that supports later automation
+- Security-conscious handling of filesystem and inputs
 
 ---
 
 ## The Problem It Solves
 
-AI-assisted development often requires:
+AI-assisted development often requires structured, repeatable workflows involving planning, generation, review, and revision. Ad-hoc approaches frequently lack:
 
-1. Planning  
-2. Code generation  
-3. Code review or critique  
-4. One or more revision loops
+- explicit workflow state,
+- resumability,
+- auditability,
+- or clean separation between domain logic and tooling.
 
-Most ad-hoc workflows:
-
-- Hard-code a single AI provider  
-- Mix prompts, scripts, and output logic together  
-- Do not explicitly model workflow phases  
-- Cannot switch between manual and automated execution  
-- Cannot reuse logic across different domains (e.g., ORM vs API generation)
-- Lose audit trail of what was generated and why
-
-The AI Workflow Engine addresses these issues by:
-
-- Modeling workflows as a **phase pipeline** using Chain of Responsibility  
-- Allowing different AI providers to be assigned to different roles  
-- Supporting both fully automated and partially manual execution modes  
-- Encapsulating domain-specific behavior in **profiles** rather than in core logic
-- Preserving complete audit trail in iteration-based directories
-- Making standards immutable within a session to prevent corruption
+This project models those concerns explicitly.
 
 ---
 
 ## Why This Approach?
 
-**Budget Reality**: Many startups can't afford pay-as-you-go AI APIs. This engine works with:
-- Consumer subscription products (ChatGPT, Claude Pro, Gemini Advanced)
-- Local CLI agents (claude, gemini)
-- Manual copy-paste workflows
-
-**Collaboration Ready**: Designed with clear contracts for a VS Code extension developer to build against.
-
-**Real-World Use**: Built to drive actual code generation with multi-tenant patterns for a SaaS application.
-
-**Auditability**: Full audit trail preserved - every prompt, response, and iteration tracked for debugging and improvement.
+- **Budget reality**: Works with consumer AI subscriptions and manual workflows
+- **Real-world complexity**: Built to support multi-tenant SaaS generation patterns
+- **Auditability**: Every prompt, response, and iteration is preserved
+- **Extensibility**: New domains are added via profiles, not core changes
 
 ---
 
 ## Architecture Overview
 
-    Interface Layer (CLI)
-          ↓
-    Application Layer (Services & Execution)
-          ↓
-    Domain Layer (Core Models, Patterns, Profiles)
-          ↓
-    Infrastructure Layer (Adapters: AI providers, filesystem, legacy scripts)
+    Scripts / Future CLI
+            ↓
+    Application Services (planned)
+            ↓
+    Domain Layer (immutable generation logic)
+            ↓
+    Infrastructure (filesystem, AI providers, helpers)
 
 ### Key Patterns
 
@@ -148,41 +102,37 @@ The AI Workflow Engine addresses these issues by:
 - **Builder** — Fluent, safe construction of handler chains  
 - **Command** — Encapsulate operations such as prompt prep and bundle extraction  
 - **Adapter** — Integrate CLI tools and legacy scripts behind stable interfaces  
-- **Template Method** — Shared prompt skeletons with overridable sections  
+- **Template Method** — Shared prompt skeletons with overridable sections
 
-Full explanations are available in the ADRs.
+Detailed rationale is documented in the ADRs.
 
 ---
 
 ## Language and Framework Agnostic
 
-The engine core is **language-agnostic**. Profiles encapsulate all language and framework-specific logic:
+The engine core is language-agnostic. Profiles encapsulate all language- and framework-specific logic.
 
-**Current Profile:**
-- `jpa-mt` - Java/Spring Data JPA with multi-tenant patterns
-
-**Possible Future Profiles:**
-- Python/SQLAlchemy
-- C#/Entity Framework Core  
-- TypeScript/Prisma
-- Go/GORM
-- Ruby/ActiveRecord
-
-Each profile defines its own templates, standards, and validation rules appropriate to its target stack. The engine orchestrates phases and manages state regardless of the target language.
+**Current profile:**
+- `jpa-mt` — Java / Spring Data JPA (multi-tenant)
 
 ---
 
 ## Profile System
 
-Profiles encapsulate complete workflow configurations for different code generation domains.
+Profiles define:
+- standards selection
+- prompt templates
+- bundle extraction rules
+- file writing behavior
 
 ### JPA Multi-Tenant Profile (`jpa-mt`)
 
-**Target Stack:** Java 21, Spring Data JPA, PostgreSQL  
-**Tenancy Model:** Multi-tenant with row-level security
+Target stack:
+- Java 21
+- Spring Data JPA
+- PostgreSQL (multi-tenant, RLS)
 
-**Supported Scopes:**
-
+Supported scopes:
 1. **`domain`** — Entity + Repository only
    - Generates: JPA Entity, Spring Data Repository
    - Use case: Domain layer for existing applications
@@ -191,67 +141,33 @@ Profiles encapsulate complete workflow configurations for different code generat
    - Generates: Entity → Repository → Service → Controller + DTOs/Mappers
    - Use case: Full-stack feature implementation
 
-### Why Java/Spring Data JPA First?
-
-1. Demonstrates real-world complexity (multi-tenancy, RLS)
-2. Matches the actual production architecture requirements at Skills Harbor, where I serve as CTO
-3. Java's verbosity showcases code generation value
-4. Multi-tenant patterns are common in enterprise SaaS
-
-The same architectural patterns apply to other languages/ORMs through additional profiles.
-
-### Profile Architecture
-
-Profiles are self-contained and define:
-- **Configuration** — Scopes, layers, standards mapping
-- **Prompt templates** — How to structure AI requests (phase + scope specific)
-- **Standards bundles** — Domain-specific coding standards (immutable per session)
-- **Bundle parsing** — Extract generated code from AI responses
-- **Validation rules** — What to check in generated code
-
-**Key Design Decision:** Standards selection and bundling is a **profile responsibility**, not an engine concern. Profiles can use:
-- Layer-based standards mapping (jpa-mt approach)
-- Static file concatenation
-- Tag-based dynamic selection
-- Template-based assembly
-
 ---
 
 ## Session Workflow
 
 ### Directory Structure
 
-**Session directory** (`.aiwf/sessions/{session-id}/`):
+**Session directory**
 ```
-.aiwf/sessions/20241206-143045-b7k2/
-├── session.json                # State tracking
-├── workflow.log                # Execution log
-├── standards-bundle.md         # Immutable standards
-│
-├── iteration-1/                # First generation attempt
-│   ├── planning-prompt.md
-│   ├── planning-response.md
-│   ├── generation-prompt.md
+.aiwf/sessions/{session-id}/
+├── session.json
+├── iteration-1/
 │   ├── generation-response.md
-│   ├── review-prompt.md
-│   ├── review-response.md
 │   └── code/
-│       ├── Entity.java
-│       └── EntityRepository.java
-│
-└── iteration-2/                # Revision (if needed)
-    └── [same structure]
-```
-
-**Target directory** (if configured):
-```
-{target_root}/Tier/domain/
-├── standards-bundle.md         # Standards used
-├── Tier.java                   # Final code (easy access)
-├── TierRepository.java
-├── iteration-1/                # Full audit trail
 └── iteration-2/
 ```
+
+### Target directory (if configured)
+
+An optional output location where generated artifacts may be copied or projected
+from the session directory for integration into an external codebase.  
+The session directory remains the authoritative source of workflow state.
+
+<target-path>/
+├── domain/
+├── service/
+└── repository/
+
 
 ### Workflow Phases
 
@@ -260,46 +176,49 @@ Profiles are self-contained and define:
 3. **Review** — Validate against standards and best practices
 4. **Revision** — Fix issues identified in review (loops until pass)
 
-### Interactive Mode Example
+These are not implementation phases.
 
-```bash
-# Set up environment
-export STANDARDS_DIR="/path/to/your/standards"
-export ARTIFACT_ROOT="/path/to/your/project/ai-artifacts"
+---
 
-# Start workflow
-aiwf run --profile jpa-mt --scope domain --entity Tier
+## Environment Variables
 
-# Engine creates iteration-1/planning-prompt.md and standards-bundle.md
-# You attach files to AI, save response to iteration-1/planning-response.md
+The engine relies on the following environment variables for filesystem boundaries
+and artifact management. These variables may be configured via the operating system,
+IDE run configuration, or CI environment.
 
-# Continue to generation
-aiwf step generate --session {session-id}
+- `STANDARDS_DIR`  
+  Path to the root directory containing AI-optimized standards documents
+  (e.g., architecture, coding standards, profile-specific rules).
+  If not set, a default standards location within the repository is used.
 
-# Attach generation-prompt.md, planning-response.md, standards-bundle.md to AI
-# Save code bundle to generation-response.md
-
-# Review generated code
-aiwf step review --session {session-id}
-
-# If review fails, revise
-aiwf step revise --session {session-id}
-# Creates iteration-2/ with revision prompts and responses
-```
+- `ARTIFACT_ROOT`  
+  Root directory where generated artifacts and workflow session data are written.
+  This directory contains session subdirectories and iteration outputs.
+  If not set, a default artifact location within the repository is used.
 
 ---
 
 ## CLI Overview
 
-The engine exposes seven primary CLI commands:
+A full CLI is **planned**.
 
-1. **aiwf new** — Initialize workflow session without executing phases
-2. **aiwf run** — Create session and start workflow
-3. **aiwf step <phase>** — Execute single workflow phase (interactive mode)
-4. **aiwf resume** — Continue existing workflow from current state
-5. **aiwf status** — Get detailed session status
-6. **aiwf list** — List all workflow sessions
-7. **aiwf profiles** — List available profiles and their capabilities
+Current interaction is via:
+- `scripts/render_prompts_manual.py`
+- `scripts/extract_code_manual.py`
+
+These scripts act as manual helpers and intentionally avoid orchestration logic.
+
+## Planned CLI Interface
+
+The following commands define the intended public interface of the engine.
+Not all commands are implemented yet.
+
+aiwf new
+aiwf run
+aiwf step
+aiwf resume
+aiwf status
+aiwf profiles
 
 See `API-CONTRACT.md` for complete CLI specification.
 
@@ -307,50 +226,17 @@ See `API-CONTRACT.md` for complete CLI specification.
 
 ## Configuration
 
-Profiles use YAML configuration with environment variable support:
+Configuration in the AI Workflow Engine is intentionally explicit and filesystem-based.
 
-```yaml
-# profiles/jpa-mt/config.yml
+Key configuration concepts include:
+- environment-defined filesystem boundaries (e.g., standards and artifact roots),
+- profile selection and profile-specific rules,
+- standards bundles assembled per session,
+- scope selection (domain vs vertical).
 
-standards:
-  root: "${STANDARDS_DIR}"
+Detailed configuration rules and formats are documented in the specifications
+and profile documentation.
 
-artifacts:
-  session_root: ".aiwf/sessions"
-  target_root: "${ARTIFACT_ROOT}"
-  target_structure: "{entity}/{scope}"
-  
-  copy_strategy:
-    iterations: true      # Copy all iterations (audit trail)
-    audit_trail: true     # Include prompts & responses
-    standards: true       # Copy standards bundle
-
-scopes:
-  domain:
-    description: "Multi-tenant JPA domain layer (Entity + Repository)"
-    layers: [entity, repository]
-    
-  vertical:
-    description: "Complete feature implementation (all layers)"
-    layers: [entity, repository, service, controller, dto, mapper]
-
-layer_standards:
-  _universal:
-    - PACKAGES_AND_LAYERS.md
-  entity:
-    - ORG.md
-    - JPA_AND_DATABASE.md
-    - ARCHITECTURE_AND_MULTITENANCY.md
-    - NAMING_AND_API.md
-  # ... additional layer mappings
-```
-
-**Key Features:**
-- Environment variable expansion (`${VAR_NAME}`)
-- Pydantic validation for early error detection
-- Layer-based standards deduplication
-- Flexible target directory structure
-- Configurable artifact copying
 
 ---
 
@@ -360,90 +246,54 @@ layer_standards:
 
 Standards are bundled once at session creation and **cannot change** during the workflow. This prevents corruption from mid-session standards updates.
 
-### Bundling Strategy
-
-The `jpa-mt` profile uses layer-based standards mapping:
-
-1. Collect all layers for requested scope (e.g., `[entity, repository]`)
-2. Gather standards files for each layer from `layer_standards` config
-3. Add universal standards (`_universal` key)
-4. Deduplicate (files referenced multiple times loaded once)
-5. Concatenate with separators: `--- FILENAME.md ---`
-
-**Example bundle for `domain` scope:**
-```markdown
---- PACKAGES_AND_LAYERS.md ---
-[content]
-
---- ORG.md ---
-[content]
-
---- JPA_AND_DATABASE.md ---
-[content]
-```
-
-### Validation
-
-Engine validates:
-- Standards root exists and is accessible
-- All referenced files exist
-- No path traversal in filenames
-- Bundle hasn't changed between iterations
+Detailed bundling and validation rules are defined in the specifications and enforced by tests.
 
 ---
 
 ## Security
 
-### Input Validation
+Security considerations are addressed through explicit architectural constraints
+rather than implicit trust or convention.
 
-The engine includes shared validation utilities (`aiwf/domain/validation/path_validator.py`):
+Key guarantees include:
+- Explicit filesystem boundaries for standards, artifacts, and sessions
+- Path traversal prevention when extracting and writing generated files
+- Session-level isolation of workflow state and artifacts
+- Immutable inputs (standards, prior iterations) to prevent mid-workflow corruption
 
-- **Entity names** — Alphanumeric, hyphens, underscores only
-- **Path components** — No `../`, `/`, or `\` in user inputs
-- **Environment variables** — Safe expansion with undefined var detection
-- **Template variables** — Only allowed variables in target structure
-- **Standards files** — Must be within standards root (no traversal)
+Non-goals:
+- This project does not attempt to sandbox AI-generated code
+- It is not designed as a multi-user, adversarial system
+- Security hardening beyond filesystem safety is deferred to downstream integration
 
-### Path Validation
-
-All paths validated for:
-- Absolute path requirements
-- Existence checks
-- Read/write permissions
-- Path traversal prevention
-
-Profiles can extend base validation with domain-specific rules.
 
 ---
 
 ## Documentation
 
 **Architecture:**
-- `docs/adr/0001-architecture-overview.md` — Complete architecture decisions
-- `docs/adr/0001-architecture-overview-phase2.md` — Phase 2 design updates
+- Architecture Decision Records under `docs/adr/`
+- API contract for planned CLI
+- Profile-specific documentation
 
 **API:**
 - `API-CONTRACT.md` — CLI interface specification
-- `API-CONTRACT-phase2-updates.md` — Session structure updates
-
-**Profiles:**
-- `profiles/jpa-mt/README.md` — Complete jpa-mt profile guide
-- `profiles/jpa-mt/config.yml` — Configuration with inline documentation
-
-**Development:**
-- `aiwf/domain/validation/path_validator.py` — Security utilities reference
-
-Additional design rationale and commentary are available in GitHub Discussions.
 
 ---
 
 ## Tech Stack
 
-- **Python 3.13** — Modern Python with full Pydantic v2 support
-- **Pydantic** — Data modeling and validation
-- **Click** — CLI interface
-- **Poetry** — Dependency management
-- **pytest** — Testing framework
+### Current
+
+- **Python 3**
+- **pytest**
+- **argparse**
+- **Poetry**
+
+### Planned
+
+- **Pydantic** — workflow state validation (Milestone M5)
+- **Click** — production CLI (Milestone M6)
 
 ---
 
@@ -451,34 +301,20 @@ Additional design rationale and commentary are available in GitHub Discussions.
 
 ```
 ai-workflow-engine/
-├── aiwf/                        # Engine core
-│   ├── domain/                  # Models, interfaces, patterns
-│   │   ├── models/              # WorkflowState, Artifact
-│   │   ├── providers/           # AIProvider interface + factory
-│   │   ├── profiles/            # WorkflowProfile interface + factory
-│   │   ├── persistence/         # SessionStore
-│   │   └── validation/          # Security utilities
-│   ├── application/             # Services, orchestration
-│   ├── infrastructure/          # Providers, adapters
-│   │   └── ai/                  # AI provider implementations
-│   └── interface/               # CLI commands
-├── profiles/                    # Profile implementations
-│   └── jpa-mt/                  # JPA multi-tenant profile
-│       ├── config.yml           # Profile configuration
-│       ├── profile.py           # Profile implementation
-│       ├── templates/           # Prompt templates
-│       │   ├── planning/
-│       │   ├── generation/
-│       │   ├── review/
-│       │   └── revision/
-│       └── README.md            # Profile documentation
-├── docs/
-│   └── adr/                     # Architecture Decision Records
+├── aiwf/
+│   └── domain/
+├── profiles/
+│   └── jpa_mt/
+├── scripts/         # Manual, human-in-the-loop helpers
 ├── tests/
 │   ├── unit/
-│   └── integration/
-├── API-CONTRACT.md              # CLI specification
-└── README.md                    # This file
+│   └── conftest.py
+├── docs/
+│   ├── adr/
+│   ├── enhancements
+│   ├── samples       # Sample standards
+│   └── roadmap.md
+└── README.md
 ```
 
 ---
@@ -500,37 +336,20 @@ This project is intentionally built to demonstrate:
 
 ## Extending the Engine
 
+The engine is designed to be extended without modifying core domain logic.
+Some extension points are implemented today; others are planned and documented
+to establish a stable architectural direction.
+
 ### Adding New Profiles
 
-1. Create profile directory under `profiles/`
-2. Create `config.yml` with scopes and standards mapping
-3. Implement `WorkflowProfile` interface in `profile.py`
-4. Create prompt templates for each phase and scope
-5. Document profile in `README.md`
-
-Profiles can target any language/framework. Use `jpa-mt` as a reference implementation.
+Profiles encapsulate language-, framework-, and domain-specific generation rules.
+New profiles can be added by implementing the required profile interfaces and
+registering them with the engine.
 
 ### Adding New AI Providers
 
-1. Implement `AIProvider` interface
-2. Handle provider-specific authentication and API calls
-3. Register provider in `ProviderFactory`
-4. Update configuration schema
-
-Providers are Strategy pattern implementations swapped at runtime.
-
-### Adding New Scopes
-
-Add scope to profile's `config.yml`:
-
-```yaml
-scopes:
-  custom-scope:
-    description: "Your custom generation scope"
-    layers: [layer1, layer2, layer3]
-```
-
-Create corresponding templates in `templates/planning/custom-scope.md`, etc.
+AI providers are intended to be replaceable execution backends.
+New providers can be integrated without changing the core workflow model.
 
 ---
 
@@ -549,88 +368,32 @@ The extension communicates with the engine exclusively through its CLI interface
 
 ## Development Database (Postgres via Docker)
 
-This project includes a small, realistic PostgreSQL schema to test AI-generated
-code (especially for the `jpa-mt` profile’s domain layer: entities + repositories)
-against a real multi-tenant database.
+The development database is provided to support validation of generated
+database artifacts (e.g., JPA entities, schema mappings, and migrations).
 
-The database is provided via Docker and lives under `docker/postgres/`.
+It is intended for local development and testing only and is not required
+to run the core workflow engine.
 
-### Starting the database
-
-From the project root:
-
-    cd docker/postgres
-    docker compose up -d
-
-This will:
-
-- Start a PostgreSQL 16 container
-- Create the `aiwf_test` database
-- Run `db/init/01-schema.sql` to create schemas, tables, RLS, and triggers
-- Run `db/init/02-seed.sql` to insert sample tenants, tiers, and products
-
-### Stopping and resetting
-
-To stop the database **without** deleting data:
-
-    cd docker/postgres
-    docker compose down
-
-To stop the database **and delete all data** (fresh re-init on next start):
-
-    cd docker/postgres
-    docker compose down -v
-
-On the next `docker compose up -d`, the initialization scripts will rerun and
-recreate the schema + seed data from scratch.
-
-### Connection details
-
-- Host: `localhost`
-- Port: `5432`
-- Database: `aiwf_test`
-- User: `aiwf_user`
-- Password: `aiwf_pass`
-
-See `docker/postgres/README.md` for a full description of the schema, RLS
-behavior, and seed data.
+Database startup and configuration details are defined in the Docker
+configuration under `docs/` and are intentionally kept out of this README.
 
 ---
 
 ## Development Setup
 
 ```bash
-# Clone repository
-git clone https://github.com/scottcm/ai-workflow-engine.git
-cd ai-workflow-engine
-
-# Install dependencies with Poetry
 poetry install
-
-# Activate virtual environment
-poetry shell
-
-# Set environment variables
-export STANDARDS_DIR="/path/to/your/standards"
-export ARTIFACT_ROOT="/path/to/your/artifacts"
-
-# Run tests (when available)
 pytest
-
-# Validate profile configuration
-python -c "from aiwf.domain.profiles import ProfileFactory; ProfileFactory.load('jpa-mt')"
 ```
 
 ---
 
 ## License
 
-MIT License
+MIT
 
 ---
 
 ## Support
 
-- **GitHub Issues:** https://github.com/scottcm/ai-workflow-engine/issues
-- **Discussions:** https://github.com/scottcm/ai-workflow-engine/discussions
-- **Extension Issues:** https://github.com/scottcm/aiwf-vscode-extension/issues
+See GitHub issues and discussions.
