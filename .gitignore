@@ -212,6 +212,7 @@ __marimo__/
 .ai-workflow/
 *.session.json
 profiles/*/artifacts/
+*.zip
 
 # AI provider credentials
 .env
