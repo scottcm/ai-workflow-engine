@@ -255,3 +255,14 @@ docs/_templates/
 *.bak
 *.swp
 *~
+
+# AI Workflow Engine local working directory (never commit)
+.aiwf/
+
+# Local scratch / notes (never commit)
+aiwf_dir.txt
+file_mapping.txt
+gemini_prompt.md
+m4_plan.md
+prompt.md
+tdd_prompt.md
