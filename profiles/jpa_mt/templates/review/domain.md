@@ -4,80 +4,97 @@
 
 ---
 
-# Domain Layer Review Request
+# Domain Layer Review
 
 ## Scope Definition
 
-You are reviewing the **domain layer** artifacts:
+You are reviewing **domain layer** artifacts:
 - **Entity class(es)** - Data model implementation
 - **Repository interface(s)** - Data access contracts
 
 This scope does NOT include:
-- Service layer
-- Controller layer
-- DTOs or mappers
+- Service layer logic
+- Controller/API layer
+- DTOs or mapping logic
 
 ---
 
 ## Expected Artifacts
 
-Based on the plan, you should find:
+Based on the approved plan, you should find:
 
-**Entity files:**
+**Entity Files:**
 - One or more entity class files
-- File names should match entity names from plan
+- File names matching entity names from plan
+- Located in code generation output directory
 
-**Repository files:**
-- One or more repository interface files
-- File names should match `{Entity}Repository` pattern
+**Repository Files:**
+- One or more repository interface files  
+- Naming pattern: `{Entity}Repository`
+- Located in code generation output directory
 
-If artifacts are missing or don't match the plan, this is a CRITICAL issue.
+**If artifacts are missing or don't match the plan, this is CRITICAL.**
 
 ---
 
 ## Review Organization
 
-Organize your review by artifact type:
+Structure your review by artifact type:
 
 ### 1. Entity Review
-For each entity class:
-- Does it implement the data model from the plan?
-- Does it follow the standards bundle requirements?
-- Are all planned fields present?
-- Are field types correct per plan/schema?
 
-### 2. Repository Review  
-For each repository interface:
-- Does it provide the data access methods from the plan?
-- Are method signatures correct?
-- Does it follow standards bundle patterns?
+For each entity class, validate:
+- Implements data model from plan
+- Follows standards bundle requirements for entities
+- All planned fields present with correct types
+- Field types match plan and schema (if provided)
+- No extra fields not in plan
+
+### 2. Repository Review
+
+For each repository interface, validate:
+- Provides data access methods from plan
+- Method signatures match plan specifications
+- Follows standards bundle patterns for repositories
+- No extra methods not in plan
 
 ### 3. Integration Review
-- Do entities and repositories work together correctly?
-- Are relationships properly mapped?
-- Does the implementation match the approved design?
+
+Cross-cutting validation:
+- Entities and repositories work together correctly
+- Relationships properly defined
+- References between artifacts are valid
+- Implementation matches approved design
 
 ---
 
-## Domain-Specific Validation
+## Domain-Specific Focus
 
 The standards bundle defines requirements for:
 - Entity structure and annotations
-- Repository patterns and methods
-- Data access security
-- Naming conventions
+- Repository patterns and method naming
+- Data access security and isolation
+- Field and class naming conventions
 
-Apply those standards to domain layer artifacts only.
-Do NOT review service logic, API contracts, or presentation concerns - those are out of scope.
+**Apply standards bundle requirements to domain artifacts only.**
+
+**Do NOT review:**
+- Service layer concerns (business logic)
+- API contracts (controller layer)
+- Data transfer or mapping (DTO layer)
+
+These are out of scope for domain layer review.
 
 ---
 
 ## Review Completion
 
-Your review MUST answer:
-- Are all planned domain artifacts present?
-- Do they implement the approved plan exactly?
-- Do they follow the standards bundle requirements?
-- Are there any scope violations (e.g., service logic in entities)?
+Your review MUST answer these questions:
 
-Focus only on domain layer concerns. Other layers will be reviewed separately.
+- [ ] Are all planned domain artifacts present?
+- [ ] Do they implement the approved plan exactly?
+- [ ] Do they follow all standards bundle requirements?
+- [ ] Are there scope violations (e.g., business logic in entities)?
+- [ ] Do artifacts integrate correctly?
+
+Focus exclusively on domain layer. Other layers reviewed separately.
