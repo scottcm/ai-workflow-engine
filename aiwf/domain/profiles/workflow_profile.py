@@ -1,74 +1,38 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
-from aiwf.domain.models.workflow_state import WorkflowPhase
+
+from aiwf.domain.models.processing_result import ProcessingResult
 
 
 class WorkflowProfile(ABC):
-    """Abstract interface for workflow profiles (Strategy pattern)"""
-    
     @abstractmethod
-    def prompt_template_for(self, phase: WorkflowPhase, scope: str) -> Path:
-        """
-        Get the path to the prompt template for the given phase.
-        
-        Args:
-            phase: The workflow phase
-            
-        Returns:
-            Path to the prompt template file
-        """
+    def generate_planning_prompt(self, context: dict) -> str:
         ...
-    
-    @abstractmethod
-    def standards_bundle_for(self, context: dict[str, Any]) -> str:
-        """
-        Generate a standards bundle for this profile.
 
-        Args:
-            context: Workflow context containing:
-                - entity (str): Entity name
-                - scope (str): Generation scope
-                - session_id (str, optional): Session identifier
-                - timestamp (str, optional): ISO timestamp
+    @abstractmethod
+    def generate_generation_prompt(self, context: dict) -> str:
+        ...
 
-        Returns:
-            Standards bundle content as a single string.
-        """
-        ...
-    
     @abstractmethod
-    def parse_bundle(self, content: str) -> dict[str, str]:
-        """
-        Parse AI-generated bundle into separate files.
-        
-        Args:
-            content: The bundle content from AI response
-            
-        Returns:
-            Dictionary mapping filenames to content
-        """
+    def generate_review_prompt(self, context: dict) -> str:
         ...
-    
+
     @abstractmethod
-    def artifact_dir_for(self, entity: str) -> Path:
-        """
-        Get the output directory path for generated artifacts.
-        
-        Args:
-            entity: The entity name (e.g., "Product")
-            
-        Returns:
-            Path where artifacts should be written
-        """
+    def generate_revision_prompt(self, context: dict) -> str:
         ...
-    
+
     @abstractmethod
-    def review_config_for(self) -> dict[str, Any]:
-        """
-        Get review configuration for this profile.
-        
-        Returns:
-            Dictionary with review rules and criteria
-        """
+    def process_planning_response(self, content: str) -> ProcessingResult:
+        ...
+
+    @abstractmethod
+    def process_generation_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
+        ...
+
+    @abstractmethod
+    def process_review_response(self, content: str) -> ProcessingResult:
+        ...
+
+    @abstractmethod
+    def process_revision_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
         ...
