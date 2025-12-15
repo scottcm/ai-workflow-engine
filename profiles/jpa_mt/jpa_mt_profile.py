@@ -6,13 +6,15 @@ import logging
 import re
 
 from aiwf.domain.profiles import WorkflowProfile
-from aiwf.domain.models.workflow_state import WorkflowPhase
+from aiwf.domain.models.processing_result import ProcessingResult
+from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus, Artifact
 from aiwf.domain.validation import (
     PathValidator,
     validate_standards_root,
     validate_standards_file,
     validate_target_root,
 )
+from profiles.jpa_mt.review_metadata import parse_review_metadata, ReviewMetadataMultipleBlocksError
 
 
 class JpaMtProfile(WorkflowProfile):
@@ -394,3 +396,160 @@ class JpaMtProfile(WorkflowProfile):
         self._validate_prompt_context(context)
         template_path = self.prompt_template_for(WorkflowPhase.REVIEWED, context.get("scope", "domain"))
         return render_template(template_path, context, templates_root=self.templates_dir)
+
+    def process_planning_response(self, content: str) -> ProcessingResult:
+        """
+        Process AI response from planning phase.
+        """
+        if not content or not content.strip():
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="Empty planning response",
+            )
+
+        return ProcessingResult(status=WorkflowStatus.SUCCESS)
+
+
+    def process_generation_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
+        """
+        Process AI response from generation phase.
+        """
+        if not content or not content.strip():
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="Empty generation response",
+            )
+
+        def _parse_bundle(raw: str) -> dict[str, str]:
+            """
+            Minimal, deterministic bundle parser for the engine contract:
+            <<<FILE: Name.ext>>>
+                <4-space indented content...>
+            """
+            lines = raw.splitlines()
+            files: dict[str, list[str]] = {}
+            current_name: str | None = None
+
+            def _start_file(name: str) -> None:
+                nonlocal current_name
+                name = name.strip()
+                if not name:
+                    raise ValueError("Bundle marker missing filename")
+                if name in files:
+                    raise ValueError(f"Duplicate file in bundle: {name}")
+                files[name] = []
+                current_name = name
+
+            for line in lines:
+                if line.startswith("<<<FILE:") and line.rstrip().endswith(">>>"):
+                    header = line.strip()
+                    name = header[len("<<<FILE:") : -len(">>>")].strip()
+                    _start_file(name)
+                    continue
+
+                if current_name is None:
+                    # Ignore preamble/whitespace until the first marker.
+                    if line.strip():
+                        raise ValueError("Invalid bundle: content before first <<<FILE: ...>>> marker")
+                    continue
+
+                # For bundle content, require 4-space indentation on non-empty lines.
+                if line.strip() == "":
+                    files[current_name].append("")
+                    continue
+                if not line.startswith("    "):
+                    raise ValueError(f"Invalid bundle indentation in file: {current_name}")
+                files[current_name].append(line[4:])
+
+            if not files:
+                raise ValueError("Invalid bundle: no <<<FILE: ...>>> markers found")
+
+            rendered: dict[str, str] = {}
+            for name, buf in files.items():
+                if not any(s.strip() for s in buf):
+                    raise ValueError(f"Empty file content in bundle: {name}")
+                rendered[name] = "\n".join(buf).rstrip() + "\n"
+            return rendered
+
+        try:
+            extracted = _parse_bundle(content)
+        except Exception as e:
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message=str(e),
+            )
+
+        code_dir = session_dir / f"iteration-{iteration}" / "code"
+        code_dir.mkdir(parents=True, exist_ok=True)
+
+        artifacts: list[Artifact] = []
+        try:
+            for filename, file_content in extracted.items():
+                out_path = code_dir / filename
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(file_content, encoding="utf-8")
+
+                artifacts.append(
+                    Artifact(
+                        phase=WorkflowPhase.GENERATED,
+                        artifact_type="code",
+                        # IMPORTANT: forward slashes for test expectations
+                        file_path=f"iteration-{iteration}/code/{filename}",
+                    )
+                )
+        except Exception as e:
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message=str(e),
+            )
+
+        return ProcessingResult(
+            status=WorkflowStatus.SUCCESS,
+            artifacts=artifacts,
+        )
+
+
+    def process_review_response(self, content: str) -> ProcessingResult:
+        """
+        Process AI response from review phase.
+        """
+        if not content or not content.strip():
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="Empty review response",
+            )
+
+        try:
+            from profiles.jpa_mt.review_metadata import parse_review_metadata
+
+            metadata = parse_review_metadata(content)
+            if metadata is None:
+                return ProcessingResult(
+                    status=WorkflowStatus.ERROR,
+                    error_message="Missing or invalid review metadata",
+                )
+
+            verdict = str(metadata.get("verdict", "")).upper()
+            status = WorkflowStatus.SUCCESS if verdict == "PASS" else WorkflowStatus.FAILED
+
+            return ProcessingResult(
+                status=status,
+                metadata=metadata,
+            )
+        except Exception as e:
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message=str(e),
+            )
+
+
+    def process_revision_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
+        """
+        Process AI response from revision phase.
+        """
+        return self.process_generation_response(
+            content=content,
+            session_dir=session_dir,
+            iteration=iteration,
+        )
+    
