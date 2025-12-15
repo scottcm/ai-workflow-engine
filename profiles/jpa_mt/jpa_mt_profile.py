@@ -90,13 +90,13 @@ class JpaMtProfile(WorkflowProfile):
         """Resolve standards root from config, handling env vars and relative paths."""
         
         standards_config = self.config.get("standards", {})
-        root_path = standards_config.get("root")
-        
-        if not root_path:
-            raise ValueError("Config missing 'standards.root'")
-        
-        # Validate and resolve (allows relative paths)
-        return validate_standards_root(root_path)
+        raw = Path(self.config["standards"]["root"])
+
+        if not raw.is_absolute():
+            raw = self.profile_root / raw
+
+        return validate_standards_root(raw)
+
 
     def prompt_template_for(self, phase: WorkflowPhase, scope: str = "domain") -> Path:
         """
@@ -416,3 +416,52 @@ class JpaMtProfile(WorkflowProfile):
             "severity": "strict",  # How strict: "strict", "normal", "lenient"
             "auto_fix": False,     # Whether to attempt automatic fixes
         }
+
+    # -------------------------
+    # Prompt generation methods
+    # -------------------------
+
+    _REQUIRED_CONTEXT_KEYS = {
+        "TASK_ID",
+        "DEV",
+        "DATE",
+        "ENTITY",
+        "SCOPE",
+        "TABLE",
+        "BOUNDED_CONTEXT",
+        "SESSION_ID",
+        "PROFILE",
+        "ITERATION",
+    }
+
+    def _validate_prompt_context(self, context: dict[str, Any]) -> None:
+        missing = self._REQUIRED_CONTEXT_KEYS - set(context.keys())
+        if missing:
+            raise KeyError(
+                f"Missing required context keys: {sorted(missing)}. "
+                f"Required: {sorted(self._REQUIRED_CONTEXT_KEYS)}"
+            )
+
+    def generate_planning_prompt(self, context: dict[str, Any]) -> str:
+        from aiwf.domain.template_renderer import render_template
+        self._validate_prompt_context(context)
+        template_path = self.prompt_template_for(WorkflowPhase.INITIALIZED, context.get("scope", "domain"))
+        return render_template(template_path, context, templates_root=self.templates_dir)
+
+    def generate_generation_prompt(self, context: dict[str, Any]) -> str:
+        from aiwf.domain.template_renderer import render_template
+        self._validate_prompt_context(context)
+        template_path = self.prompt_template_for(WorkflowPhase.PLANNED, context.get("scope", "domain"))
+        return render_template(template_path, context, templates_root=self.templates_dir)
+
+    def generate_review_prompt(self, context: dict[str, Any]) -> str:
+        from aiwf.domain.template_renderer import render_template
+        self._validate_prompt_context(context)
+        template_path = self.prompt_template_for(WorkflowPhase.GENERATED, context.get("scope", "domain"))
+        return render_template(template_path, context, templates_root=self.templates_dir)
+
+    def generate_revision_prompt(self, context: dict[str, Any]) -> str:
+        from aiwf.domain.template_renderer import render_template
+        self._validate_prompt_context(context)
+        template_path = self.prompt_template_for(WorkflowPhase.REVIEWED, context.get("scope", "domain"))
+        return render_template(template_path, context, templates_root=self.templates_dir)
