@@ -25,16 +25,7 @@ class JpaMtProfile(WorkflowProfile):
     
     Uses configuration-driven standards bundling with layer-based mapping.
     """
-    
-    # Standards files
-    STANDARDS_FILES = [
-        "jpa-annotations.md",
-        "entity-conventions.md",
-        "repository-patterns.md",
-        "multi-tenant-isolation.md",
-        "naming-conventions.md",
-    ]
-
+   
     def __init__(self, config_path: Path | None = None, **config: Any):
         """
         Initialize the profile.
@@ -145,68 +136,6 @@ class JpaMtProfile(WorkflowProfile):
         
         return template_path
 
-    def _resolve_template_includes(self, template_path: Path, visited: set[Path] | None = None) -> str:
-        """
-        Load a template and recursively resolve {{include: path}} directives.
-        
-        Resolution Rules:
-        - Paths starting with ./ or ../ are relative to the current template file.
-        - All other paths are relative to the profile's templates root directory.
-        
-        Args:
-            template_path: Path to the template file
-            visited: Set of already-visited paths (for circular detection)
-            
-        Returns:
-            Complete template content with all includes resolved
-            
-        Raises:
-            FileNotFoundError: If template or included file doesn't exist
-            RuntimeError: If circular includes detected
-        """
-        if visited is None:
-            visited = set()
-        
-        # Check for circular includes
-        abs_path = template_path.resolve()
-        if abs_path in visited:
-            raise RuntimeError(
-                f"Circular include detected: {template_path} "
-                f"is already being processed"
-            )
-        
-        # Validate template exists
-        if not template_path.exists():
-            raise FileNotFoundError(f"Template not found: {template_path}")
-        
-        # Mark as visited
-        visited.add(abs_path)
-        
-        # Read template content
-        content = template_path.read_text(encoding='utf-8')
-        
-        # Find all include directives
-        include_pattern = r'\{\{include:\s*([^}]+)\}\}'
-        
-        def resolve_include(match):
-            """Replace include directive with file contents."""
-            include_path_str = match.group(1).strip()
-            
-            # Determine base path for resolution
-            if include_path_str.startswith("./") or include_path_str.startswith("../"):
-                # Relative to current template
-                include_path = (template_path.parent / include_path_str).resolve()
-            else:
-                # Relative to profile templates root
-                include_path = (self.templates_dir / include_path_str).resolve()
-            
-            # Recursively resolve the included file
-            return self._resolve_template_includes(include_path, visited)
-        
-        # Replace all includes
-        resolved_content = re.sub(include_pattern, resolve_include, content)
-        
-        return resolved_content
 
     def standards_bundle_for(self, context: dict[str, Any]) -> str:
         """
