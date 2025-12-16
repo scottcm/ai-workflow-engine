@@ -122,8 +122,12 @@ class WorkflowOrchestrator:
             - CANCELLED -> CANCELLED (status=CANCELLED)
         - REVISING:
             - Generates revision-prompt.md if missing.
-            - Processes revision-response.md if exists.
-            - If success -> GENERATED.
+            - Transitions to REVISED if revision-response.md exists.
+        - REVISED:
+            - Processes revision-response.md.
+            - If success: transitions to REVIEWING.
+            - ERROR     -> ERROR
+            - CANCELLED -> CANCELLED
 
         Args:
             session_id: Identifier of the workflow session to advance.
@@ -156,6 +160,9 @@ class WorkflowOrchestrator:
 
         if state.phase == WorkflowPhase.REVISING:
             return self._step_revising(session_id=session_id, state=state)
+
+        if state.phase == WorkflowPhase.REVISED:
+            return self._step_revised(session_id=session_id, state=state)
 
         return state
 
@@ -379,7 +386,7 @@ class WorkflowOrchestrator:
     def _step_revising(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
         """Handle REVISING phase logic.
 
-        - If revision-response.md exists: process it.
+        - If revision-response.md exists: transition to REVISED (no processing).
         - If revision-prompt.md missing: generate and write it.
         """
         session_dir = self.sessions_root / session_id
@@ -389,17 +396,12 @@ class WorkflowOrchestrator:
         prompt_file = prompts_dir / "revision-prompt.md"
         response_file = responses_dir / "revision-response.md"
 
-        # 1. Check for response and process it
+        # 1. Check for response
         if response_file.exists():
-            content = response_file.read_text(encoding="utf-8")
-            profile_instance = ProfileFactory.create(state.profile)
-            result = profile_instance.process_revision_response(content, session_dir, state.current_iteration)
-
-            if result.status == WorkflowStatus.SUCCESS:
-                state.phase = WorkflowPhase.GENERATED
-                state.status = WorkflowStatus.IN_PROGRESS
-                self._append_phase_history(state, phase=state.phase, status=state.status)
-                self.session_store.save(state)
+            state.phase = WorkflowPhase.REVISED
+            state.status = WorkflowStatus.IN_PROGRESS
+            self._append_phase_history(state, phase=state.phase, status=state.status)
+            self.session_store.save(state)
             return state
 
         # 2. Generate prompt if missing
@@ -409,6 +411,60 @@ class WorkflowOrchestrator:
             prompts_dir.mkdir(parents=True, exist_ok=True)
             prompt_file.write_text(content, encoding="utf-8")
             return state
+
+        return state
+
+    def _step_revised(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
+        """Handle REVISED outcome.
+
+        - Process revision-response.md.
+        - If success: extract files and transition to REVIEWING.
+        - If error/cancelled: transition to ERROR/CANCELLED.
+        """
+        session_dir = self.sessions_root / session_id
+        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
+        response_file = iteration_dir / RESPONSES_DIR / "revision-response.md"
+
+        if not response_file.exists():
+            return state
+
+        content = response_file.read_text(encoding="utf-8")
+        profile_instance = ProfileFactory.create(state.profile)
+        result: ProcessingResult = profile_instance.process_revision_response(
+            content, session_dir, state.current_iteration
+        )
+
+        if result.status == WorkflowStatus.SUCCESS:
+            # Extract and write artifacts
+            try:
+                extractor_module = importlib.import_module(f"profiles.{state.profile}.bundle_extractor")
+                if hasattr(extractor_module, "extract_files"):
+                    files = extractor_module.extract_files(content)
+                    code_dir = iteration_dir / "code"
+                    code_dir.mkdir(parents=True, exist_ok=True)
+                    for filename, file_content in files.items():
+                        (code_dir / filename).write_text(file_content, encoding="utf-8")
+            except ImportError:
+                state.phase = WorkflowPhase.ERROR
+                state.status = WorkflowStatus.ERROR
+                self._append_phase_history(state, phase=state.phase, status=state.status)
+                self.session_store.save(state)
+                return state
+
+            state.phase = WorkflowPhase.REVIEWING
+            state.status = WorkflowStatus.IN_PROGRESS
+            self._append_phase_history(state, phase=state.phase, status=state.status)
+            self.session_store.save(state)
+        elif result.status == WorkflowStatus.ERROR:
+            state.phase = WorkflowPhase.ERROR
+            state.status = WorkflowStatus.ERROR
+            self._append_phase_history(state, phase=state.phase, status=state.status)
+            self.session_store.save(state)
+        elif result.status == WorkflowStatus.CANCELLED:
+            state.phase = WorkflowPhase.CANCELLED
+            state.status = WorkflowStatus.CANCELLED
+            self._append_phase_history(state, phase=state.phase, status=state.status)
+            self.session_store.save(state)
 
         return state
 

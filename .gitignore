@@ -264,5 +264,5 @@ aiwf_dir.txt
 file_mapping.txt
 gemini_prompt.md
 m4_plan.md
-prompt.md
-tdd_prompt.md
+.pytest_tmp
+

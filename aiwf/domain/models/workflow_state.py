@@ -21,6 +21,7 @@ class WorkflowPhase(str, Enum):
     REVIEWING = "reviewing"        # Review prompt sent
     REVIEWED = "reviewed"          # Review completed
     REVISING = "revising"          # Revision prompt sent
+    REVISED = "revised"            # Revision completed
     COMPLETE = "complete"          # All work done
     ERROR = "error"                # Unrecoverable error
     CANCELLED = "cancelled"        # User cancelled session
