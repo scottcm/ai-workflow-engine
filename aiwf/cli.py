@@ -1,44 +1,24 @@
 import click
+from pathlib import Path
+from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
+from aiwf.domain.models.workflow_state import WorkflowPhase
+
+
+DEFAULT_SESSIONS_ROOT = Path(".aiwf")
+
+
 @click.group(help="AI Workflow Engine CLI.")
 def cli() -> None:
-    """Root CLI command group."""
     pass
 
 
-@cli.command("init")
-@click.option("--scope", required=True, type=str)
-@click.option("--entity", required=True, type=str)
-@click.option("--table", required=True, type=str)
-@click.option("--bounded-context", required=True, type=str)
-@click.option("--dev", required=False, type=str)
-@click.option("--task-id", "task_id", required=False, type=str)
-def init_cmd(
-    scope: str,
-    entity: str,
-    table: str,
-    bounded_context: str,
-    dev: str | None,
-    task_id: str | None,
-) -> None:
-    """
-    Initialize a new workflow session (Slice B).
-
-    Slice B is wiring only: no config loading yet and no workflow decisions here.
-    """
-    # Locked temporary defaults until config slice lands.
-    profile = "default"
-    providers = {
-        "planner": "manual",
-        "generator": "manual",
-        "reviewer": "manual",
-        "reviser": "manual",
-    }
-
+@cli.command("step")
+@click.argument("session_id", type=str)
+def step_cmd(session_id: str) -> None:
     try:
-        # Import inside command to minimize import-time side effects.
         from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
-        from aiwf.domain.constants import DEFAULT_SESSIONS_ROOT
         from aiwf.domain.persistence.session_store import SessionStore
+        from aiwf.domain.models.workflow_state import WorkflowStatus
 
         session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
         orchestrator = WorkflowOrchestrator(
@@ -46,19 +26,59 @@ def init_cmd(
             sessions_root=DEFAULT_SESSIONS_ROOT,
         )
 
-        session_id = orchestrator.initialize_run(
-            profile=profile,
-            providers=providers,
-            scope=scope,
-            entity=entity,
-            table=table,
-            bounded_context=bounded_context,
-            dev=dev,
-            task_id=task_id,
-        )
+        state = orchestrator.step(session_id)
 
-        # Locked output contract: ONLY the id, single line, stdout.
-        click.echo(session_id, nl=True)
+        phase_str = state.phase.name
+        status_str = state.status.name
+        iteration = state.current_iteration
+
+        # Awaiting-artifact inference via filesystem (manual UX)
+        phase_to_files = {
+            WorkflowPhase.PLANNING: ("planning-prompt.md", "planning-response.md"),
+            WorkflowPhase.GENERATING: ("generation-prompt.md", "generation-response.md"),
+            WorkflowPhase.REVIEWING: ("review-prompt.md", "review-response.md"),
+            WorkflowPhase.REVISING: ("revision-prompt.md", "revision-response.md"),
+        }
+
+        awaiting_paths: list[str] = []
+
+        session_dir = DEFAULT_SESSIONS_ROOT / session_id
+
+        prompt_name, response_name = phase_to_files.get(state.phase, (None, None))
+        if prompt_name and response_name:
+            # Planning artifacts live at session root; others live under iteration-N.
+            if state.phase == WorkflowPhase.PLANNING:
+                prompt_path = session_dir / PROMPTS_DIR / prompt_name
+                response_path = session_dir / RESPONSES_DIR / response_name
+            else:
+                iteration_dir = session_dir / f"iteration-{iteration}"
+                prompt_path = iteration_dir / PROMPTS_DIR / prompt_name
+                response_path = iteration_dir / RESPONSES_DIR / response_name
+
+            # Emit guidance paths if they exist (manual UX)
+            if prompt_path.exists():
+                awaiting_paths.append(str(prompt_path))
+            if response_path.exists():
+                awaiting_paths.append(str(response_path))
+
+
+        header = (
+            f"phase={phase_str} "
+            f"status={status_str} "
+            f"iteration={iteration} "
+            f"noop_awaiting_artifact={'true' if awaiting_paths else 'false'}"
+        )
+        click.echo(header)
+
+        if status_str == "CANCELLED":
+            raise click.exceptions.Exit(3)
+
+        if awaiting_paths:
+            for p in awaiting_paths:
+                click.echo(p)
+            raise click.exceptions.Exit(2)
+
+    except click.exceptions.Exit:
+        raise
     except Exception as e:
-        # Errors to stderr + non-zero exit.
         raise click.ClickException(str(e)) from e

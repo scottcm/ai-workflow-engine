@@ -1,6 +1,8 @@
 from pathlib import Path
 from click.testing import CliRunner
 from aiwf.cli import cli
+from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
+from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 
 
 def test_init_success_prints_only_session_id_and_calls_orchestrator_once(monkeypatch) -> None:
