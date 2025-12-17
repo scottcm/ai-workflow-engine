@@ -82,3 +82,13 @@ def step_cmd(session_id: str) -> None:
         raise
     except Exception as e:
         raise click.ClickException(str(e)) from e
+
+@cli.command("status")
+@click.argument("session_id", type=str)
+def status_cmd(session_id: str) -> None:
+    """
+    Read-only status reporting (Slice D).
+
+    TDD stub: implementation will be completed after tests are in place.
+    """
+    raise NotImplementedError("Slice D: aiwf status not implemented yet")
