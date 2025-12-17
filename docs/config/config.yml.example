@@ -1,0 +1,49 @@
+# aiwf configuration file
+#
+# Copy this file to:
+#   .aiwf/config.yml            (project-specific, recommended)
+# or
+#   ~/.aiwf/config.yml          (user-wide default)
+#
+# Project config overrides user config.
+# CLI flags override both.
+
+# -------------------------------------------------------------------
+# Profile
+# -------------------------------------------------------------------
+# Logical workflow profile to use.
+# For M6, "default" is the only supported value.
+#
+profile: default
+
+# -------------------------------------------------------------------
+# Providers
+# -------------------------------------------------------------------
+# Provider selection per workflow role.
+#
+# Valid values (M6):
+#   - manual   (human-in-the-loop; files written, user responds)
+#
+# Future values may include:
+#   - gemini
+#   - claude
+#   - openai
+#
+# Missing roles will fall back to defaults.
+#
+providers:
+  planner: manual
+  generator: manual
+  reviewer: manual
+  reviser: manual
+
+# -------------------------------------------------------------------
+# Dev mode
+# -------------------------------------------------------------------
+# Optional developer flag passed through to the engine.
+# Meaning is the name or identifier of the "dev" performing the work
+#
+# Set to null to disable.
+# CLI --dev overrides this value.
+#
+dev: null

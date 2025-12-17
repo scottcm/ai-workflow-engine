@@ -26,6 +26,16 @@ The architecture deliberately demonstrates Strategy, Factory, Chain of Responsib
   - [Directory Structure](#directory-structure)
   - [Workflow Phases](#workflow-phases)
   - [Interactive Mode Example](#interactive-mode-example)
+- [Configuration](#configuration)
+  - [Configuration file locations](#configuration-file-locations)
+  - [Getting started](#getting-started)
+  - [Example configuration](#example-configuration)
+  - [Configuration options](#configuration-options)
+    - [`profile`](#profile)
+    - [`providers`](#providers)
+    - [`dev`](#dev)
+  - [Precedence summary](#precedence-summary)
+  - [Notes](#notes)
 - [CLI Overview](#cli-overview)
 - [Configuration](#configuration)
 - [Standards Management](#standards-management)
@@ -177,6 +187,117 @@ The session directory remains the authoritative source of workflow state.
 4. **Revision** — Fix issues identified in review (loops until pass)
 
 These are not implementation phases.
+
+---
+
+Below is a **drop-in README snippet** that matches your M6 behavior exactly and explains config without overpromising.
+
+---
+
+## Configuration
+
+AIWF is configured using a YAML file. Configuration can be defined at two levels, with clear precedence.
+
+### Configuration file locations (highest wins)
+
+1. **Project-specific**
+
+   ```
+   <project-root>/.aiwf/config.yml
+   ```
+
+2. **User-wide**
+
+   ```
+   ~/.aiwf/config.yml
+   ```
+
+Project configuration overrides user-wide configuration.
+Command-line flags override both.
+
+> The `.aiwf/` directory is intentionally ignored by Git.
+> Use the provided example file as a template.
+
+---
+
+### Getting started
+
+Copy the example configuration into your project:
+
+```bash
+mkdir -p .aiwf
+cp docs/config/config.yml.example .aiwf/config.yml
+```
+
+Edit `.aiwf/config.yml` as needed.
+
+---
+
+### Example configuration
+
+```yaml
+profile: default
+
+providers:
+  planner: manual
+  generator: manual
+  reviewer: manual
+  reviser: manual
+
+dev: null
+```
+
+---
+
+### Configuration options
+
+#### `profile`
+
+Logical workflow profile to use.
+
+* **M6 supported values:** `default`
+
+#### `providers`
+
+Selects which provider is used for each workflow role.
+
+Supported values in M6:
+
+* `manual` — human-in-the-loop workflow using prompt/response files
+
+Each role is configured independently:
+
+* `planner`
+* `generator`
+* `reviewer`
+* `reviser`
+
+Missing roles fall back to defaults.
+
+#### `dev`
+
+Optional developer flag passed through to the engine.
+
+* Set to `null` to disable
+* Overridden by the `--dev` CLI flag
+
+---
+
+### Precedence summary
+
+```
+CLI flags
+  > project .aiwf/config.yml
+    > user ~/.aiwf/config.yml
+      > built-in defaults
+```
+
+---
+
+### Notes
+
+* Configuration is read only during `aiwf init`.
+* `aiwf step` and `aiwf status` do not consult configuration.
 
 ---
 

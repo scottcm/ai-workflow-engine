@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 from aiwf.interface.cli.output_models import InitOutput, StatusOutput, StepOutput
+from aiwf.application.config_loader import load_config
 
 
 # Patched by tests where the CLI reads it.
@@ -81,18 +82,18 @@ def init_cmd(
     dev: str | None,
     task_id: str | None,
 ) -> None:
-    # Locked temporary defaults until config slice lands.
-    profile = "default"
-    providers = {
-        "planner": "manual",
-        "generator": "manual",
-        "reviewer": "manual",
-        "reviser": "manual",
-    }
 
     try:
         from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
         from aiwf.domain.persistence.session_store import SessionStore
+
+        cfg = load_config(project_root=Path.cwd(), user_home=Path.home())
+
+        profile = cfg["profile"]
+        providers = cfg["providers"]
+
+        # CLI --dev overrides config; config overrides default
+        dev = dev if dev is not None else cfg["dev"]
 
         session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
         orchestrator = WorkflowOrchestrator(
