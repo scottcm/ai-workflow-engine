@@ -71,47 +71,86 @@ Interface Layer → Application Layer → Domain Layer → Infrastructure Layer
 ---
 
 ## Core Domain Model
-
 ```python
-class ExecutionMode(str, Enum):
-    INTERACTIVE = "interactive"  # Generate prompts, user pastes manually
-    AUTOMATED = "automated"      # Direct AI provider calls
-
 class WorkflowPhase(str, Enum):
     INITIALIZED = "initialized"
-    PLANNING = "planning"
-    PLANNED = "planned"
-    PLAN_APPROVED = "plan_approved"
-    GENERATED = "generated"
-    REVIEWED = "reviewed"
-    REVISED = "revised"
-    COMPLETE = "complete"
 
-class WorkflowState(BaseModel):
-    session_id: str
-    profile: str              # e.g., "jpa-mt"
-    scope: str                # e.g., "domain", "vertical"
-    phase: WorkflowPhase
-    execution_mode: ExecutionMode
-    current_iteration: int    # Starts at 1
-    
-    # Context
-    entity: str
-    bounded_context: str | None
-    
-    # Provider assignments per role
-    providers: dict[str, str]  # "planner" -> "gemini", "coder" -> "claude"
-    
-    # Artifacts by phase and iteration
-    artifacts: list[Artifact]
-    
-    # Interactive mode checkpoint
-    pending_action: str | None
-    
-    # Timestamps
-    created_at: datetime
-    updated_at: datetime
+    # Planning
+    PLANNING = "planning"      # *ING: prompt issuance + artifact gate
+    PLANNED = "planned"        # *ED: process planning response
+
+    # Generation
+    GENERATING = "generating"  # *ING: prompt issuance + artifact gate
+    GENERATED = "generated"    # *ED: process generation response + extract code
+
+    # Review
+    REVIEWING = "reviewing"    # *ING: prompt issuance + artifact gate
+    REVIEWED = "reviewed"      # *ED: process review response
+
+    # Revision (mirrors generation)
+    REVISING = "revising"      # *ING: prompt issuance + artifact gate
+    REVISED = "revised"        # *ED: process revision response + extract code
+
+    # Terminal
+    COMPLETE = "complete"
+    ERROR = "error"
+    CANCELLED = "cancelled"
 ```
+
+---
+
+## Phase Responsibility Split
+
+This ADR is amended to clarify phase responsibilities as implemented and enforced by tests.
+
+### `*ING` phases
+(`PLANNING`, `GENERATING`, `REVIEWING`, `REVISING`)
+
+Responsible only for:
+- issuing the appropriate prompt artifact if missing
+- gating on artifact presence
+
+Must not:
+- process response artifacts
+- advance phase when required artifacts are missing
+
+If the required response artifact is missing, `step()` returns state unchanged.
+
+### `*ED` phases
+(`PLANNED`, `GENERATED`, `REVIEWED`, `REVISED`)
+
+Responsible only for:
+- processing the corresponding response artifact via the profile
+- extracting/materializing code where applicable
+- setting workflow phase and status
+- persisting state and appending phase history
+
+Must not:
+- create prompt artifacts
+
+If the required response artifact is missing, `step()` returns state unchanged.
+
+---
+
+## Iteration Semantics
+
+This ADR is amended to record iteration behavior enforced by tests.
+
+- Iteration 1 is created when entering `GENERATING`.
+- The iteration number increments only when:
+  - `REVIEWED → REVISING` occurs due to a FAIL outcome.
+- The iteration number remains stable across all other phases and transitions.
+- No iteration directories are created speculatively or implicitly.
+
+---
+
+## Revision Symmetry Clarification
+
+Revision mirrors generation structurally.
+
+- `REVISING` behaves like `GENERATING` (prompt issuance + gating).
+- `REVISED` behaves like `GENERATED` (response processing + code extraction).
+- Revision is not a special case; it follows the same orchestration contract.
 
 ---
 
@@ -129,9 +168,10 @@ Each pattern solves a specific architectural problem:
 class AIProvider(ABC):
     async def generate(self, prompt: str, context: dict | None) -> str: ...
 
-# Implementations:
+# Implementations (only ManualProvider is built by this project):
 # - ClaudeCliProvider (calls 'claude' CLI)
-# - GeminiCliProvider (calls 'gemini' CLI)  
+# - GeminiCliProvider (calls 'gemini' CLI)
+# - OllamaGptOssProvider (calls private 'Ollama" using gpt-oss model)
 # - ManualProvider (writes prompt to disk, returns placeholder)
 ```
 
@@ -154,12 +194,14 @@ class WorkflowProfile(ABC):
 **Problem:** Need runtime instantiation of providers and profiles based on configuration.
 
 **Solution:** `ProviderFactory` and `ProfileFactory` with registries.
-
+These are examples of how **custom providers** that wrap agents or make direct API calls could be added.
+The current engine only provides "manual".
 ```python
 class ProviderFactory:
     _registry: dict[str, type[AIProvider]] = {
         "claude": ClaudeCliProvider,
         "gemini": GeminiCliProvider,
+        "gpt-oss": OllamaGptOssProvider,
         "manual": ManualProvider,
     }
     

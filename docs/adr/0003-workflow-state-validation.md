@@ -25,7 +25,8 @@ schema correctness or version compatibility.
 ## Decision
 
 The project will adopt **Pydantic** for validating and serializing the
-workflow state model beginning in **Milestone M5 (Orchestration Engine & State Validation)**.
+workflow state model beginning in Milestone M5 (Orchestration Engine & State Validation).
+**DEFFERRED: post-M5.**
 
 Pydantic will be used to:
 
