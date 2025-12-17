@@ -52,7 +52,11 @@ def test_step_advances_exit_0_and_header_present(monkeypatch):
     assert calls["init_called"] is False
 
 
-def test_step_awaiting_artifact_exit_2_and_outputs_paths(monkeypatch):
+def test_step_awaiting_artifact_exit_2_and_outputs_paths(monkeypatch) -> None:
+    """
+    Awaiting-artifact is inferred via filesystem (manual UX):
+    prompt exists AND response missing under iteration-scoped dirs.
+    """
     import aiwf.application.workflow_orchestrator as wo
     import aiwf.cli as cli_mod
 
@@ -70,21 +74,25 @@ def test_step_awaiting_artifact_exit_2_and_outputs_paths(monkeypatch):
         root = Path(".aiwf")
         monkeypatch.setattr(cli_mod, "DEFAULT_SESSIONS_ROOT", root, raising=True)
 
-        session_dir = root / "sess_123"
-        iteration_dir = session_dir / "iteration-1"
-        prompt = iteration_dir / PROMPTS_DIR / "review-prompt.md"
-        response = iteration_dir / RESPONSES_DIR / "review-response.md"
+        session_id = "sess_123"
+        iteration = 1
+
+        # IMPORTANT: match cli.py path logic exactly:
+        #   root/session_id/iteration-<n>/<PROMPTS_DIR>/<review-prompt.md>
+        # and DO NOT create the response file.
+        prompt = root / session_id / f"iteration-{iteration}" / PROMPTS_DIR / "review-prompt.md"
+        response = root / session_id / f"iteration-{iteration}" / RESPONSES_DIR / "review-response.md"
 
         prompt.parent.mkdir(parents=True, exist_ok=True)
-        response.parent.mkdir(parents=True, exist_ok=True)
         prompt.write_text("# review prompt", encoding="utf-8")
-        response.write_text("", encoding="utf-8")
 
-        result = runner.invoke(cli, ["step", "sess_123"], prog_name="aiwf")
+        result = runner.invoke(cli, ["step", session_id], prog_name="aiwf")
 
     assert result.exit_code == 2
+    assert "noop_awaiting_artifact=true" in result.output
     assert str(prompt) in result.output
-    assert str(response) in result.output
+    assert str(response) in result.output  # printed as expected location even if missing
+
 
 def test_step_prompt_and_response_present_exit_0(monkeypatch):
     """
