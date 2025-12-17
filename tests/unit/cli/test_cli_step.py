@@ -7,7 +7,6 @@ from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 
 
-
 def _state(*, phase, status, iteration):
     class _S:
         pass
@@ -87,6 +86,43 @@ def test_step_awaiting_artifact_exit_2_and_outputs_paths(monkeypatch):
     assert str(prompt) in result.output
     assert str(response) in result.output
 
+def test_step_prompt_and_response_present_exit_0(monkeypatch):
+    """
+    Regression guard: if both prompt and response exist, we are NOT awaiting,
+    so step must exit 0 (not 2).
+    """
+    import aiwf.application.workflow_orchestrator as wo
+    import aiwf.cli as cli_mod
+
+    def fake_step(self, session_id: str):
+        return _state(
+            phase=WorkflowPhase.REVIEWING,
+            status=WorkflowStatus.IN_PROGRESS,
+            iteration=1,
+        )
+
+    monkeypatch.setattr(wo.WorkflowOrchestrator, "step", fake_step, raising=True)
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        root = Path(".aiwf")
+        monkeypatch.setattr(cli_mod, "DEFAULT_SESSIONS_ROOT", root, raising=True)
+
+        session_dir = root / "sess_123"
+        iteration_dir = session_dir / "iteration-1"
+
+        prompt = iteration_dir / PROMPTS_DIR / "review-prompt.md"
+        response = iteration_dir / RESPONSES_DIR / "review-response.md"
+
+        prompt.parent.mkdir(parents=True, exist_ok=True)
+        response.parent.mkdir(parents=True, exist_ok=True)
+        prompt.write_text("# review prompt", encoding="utf-8")
+        response.write_text("review response", encoding="utf-8")
+
+        result = runner.invoke(cli, ["step", "sess_123"], prog_name="aiwf")
+
+    assert result.exit_code == 0
+    assert "noop_awaiting_artifact=false" in result.output
 
 def test_step_terminal_success_exit_0(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo

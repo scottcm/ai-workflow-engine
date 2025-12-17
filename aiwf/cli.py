@@ -55,12 +55,15 @@ def step_cmd(session_id: str) -> None:
                 prompt_path = iteration_dir / PROMPTS_DIR / prompt_name
                 response_path = iteration_dir / RESPONSES_DIR / response_name
 
-            # Emit guidance paths if they exist (manual UX)
-            if prompt_path.exists():
-                awaiting_paths.append(str(prompt_path))
-            if response_path.exists():
-                awaiting_paths.append(str(response_path))
+            prompt_exists = prompt_path.exists()
+            response_exists = response_path.exists()
 
+            # Always show the expected locations if we are blocked (manual UX)
+            awaiting = prompt_exists and (not response_exists)
+            if awaiting:
+                awaiting_paths = [str(prompt_path), str(response_path)]
+            else:
+                awaiting_paths = []
 
         header = (
             f"phase={phase_str} "
@@ -88,7 +91,18 @@ def step_cmd(session_id: str) -> None:
 def status_cmd(session_id: str) -> None:
     """
     Read-only status reporting (Slice D).
-
-    TDD stub: implementation will be completed after tests are in place.
     """
-    raise NotImplementedError("Slice D: aiwf status not implemented yet")
+    try:
+        from aiwf.domain.persistence.session_store import SessionStore
+
+        session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+        state = session_store.load(session_id)
+        session_path = DEFAULT_SESSIONS_ROOT / session_id
+
+        click.echo(f"phase={state.phase.name}")
+        click.echo(f"status={state.status.name}")
+        click.echo(f"iteration={state.current_iteration}")
+        click.echo(f"session_path={session_path}")
+
+    except Exception as e:
+        raise click.ClickException(str(e)) from e
