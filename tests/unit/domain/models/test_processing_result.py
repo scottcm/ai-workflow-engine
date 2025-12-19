@@ -1,88 +1,69 @@
-import pytest
 from datetime import datetime, timezone
 
 from aiwf.domain.models.processing_result import ProcessingResult
-from aiwf.domain.models.workflow_state import WorkflowStatus, WorkflowPhase, Artifact
+from aiwf.domain.models.workflow_state import Artifact, WorkflowPhase, WorkflowStatus
+from aiwf.domain.models.write_plan import WriteOp, WritePlan
 
 
-def test_processing_result_instantiates_with_only_status():
-    """
-    Test that ProcessingResult can be instantiated with only the status field,
-    and default values for artifacts, error_message, and metadata are correctly set.
-    """
-    result = ProcessingResult(status=WorkflowStatus.SUCCESS)
+def test_processing_result_contract_defaults() -> None:
+    pr = ProcessingResult(status=WorkflowStatus.IN_PROGRESS)
 
-    assert result.status == WorkflowStatus.SUCCESS
-    assert result.artifacts == []
-    assert result.error_message is None
-    assert result.metadata == {}
+    assert pr.status == WorkflowStatus.IN_PROGRESS
+    assert pr.approved is False
+    assert pr.write_plan is None
+    assert pr.artifacts == []
+    assert pr.error_message is None
+    assert pr.metadata == {}
+
+    assert "status" in ProcessingResult.model_fields
+    assert "approved" in ProcessingResult.model_fields
+    assert "write_plan" in ProcessingResult.model_fields
+    assert "artifacts" in ProcessingResult.model_fields
+    assert "error_message" in ProcessingResult.model_fields
+    assert "metadata" in ProcessingResult.model_fields
 
 
-def test_processing_result_instantiates_with_error_message_and_metadata():
-    """
-    Test that ProcessingResult can be instantiated with error_message and metadata,
-    and other fields are set correctly.
-    """
-    error_msg = "An error occurred during processing."
-    metadata_dict = {"step": "planning", "attempt": 1}
-    result = ProcessingResult(
-        status=WorkflowStatus.FAILED,
-        error_message=error_msg,
-        metadata=metadata_dict
+def test_processing_result_accepts_write_plan() -> None:
+    plan = WritePlan(writes=[WriteOp(path="src/Foo.java", content="class Foo {}")])
+    pr = ProcessingResult(status=WorkflowStatus.IN_PROGRESS, write_plan=plan)
+
+    assert pr.write_plan is not None
+    assert pr.write_plan.writes[0].path == "src/Foo.java"
+
+
+def test_processing_result_accepts_artifacts_list() -> None:
+    a = Artifact(
+        path="iteration-1/code/Tier.java",
+        phase=WorkflowPhase.GENERATED,
+        iteration=1,
+        created_at=datetime.now(timezone.utc),
+        sha256=None,
     )
+    pr = ProcessingResult(status=WorkflowStatus.IN_PROGRESS, artifacts=[a])
 
-    assert result.status == WorkflowStatus.FAILED
-    assert result.artifacts == []
-    assert result.error_message == error_msg
-    assert result.metadata == metadata_dict
+    assert len(pr.artifacts) == 1
+    assert pr.artifacts[0].path.endswith("Tier.java")
 
 
-def test_default_lists_are_not_shared_across_instances():
-    """
-    Test that default lists (artifacts and metadata) are not shared across different
-    ProcessingResult instances.
-    """
-    result1 = ProcessingResult(status=WorkflowStatus.SUCCESS)
-    result2 = ProcessingResult(status=WorkflowStatus.SUCCESS)
+def test_processing_result_metadata_default_factory_is_dict() -> None:
+    pr1 = ProcessingResult(status=WorkflowStatus.IN_PROGRESS)
+    pr2 = ProcessingResult(status=WorkflowStatus.IN_PROGRESS)
 
-    # Modify artifacts in result1
-    artifact1 = Artifact(
-        phase=WorkflowPhase.PLANNING,
-        artifact_type="plan",
-        file_path="path/to/plan1.md"
+    pr1.metadata["k"] = "v"
+    assert "k" not in pr2.metadata
+
+
+def test_processing_result_artifacts_default_factory_is_list() -> None:
+    pr1 = ProcessingResult(status=WorkflowStatus.IN_PROGRESS)
+    pr2 = ProcessingResult(status=WorkflowStatus.IN_PROGRESS)
+
+    pr1.artifacts.append(
+        Artifact(
+            path="iteration-1/code/A.java",
+            phase=WorkflowPhase.GENERATED,
+            iteration=1,
+            created_at=datetime.now(timezone.utc),
+            sha256=None,
+        )
     )
-    result1.artifacts.append(artifact1)
-
-    # Modify metadata in result2
-    result2.metadata["key"] = "value"
-
-    assert result1.artifacts != result2.artifacts
-    assert result1.metadata == {}  # result1's metadata should still be default
-    assert result2.artifacts == []  # result2's artifacts should still be default
-    assert result2.metadata == {"key": "value"}
-
-
-def test_artifacts_accepts_list_of_artifact_objects():
-    """
-    Test that the artifacts field correctly accepts a list of Artifact objects.
-    """
-    artifact1 = Artifact(
-        phase=WorkflowPhase.PLANNING,
-        artifact_type="plan",
-        file_path="path/to/plan.md",
-        created_at=datetime.now(timezone.utc) # Explicitly setting for consistency, though default factory works
-    )
-    artifact2 = Artifact(
-        phase=WorkflowPhase.GENERATING,
-        artifact_type="code",
-        file_path="path/to/code.py"
-    )
-    artifacts_list = [artifact1, artifact2]
-
-    result = ProcessingResult(status=WorkflowStatus.SUCCESS, artifacts=artifacts_list)
-
-    assert result.status == WorkflowStatus.SUCCESS
-    assert result.artifacts == artifacts_list
-    assert len(result.artifacts) == 2
-    assert result.artifacts[0].file_path == "path/to/plan.md"
-    assert result.artifacts[1].artifact_type == "code"
+    assert pr2.artifacts == []

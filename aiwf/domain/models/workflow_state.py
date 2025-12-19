@@ -2,7 +2,7 @@ from enum import Enum
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ExecutionMode(str, Enum):
@@ -36,12 +36,48 @@ class WorkflowStatus(str, Enum):
 
 
 class Artifact(BaseModel):
-    """Output artifact from a workflow phase."""
+    """
+    Artifact metadata only.
 
+    Notes:
+    - Strict: rejects unknown keys (no legacy alias coercion).
+    - No kind/role/type semantics.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
     phase: WorkflowPhase
-    artifact_type: str
-    file_path: str
+    iteration: int
+    sha256: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("path")
+    @classmethod
+    def _path_non_empty(cls, v: str) -> str:
+        v2 = v.strip()
+        if not v2:
+            raise ValueError("path must be non-empty")
+        return v2
+
+    @field_validator("iteration")
+    @classmethod
+    def _iteration_ge_1(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("iteration must be >= 1")
+        return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_keys(cls, data: Any) -> Any:
+        # Explicitly reject common legacy keys instead of aliasing/coercion.
+        if isinstance(data, dict):
+            forbidden = {"file_path", "artifact_type", "kind"}
+            present = forbidden.intersection(data.keys())
+            if present:
+                # Raise a clear error rather than relying on generic "extra forbidden".
+                raise ValueError(f"Unsupported legacy keys: {sorted(present)}")
+        return data
 
 
 class PhaseTransition(BaseModel):
@@ -72,6 +108,11 @@ class WorkflowState(BaseModel):
     status: WorkflowStatus
     execution_mode: ExecutionMode
     current_iteration: int = 1  # Starts at 1, increments on revision
+
+    # Hashing and approval
+    standards_hash: str              # Required, set at session init
+    plan_approved: bool = False      # Defaults to False
+    plan_hash: str | None = None     # None until plan approved
 
     # Multi-provider strategy
     providers: dict[str, str]  # role -> provider_key
