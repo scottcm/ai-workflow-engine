@@ -1,0 +1,39 @@
+import hashlib
+from pathlib import Path
+
+from aiwf.domain.models.processing_result import ProcessingResult
+from aiwf.domain.models.workflow_state import Artifact, WorkflowState
+
+
+def write_artifacts(*, session_dir: Path, state: WorkflowState, result: ProcessingResult) -> None:
+    if result.write_plan is None:
+        return
+
+    new_artifacts: list[Artifact] = []
+
+    try:
+        for op in result.write_plan.writes:
+            full_path = session_dir / op.path
+            
+            # Create parent directories
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write content
+            full_path.write_text(op.content, encoding="utf-8")
+            
+            # Compute SHA-256
+            sha256_hex = hashlib.sha256(op.content.encode("utf-8")).hexdigest()
+            
+            # Create Artifact
+            artifact = Artifact(
+                path=op.path,
+                phase=state.phase,
+                iteration=state.current_iteration,
+                sha256=sha256_hex
+            )
+            new_artifacts.append(artifact)
+            
+    except Exception:
+        raise
+
+    state.artifacts.extend(new_artifacts)

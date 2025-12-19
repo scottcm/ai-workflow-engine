@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from aiwf.application.artifact_writer import write_artifacts
 from aiwf.domain.constants import PLANS_DIR, PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import (
@@ -293,21 +294,7 @@ class WorkflowOrchestrator:
         )
 
         if result.status == WorkflowStatus.SUCCESS:
-            # Extract and write artifacts
-            try:
-                extractor_module = importlib.import_module(f"profiles.{state.profile}.bundle_extractor")
-                if hasattr(extractor_module, "extract_files"):
-                    files = extractor_module.extract_files(content)
-                    code_dir = iteration_dir / "code"
-                    code_dir.mkdir(parents=True, exist_ok=True)
-                    for filename, file_content in files.items():
-                        (code_dir / filename).write_text(file_content, encoding="utf-8")
-            except ImportError:
-                state.phase = WorkflowPhase.ERROR
-                state.status = WorkflowStatus.ERROR
-                self._append_phase_history(state, phase=state.phase, status=state.status)
-                self.session_store.save(state)
-                return state
+            write_artifacts(session_dir=session_dir, state=state, result=result)
 
             state.phase = WorkflowPhase.REVIEWING
             state.status = WorkflowStatus.IN_PROGRESS
