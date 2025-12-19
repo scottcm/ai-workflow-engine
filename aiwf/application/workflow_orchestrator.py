@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import importlib
 import uuid
 from dataclasses import dataclass
@@ -7,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from aiwf.application.artifact_writer import write_artifacts
+from aiwf.application.standards_materializer import materialize_standards
 from aiwf.domain.constants import PLANS_DIR, PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import (
@@ -20,7 +19,7 @@ from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 
 
-@dataclass(frozen=True)
+@dataclass
 class WorkflowOrchestrator:
     """Engine-owned workflow orchestration.
 
@@ -72,6 +71,8 @@ class WorkflowOrchestrator:
             The generated session_id for the new workflow session.
         """
         session_id = uuid.uuid4().hex
+        session_dir = self.sessions_root / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
 
         state = _build_initial_state(
             session_id=session_id,
@@ -86,6 +87,10 @@ class WorkflowOrchestrator:
             task_id=task_id,
             metadata=metadata,
         )
+
+        profile_instance = ProfileFactory.create(state.profile)
+        provider = profile_instance.get_standards_provider()
+        materialize_standards(session_dir=session_dir, state=state, provider=provider)
 
         self.session_store.save(state)
         return session_id
@@ -525,5 +530,6 @@ def _build_initial_state(
         metadata=metadata or {},
         phase=initial_phase,
         status=initial_status,
+        standards_hash="0" * 64,
         phase_history=[PhaseTransition(phase=initial_phase, status=initial_status)],
     )
