@@ -2,24 +2,22 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from aiwf.domain.models.processing_result import ProcessingResult
+from aiwf.application.standards_provider import StandardsProvider  # Add import
 
 
 class WorkflowProfile(ABC):
     @abstractmethod
-    def generate_planning_prompt(self, context: dict) -> str:
+    def get_standards_provider(self) -> StandardsProvider:
         """
-        Generate planning prompt content.
-        
-        Args:
-            context: Template context containing workflow metadata
-                    (entity, table, scope, session_id, etc.)
+        Return the standards provider for this profile.
         
         Returns:
-            Prompt content as string (typically Markdown format)
-            
-        Raises:
-            KeyError: If required context keys missing
+            StandardsProvider instance configured for this profile
         """
+        ...
+    
+    @abstractmethod
+    def generate_planning_prompt(self, context: dict) -> str:
         ...
 
     @abstractmethod

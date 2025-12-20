@@ -3,6 +3,7 @@ from pathlib import Path
 
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import Artifact, WorkflowState
+from aiwf.domain.validation.path_validator import PathValidator  # Add import
 
 
 def write_artifacts(*, session_dir: Path, state: WorkflowState, result: ProcessingResult) -> None:
@@ -14,6 +15,9 @@ def write_artifacts(*, session_dir: Path, state: WorkflowState, result: Processi
     try:
         for op in result.write_plan.writes:
             full_path = session_dir / op.path
+            
+            # SECURITY: Validate path is within session_dir
+            PathValidator.validate_within_root(full_path, session_dir)
             
             # Create parent directories
             full_path.parent.mkdir(parents=True, exist_ok=True)

@@ -88,11 +88,16 @@ class WorkflowOrchestrator:
             metadata=metadata,
         )
 
-        profile_instance = ProfileFactory.create(state.profile)
         provider = profile_instance.get_standards_provider()
-        materialize_standards(session_dir=session_dir, state=state, provider=provider)
-
+        context = self._build_context(state)  # Extract dict from state
+        bundle_hash = materialize_standards(
+            session_dir=session_dir,
+            context=context,
+            provider=provider
+        )
+        state.standards_hash = bundle_hash
         self.session_store.save(state)
+
         return session_id
 
     def step(self, session_id: str) -> WorkflowState:
@@ -171,6 +176,18 @@ class WorkflowOrchestrator:
             return self._step_revised(session_id=session_id, state=state)
 
         return state
+
+    def _build_context(self, state: WorkflowState) -> dict[str, Any]:
+        """Extract context dict from workflow state for providers."""
+        return {
+            "scope": state.scope,
+            "entity": state.entity,
+            "table": state.table,
+            "bounded_context": state.bounded_context,
+            "dev": state.dev,
+            "task_id": state.task_id,
+            "metadata": state.metadata,
+        }
 
     def _step_initialized(self, state: WorkflowState) -> WorkflowState:
         """Handle INITIALIZED -> PLANNING."""
