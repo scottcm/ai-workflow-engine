@@ -1,0 +1,53 @@
+# Configuration for JPA Multi-Tenant Profile
+#
+# Copy this file to `config.yml` and customize as needed:
+#   cp profiles/jpa_mt/config.yml.example profiles/jpa_mt/config.yml
+#
+# Notes:
+# - `config.yml` is local and should be git-ignored.
+# - Environment variables are OPTIONAL. Paths may be literal or use ${ENV_VAR}.
+# - If ${ENV_VAR} syntax is used, the variable must be defined in the process environment.
+#
+# Required at runtime:
+# - standards.root must resolve to a valid directory.
+#
+standards:
+  # Examples:
+  # root: "/absolute/path/to/standards"
+  root: "${STANDARDS_DIR}"
+
+scopes:
+  domain:
+    description: "Multi-tenant JPA domain layer (Entity + Repository)"
+    layers: [entity, repository]
+
+  vertical:
+    description: "Complete feature implementation (all layers)"
+    layers: [entity, repository, service, controller, dto, mapper]
+
+layer_standards:
+  _universal:
+    - ORG.md
+    - NAMING_AND_API.md
+    - PACKAGES_AND_LAYERS.md
+
+  entity:
+    # Subdirectories are allowed. Use forward slashes (/), not backslashes.
+    - db/java/JPA_AND_DATABASE.md
+    - ARCHITECTURE_AND_MULTITENANCY.md
+
+  repository:
+    - db/java/JPA_AND_DATABASE.md
+
+  service:
+    - BOILERPLATE_AND_DI.md
+    - ARCHITECTURE_AND_MULTITENANCY.md
+
+  controller:
+    - BOILERPLATE_AND_DI.md
+
+  # Explicit empty list required (YAML `dto:` becomes null and fails validation)
+  dto: []
+
+  mapper:
+    - BOILERPLATE_AND_DI.md

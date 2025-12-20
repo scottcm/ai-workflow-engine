@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any
 
 from aiwf.application.standards_provider import StandardsProvider
-from aiwf.domain.models.workflow_state import WorkflowState
 
 
 def materialize_standards(
@@ -25,3 +24,19 @@ def materialize_standards(
     bundle_path.write_text(bundle_text, encoding="utf-8")
     
     return bundle_hash
+
+
+def read_standards_bundle(session_dir: Path) -> str:
+    """Read standards bundle from session directory.
+    
+    Args:
+        session_dir: Path to session directory
+        
+    Returns:
+        Bundle content as string
+        
+    Raises:
+        FileNotFoundError: If bundle doesn't exist
+    """
+    bundle_path = session_dir / "standards-bundle.md"
+    return bundle_path.read_text(encoding='utf-8')

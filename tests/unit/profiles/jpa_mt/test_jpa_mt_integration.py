@@ -16,7 +16,7 @@ from pathlib import Path
 import profiles.jpa_mt
 
 from aiwf.domain.profiles.profile_factory import ProfileFactory
-from aiwf.application.standards_provider import FileBasedStandardsProvider
+from profiles.jpa_mt.jpa_mt_standards_provider import JpaMtStandardsProvider
 
 
 class TestJpaMtProfileIntegration:
@@ -42,27 +42,37 @@ class TestJpaMtProfileIntegration:
         assert profile is not None
         assert profile.config["standards"]["root"] == "/tmp/standards"
     
-    def test_profile_provides_standards_provider(self, monkeypatch):
-        """Test profile returns configured FileBasedStandardsProvider."""
-        monkeypatch.setenv("STANDARDS_DIR", "/tmp/standards")
+    def test_profile_provides_standards_provider(self, monkeypatch, tmp_path):
+        """Test that profile returns a working standards provider."""
+        # Setup: Create actual standards files
+        standards_dir = tmp_path / "standards"
+        standards_dir.mkdir()
+        (standards_dir / "ORG.md").write_text("# Organization Standards\n")
+        (standards_dir / "JPA.md").write_text("# JPA Standards\n")
+        
+        monkeypatch.setenv("STANDARDS_DIR", str(standards_dir))
         
         config = {
             "standards": {"root": "${STANDARDS_DIR}"},
             "scopes": {"domain": {"layers": ["entity"]}},
             "layer_standards": {
                 "_universal": ["ORG.md"],
-                "entity": ["JPA_AND_DATABASE.md"]
+                "entity": ["JPA.md"]
             }
         }
         
+        # Act: Get provider from profile
         profile = ProfileFactory.create("jpa-mt", config=config)
         provider = profile.get_standards_provider()
         
-        # Verify provider type and configuration
-        assert isinstance(provider, FileBasedStandardsProvider)
-        assert provider.standards_root == Path("/tmp/standards")
-        assert "ORG.md" in provider.standards_files
-        assert "JPA_AND_DATABASE.md" in provider.standards_files
+        # Assert: Provider can create a bundle with correct content
+        context = {"scope": "domain"}
+        bundle = provider.create_bundle(context)
+        
+        assert "--- ORG.md ---" in bundle
+        assert "# Organization Standards" in bundle
+        assert "--- JPA.md ---" in bundle
+        assert "# JPA Standards" in bundle
     
     def test_standards_provider_creates_bundle(self, tmp_path, monkeypatch):
         """Test standards provider can create bundle from actual files."""

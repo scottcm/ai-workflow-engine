@@ -265,4 +265,4 @@ file_mapping.txt
 gemini_prompt.md
 m4_plan.md
 .pytest_tmp
-
+profiles/jpa_mt/config.yml

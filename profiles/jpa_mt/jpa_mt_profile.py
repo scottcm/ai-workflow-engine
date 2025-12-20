@@ -3,7 +3,8 @@ from typing import Any
 
 from aiwf.domain.profiles.workflow_profile import WorkflowProfile
 from aiwf.domain.models.processing_result import ProcessingResult
-from aiwf.application.standards_provider import FileBasedStandardsProvider, StandardsProvider
+from aiwf.application.standards_provider import StandardsProvider
+from profiles.jpa_mt.jpa_mt_standards_provider import JpaMtStandardsProvider
 from profiles.jpa_mt.jpa_mt_config import JpaMtConfig
 
 
@@ -11,27 +12,10 @@ class JpaMtProfile(WorkflowProfile):
     def __init__(self, **config):
         model = JpaMtConfig.model_validate(config)
         self.config = model.model_dump()
-    
+
     def get_standards_provider(self) -> StandardsProvider:
-        """Return FileBasedStandardsProvider configured for JPA-MT."""
-        standards_root = Path(self.config['standards']['root'])
-        
-        # Collect standards files for scope
-        # For now, just collect all standards from all layers
-        # (Later slices will make this scope-aware)
-        standards_files: list[str] = []
-        for layer, files in self.config['layer_standards'].items():
-            if layer != '_universal':
-                standards_files.extend(files)
-        
-        # Add universal standards
-        if '_universal' in self.config['layer_standards']:
-            standards_files.extend(self.config['layer_standards']['_universal'])
-        
-        return FileBasedStandardsProvider(
-            standards_root=standards_root,
-            standards_files=standards_files
-        )
+        """Return JPA-MT specific standards provider."""
+        return JpaMtStandardsProvider(self.config)
     
     def generate_planning_prompt(self, context: dict) -> str:
         # TODO: Implement in later slice
@@ -68,3 +52,5 @@ class JpaMtProfile(WorkflowProfile):
     ) -> ProcessingResult:
         # TODO: Implement in later slice
         raise NotImplementedError("Revision response processing not yet implemented")
+    
+    
