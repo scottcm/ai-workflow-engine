@@ -23,6 +23,9 @@ class PathValidationError(Exception):
 
 class PathValidator:
     """Validates and sanitizes file paths and names."""
+
+    DRIVE_PATTERN = re.compile(r"^[a-zA-Z]:[\\/]")
+    _UNC_PATTERN = re.compile(r"^\\\\")
     
     # Allowed characters in entity names and path components
     SAFE_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
@@ -383,59 +386,62 @@ class PathValidator:
             raise PathValidationError(
                 f"Template missing required variables: {missing_vars}"
             )
-    
+        
     @classmethod
-    def format_template(
-        cls,
-        template: str,
-        variables: dict[str, Any],
-        sanitize: bool = True
-    ) -> str:
+    def validate_relative_path_pattern(cls, path: str) -> str:
         """
-        Format template string with validated variables.
-        
-        Args:
-            template: Template string like "{entity}/{scope}"
-            variables: Variable values to substitute
-            sanitize: If True, sanitize variable values
-            
-        Returns:
-            Formatted string with variables substituted
-            
-        Raises:
-            PathValidationError: If variables are invalid
-            
-        Examples:
-            >>> PathValidator.format_template(
-            ...     "{entity}/{scope}",
-            ...     {"entity": "Product", "scope": "domain"}
-            ... )
-            'Product/domain'
-        """
-        # Validate all template variables are provided
-        template_vars = set(cls.TEMPLATE_VAR_PATTERN.findall(template))
-        missing = template_vars - set(variables.keys())
-        if missing:
-            raise PathValidationError(
-                f"Missing template variables: {missing}"
-            )
-        
-        # Sanitize variable values if requested
-        if sanitize:
-            sanitized = {}
-            for key, value in variables.items():
-                if key in template_vars:
-                    sanitized[key] = cls.sanitize_path_component(str(value))
-                else:
-                    sanitized[key] = value
-            variables = sanitized
-        
-        # Format template
-        try:
-            return template.format(**variables)
-        except KeyError as e:
-            raise PathValidationError(f"Template formatting failed: {e}")
+        Validate a relative path string using pattern-based checks only.
 
+        Rules:
+        - must be non-empty
+        - must NOT be absolute:
+            - no leading '/' or '\\'
+            - no drive-letter paths (e.g. C:\\ or C:/)
+            - no UNC paths (\\\\server\\share)
+        - must NOT contain '..' as a path segment
+        - may contain subdirectories
+        - may use '/' or '\\' as separators
+
+        Returns:
+            The original path string if valid
+
+        Raises:
+            PathValidationError if invalid
+        """
+        path = path.strip()
+
+        if not path or not isinstance(path, str):
+            raise PathValidationError("Path must be a non-empty string")
+
+        # Absolute path checks
+        if path.startswith(("/", "\\")):
+            raise PathValidationError(f"Absolute paths are not allowed: '{path}'")
+
+        if cls.DRIVE_PATTERN.match(path):
+            raise PathValidationError(f"Drive-letter paths are not allowed: '{path}'")
+
+        if cls._UNC_PATTERN.match(path):
+            raise PathValidationError(f"UNC paths are not allowed: '{path}'")
+
+        # Normalize separators for segment inspection
+        normalized = path.replace("\\", "/")
+        segments = normalized.split("/")
+
+        if "." in segments:
+            raise PathValidationError(
+                f"Current-directory references ('.') are not allowed: '{path}'"
+            )
+
+        # Path traversal check
+        if ".." in segments:
+            raise PathValidationError(
+                f"Path traversal ('..') is not allowed: '{path}'"
+            )
+
+        # Empty segments are allowed only as separators (e.g., "a//b" is okay)
+        # No further restrictions here by design
+
+        return path
 
 # Convenience functions for common validations
 

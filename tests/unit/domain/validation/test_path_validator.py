@@ -68,6 +68,57 @@ class TestPathValidator:
             PathValidator.expand_env_vars("${UNDEFINED_VAR_XYZ}/file.txt")
         assert "Undefined environment variables" in str(excinfo.value)
 
+    def test_validate_relative_path_pattern_valid(self):
+        valid_cases = [
+            "entity/JPA_AND_DATABASE.md",
+            "db/java/JPA.md",
+            "db\\java\\JPA.md",
+            "a/b/c.txt",
+            "a\\b\\c.txt",
+            "single.md",
+        ]
+        for p in valid_cases:
+            assert PathValidator.validate_relative_path_pattern(p) == p
+
+    def test_validate_relative_path_pattern_strips_whitespace(self):
+        assert PathValidator.validate_relative_path_pattern("  entity/JPA.md  ") == "entity/JPA.md"
+
+    def test_validate_relative_path_pattern_rejects_empty(self):
+        with pytest.raises(PathValidationError):
+            PathValidator.validate_relative_path_pattern("   ")
+
+    def test_validate_relative_path_pattern_rejects_absolute_paths(self):
+        invalid_cases = [
+            "/etc/passwd",
+            "\\windows\\system32",
+            "C:\\temp\\file.txt",
+            "C:/temp/file.txt",
+            "\\\\server\\share\\file.txt",
+        ]
+        for p in invalid_cases:
+            with pytest.raises(PathValidationError):
+                PathValidator.validate_relative_path_pattern(p)
+
+    def test_validate_relative_path_pattern_rejects_traversal(self):
+        invalid_cases = [
+            "../file.txt",
+            "a/../file.txt",
+            "a\\..\\file.txt",
+        ]
+        for p in invalid_cases:
+            with pytest.raises(PathValidationError):
+                PathValidator.validate_relative_path_pattern(p)
+
+    def test_validate_relative_path_pattern_rejects_dot_segments(self):
+        invalid_cases = [
+            "./file.txt",
+            "a/./file.txt",
+            "a\\.\\file.txt",
+        ]
+        for p in invalid_cases:
+            with pytest.raises(PathValidationError):
+                PathValidator.validate_relative_path_pattern(p)
+
     def test_validate_within_root(self, tmp_path):
         """Test path traversal prevention."""
         root = tmp_path / "root"
@@ -159,3 +210,4 @@ class TestPathValidator:
             
         # Multiple dots
         assert PathValidator.sanitize_filename("my.test.file.java") == "my.test.file.java"
+
