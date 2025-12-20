@@ -5,6 +5,8 @@ from typing import Any
 
 import pytest
 
+from aiwf.domain.models.write_plan import WriteOp, WritePlan
+
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
 from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.processing_result import ProcessingResult
@@ -18,13 +20,20 @@ class _StubPlanningProfile:
         return ProcessingResult(status=WorkflowStatus.SUCCESS)
 
 
+
+
 class _StubGenerationProfile:
     def __init__(self) -> None:
         self.process_called = 0
 
     def process_generation_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
         self.process_called += 1
-        return ProcessingResult(status=WorkflowStatus.SUCCESS)
+        return ProcessingResult(
+            status=WorkflowStatus.SUCCESS,
+            write_plan=WritePlan(writes=[
+                WriteOp(path=f"iteration-{iteration}/code/x.py", content="pass\n")
+            ])
+        )
 
 
 def _arrange_at_generated(
@@ -34,7 +43,7 @@ def _arrange_at_generated(
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Client",
         providers={"primary": "gemini"},
@@ -87,10 +96,6 @@ def test_generated_processes_generation_response_extracts_and_enters_reviewing(
 
     gen_profile = _StubGenerationProfile()
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: gen_profile))
-
-    # Patch extractor to avoid relying on implementation details
-    import profiles.jpa_mt.bundle_extractor as be
-    monkeypatch.setattr(be, "extract_files", lambda raw: {"x.py": "pass\n"})
 
     orch.step(session_id)  # GENERATED -> REVIEWING (process + extract)
 

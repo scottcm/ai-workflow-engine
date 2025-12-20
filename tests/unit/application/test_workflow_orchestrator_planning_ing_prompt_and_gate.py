@@ -28,7 +28,7 @@ def test_planning_writes_prompt_if_missing_and_stays_in_planning(
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Client",
         providers={"primary": "gemini"},
@@ -71,7 +71,7 @@ def test_planning_is_noop_when_prompt_exists_and_response_missing(
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Client",
         providers={"primary": "gemini"},
@@ -114,7 +114,7 @@ def test_planning_transitions_to_planned_when_response_exists_without_processing
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Client",
         providers={"primary": "gemini"},

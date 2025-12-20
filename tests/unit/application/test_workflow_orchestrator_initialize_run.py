@@ -14,7 +14,7 @@ def test_initialize_run_creates_session_and_persists_state_without_iteration_dir
     orchestrator = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orchestrator.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Client",
         providers={"primary": "gemini"},

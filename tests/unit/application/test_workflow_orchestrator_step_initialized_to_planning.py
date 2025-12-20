@@ -14,7 +14,7 @@ def test_step_transitions_initialized_to_planning_only(
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Client",
         providers={"primary": "gemini"},

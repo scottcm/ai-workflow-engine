@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
@@ -26,7 +24,7 @@ def test_generated_noop_when_generation_response_missing(
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Client",
         providers={"primary": "gemini"},
@@ -76,7 +74,7 @@ def test_reviewed_noop_when_review_response_missing(
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Client",
         providers={"primary": "gemini"},
@@ -126,7 +124,7 @@ def test_revised_noop_when_revision_response_missing(
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Client",
         providers={"primary": "gemini"},

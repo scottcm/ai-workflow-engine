@@ -23,7 +23,7 @@ class _StubProfile:
 def _mk_state(*, session_id: str) -> WorkflowState:
     return WorkflowState(
         session_id=session_id,
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Tier",
         phase=WorkflowPhase.GENERATED,

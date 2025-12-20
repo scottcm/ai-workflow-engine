@@ -56,7 +56,7 @@ def test_orchestrator_materializes_standards_on_initialize(tmp_path: Path, monke
     monkeypatch.setattr(profile_factory_module.ProfileFactory, "create", staticmethod(lambda profile_name: profile))
 
     session_id = orchestrator.initialize_run(
-        profile="jpa_mt",
+        profile="jpa-mt",
         scope="domain",
         entity="Tier",
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},

@@ -88,8 +88,10 @@ class WorkflowOrchestrator:
             metadata=metadata,
         )
 
+        profile_instance = ProfileFactory.create(profile)
         provider = profile_instance.get_standards_provider()
-        context = self._build_context(state)  # Extract dict from state
+
+        context = self._build_context(state)
         bundle_hash = materialize_standards(
             session_dir=session_dir,
             context=context,
@@ -446,7 +448,8 @@ class WorkflowOrchestrator:
         if result.status == WorkflowStatus.SUCCESS:
             # Extract and write artifacts
             try:
-                extractor_module = importlib.import_module(f"profiles.{state.profile}.bundle_extractor")
+                profile_module = state.profile.replace("-", "_")
+                extractor_module = importlib.import_module(f"profiles.{profile_module}.bundle_extractor")
                 if hasattr(extractor_module, "extract_files"):
                     files = extractor_module.extract_files(content)
                     code_dir = iteration_dir / "code"
