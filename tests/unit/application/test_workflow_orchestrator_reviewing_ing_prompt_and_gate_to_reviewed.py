@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
-from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
@@ -66,7 +65,7 @@ def test_reviewing_writes_review_prompt_if_missing_and_stays_reviewing(
 
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.REVIEWING
-    prompt_file = it_dir / PROMPTS_DIR / "review-prompt.md"
+    prompt_file = it_dir / "review-prompt.md"
     assert prompt_file.is_file()
     assert prompt_file.read_text(encoding=utf8) == "REVIEW PROMPT"
     assert stub.generate_called == 1
@@ -78,10 +77,8 @@ def test_reviewing_transitions_to_reviewed_when_response_exists_without_processi
     _require_reviewed_phase()
     orch, store, session_id, it_dir = _arrange_at_reviewing(sessions_root, utf8, monkeypatch)
 
-    (it_dir / PROMPTS_DIR).mkdir(parents=True, exist_ok=True)
-    (it_dir / PROMPTS_DIR / "review-prompt.md").write_text("PROMPT", encoding=utf8)
-    (it_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
-    (it_dir / RESPONSES_DIR / "review-response.md").write_text("VERDICT: PASS\n", encoding=utf8)
+    (it_dir / "review-prompt.md").write_text("PROMPT", encoding=utf8)
+    (it_dir / "review-response.md").write_text("VERDICT: PASS\n", encoding=utf8)
 
     monkeypatch.setattr(
         ProfileFactory,

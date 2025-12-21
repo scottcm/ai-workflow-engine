@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
-from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR, PLANS_DIR
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, WorkflowStatus
 from aiwf.domain.persistence.session_store import SessionStore
@@ -43,10 +42,10 @@ def test_planned_processes_planning_response_writes_plan_and_enters_generating_w
     orch.step(session_id)  # INITIALIZED -> PLANNING
 
     session_dir = sessions_root / session_id
-    (session_dir / PROMPTS_DIR).mkdir(parents=True, exist_ok=True)
-    (session_dir / PROMPTS_DIR / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
-    (session_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
-    (session_dir / RESPONSES_DIR / "planning-response.md").write_text("# PLAN\n- x\n", encoding=utf8)
+    iteration_dir = session_dir / "iteration-1"
+    iteration_dir.mkdir(parents=True, exist_ok=True)
+    (iteration_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
+    (iteration_dir / "planning-response.md").write_text("# PLAN\n- x\n", encoding=utf8)
 
     # PLANNING -> PLANNED
     monkeypatch.setattr(
@@ -69,8 +68,8 @@ def test_planned_processes_planning_response_writes_plan_and_enters_generating_w
     assert getattr(after, "current_iteration") == 1
 
     # plan promoted to session scope
-    assert (session_dir / PLANS_DIR / "plan.md").is_file()
+    assert (session_dir / "plan.md").is_file()
 
-    # iteration-1 allocated
+    # iteration-1 allocated (already allocated in planning but verified)
     assert (session_dir / "iteration-1").is_dir()
     assert stub.process_called == 1

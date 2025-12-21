@@ -48,9 +48,9 @@ def test_orchestrator_executes_write_plan_exactly_once_when_present(tmp_path: Pa
 
     # Create the expected generation response file that _step_generated consumes.
     iteration_dir = sessions_root / session_id / f"iteration-{state.current_iteration}"
-    response_dir = iteration_dir / "responses"
-    response_dir.mkdir(parents=True, exist_ok=True)
-    (response_dir / "generation-response.md").write_text("ignored", encoding="utf-8")
+    iteration_dir.mkdir(parents=True, exist_ok=True)
+    # Updated: generation-response.md directly in iteration-1
+    (iteration_dir / "generation-response.md").write_text("ignored", encoding="utf-8")
 
     plan = WritePlan(writes=[WriteOp(path="iteration-1/code/A.java", content="class A {}\n")])
     stub = _StubProfile(result=ProcessingResult(status=WorkflowStatus.SUCCESS, write_plan=plan))
@@ -87,9 +87,9 @@ def test_orchestrator_does_not_write_files_when_write_plan_is_none(tmp_path: Pat
     session_store.save(state)
 
     iteration_dir = sessions_root / session_id / f"iteration-{state.current_iteration}"
-    response_dir = iteration_dir / "responses"
-    response_dir.mkdir(parents=True, exist_ok=True)
-    (response_dir / "generation-response.md").write_text("ignored", encoding="utf-8")
+    iteration_dir.mkdir(parents=True, exist_ok=True)
+    # Updated: generation-response.md directly in iteration-1
+    (iteration_dir / "generation-response.md").write_text("ignored", encoding="utf-8")
 
     stub = _StubProfile(result=ProcessingResult(status=WorkflowStatus.SUCCESS, write_plan=None))
     monkeypatch.setattr(profile_factory_module.ProfileFactory, "create", staticmethod(lambda profile: stub))

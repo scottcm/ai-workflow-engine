@@ -14,7 +14,12 @@ def write_artifacts(*, session_dir: Path, state: WorkflowState, result: Processi
 
     try:
         for op in result.write_plan.writes:
-            full_path = session_dir / op.path
+            path_str = op.path
+            prefix = f"iteration-{state.current_iteration}/"
+            if not path_str.startswith(prefix):
+                path_str = f"{prefix}{path_str}"
+
+            full_path = session_dir / path_str
             
             # SECURITY: Validate path is within session_dir
             PathValidator.validate_within_root(full_path, session_dir)
@@ -30,7 +35,7 @@ def write_artifacts(*, session_dir: Path, state: WorkflowState, result: Processi
             
             # Create Artifact
             artifact = Artifact(
-                path=op.path,
+                path=path_str,
                 phase=state.phase,
                 iteration=state.current_iteration,
                 sha256=sha256_hex

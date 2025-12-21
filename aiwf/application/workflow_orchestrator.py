@@ -6,7 +6,7 @@ from typing import Any
 
 from aiwf.application.artifact_writer import write_artifacts
 from aiwf.application.standards_materializer import materialize_standards
-from aiwf.domain.constants import PLANS_DIR, PROMPTS_DIR, RESPONSES_DIR
+
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import (
     ExecutionMode,
@@ -206,10 +206,11 @@ class WorkflowOrchestrator:
         - If planning-prompt.md missing: generate and write it.
         """
         session_dir = self.sessions_root / session_id
-        prompts_dir = session_dir / PROMPTS_DIR
-        responses_dir = session_dir / RESPONSES_DIR
-        prompt_file = prompts_dir / "planning-prompt.md"
-        response_file = responses_dir / "planning-response.md"
+        # Planning artifacts go in iteration-1
+        iteration_dir = session_dir / "iteration-1"
+
+        prompt_file = iteration_dir / "planning-prompt.md"
+        response_file = iteration_dir / "planning-response.md"
 
         # 1. Check for response
         if response_file.exists():
@@ -221,10 +222,10 @@ class WorkflowOrchestrator:
 
         # 2. Generate prompt if missing
         if not prompt_file.exists():
+            iteration_dir.mkdir(parents=True, exist_ok=True)
             profile_instance = ProfileFactory.create(state.profile)
             # Assuming profile has generate_planning_prompt - implicitly required by flow
             content = profile_instance.generate_planning_prompt(self._prompt_context(state=state))
-            prompts_dir.mkdir(parents=True, exist_ok=True)
             prompt_file.write_text(content, encoding="utf-8")
             # Stay in PLANNING waiting for response
             return state
@@ -238,7 +239,8 @@ class WorkflowOrchestrator:
         - If successful, write plan.md and create iteration-1/.
         """
         session_dir = self.sessions_root / session_id
-        response_file = session_dir / RESPONSES_DIR / "planning-response.md"
+        # Read from iteration-1
+        response_file = session_dir / "iteration-1" / "planning-response.md"
 
         # Should strictly exist if we are in PLANNED, but safety check
         if not response_file.exists():
@@ -249,9 +251,8 @@ class WorkflowOrchestrator:
         result: ProcessingResult = profile_instance.process_planning_response(content)
 
         if result.status == WorkflowStatus.SUCCESS:
-            plans_dir = session_dir / PLANS_DIR
-            plans_dir.mkdir(parents=True, exist_ok=True)
-            (plans_dir / "plan.md").write_text(content, encoding="utf-8")
+            # Plan is a session-level file now
+            (session_dir / "plan.md").write_text(content, encoding="utf-8")
 
             # Transition to GENERATING
             state.current_iteration = 1
@@ -273,10 +274,9 @@ class WorkflowOrchestrator:
         """
         session_dir = self.sessions_root / session_id
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        prompts_dir = iteration_dir / PROMPTS_DIR
-        responses_dir = iteration_dir / RESPONSES_DIR
-        prompt_file = prompts_dir / "generation-prompt.md"
-        response_file = responses_dir / "generation-response.md"
+        
+        prompt_file = iteration_dir / "generation-prompt.md"
+        response_file = iteration_dir / "generation-response.md"
 
         # 1. Check for response
         if response_file.exists():
@@ -288,10 +288,10 @@ class WorkflowOrchestrator:
 
         # 2. Generate prompt if missing
         if not prompt_file.exists():
+            iteration_dir.mkdir(parents=True, exist_ok=True)
             profile_instance = ProfileFactory.create(state.profile)
             # Assuming profile has generate_generation_prompt
             content = profile_instance.generate_generation_prompt(self._prompt_context(state=state))
-            prompts_dir.mkdir(parents=True, exist_ok=True)
             prompt_file.write_text(content, encoding="utf-8")
             return state
 
@@ -305,7 +305,7 @@ class WorkflowOrchestrator:
         """
         session_dir = self.sessions_root / session_id
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        response_file = iteration_dir / RESPONSES_DIR / "generation-response.md"
+        response_file = iteration_dir / "generation-response.md"
 
         if not response_file.exists():
             return state
@@ -335,10 +335,9 @@ class WorkflowOrchestrator:
         """
         session_dir = self.sessions_root / session_id
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        prompts_dir = iteration_dir / PROMPTS_DIR
-        responses_dir = iteration_dir / RESPONSES_DIR
-        prompt_file = prompts_dir / "review-prompt.md"
-        response_file = responses_dir / "review-response.md"
+        
+        prompt_file = iteration_dir / "review-prompt.md"
+        response_file = iteration_dir / "review-response.md"
 
         # 1. Check for response
         if response_file.exists():
@@ -350,10 +349,10 @@ class WorkflowOrchestrator:
 
         # 2. Generate prompt if missing
         if not prompt_file.exists():
+            iteration_dir.mkdir(parents=True, exist_ok=True)
             profile_instance = ProfileFactory.create(state.profile)
             # Assuming profile has generate_review_prompt
             content = profile_instance.generate_review_prompt(self._prompt_context(state=state))
-            prompts_dir.mkdir(parents=True, exist_ok=True)
             prompt_file.write_text(content, encoding="utf-8")
             return state
 
@@ -363,7 +362,7 @@ class WorkflowOrchestrator:
         """Handle REVIEWED outcomes based on review-response.md."""
         session_dir = self.sessions_root / session_id
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        response_file = iteration_dir / RESPONSES_DIR / "review-response.md"
+        response_file = iteration_dir / "review-response.md"
 
         if not response_file.exists():
             return state
@@ -402,10 +401,9 @@ class WorkflowOrchestrator:
         """
         session_dir = self.sessions_root / session_id
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        prompts_dir = iteration_dir / PROMPTS_DIR
-        responses_dir = iteration_dir / RESPONSES_DIR
-        prompt_file = prompts_dir / "revision-prompt.md"
-        response_file = responses_dir / "revision-response.md"
+        
+        prompt_file = iteration_dir / "revision-prompt.md"
+        response_file = iteration_dir / "revision-response.md"
 
         # 1. Check for response
         if response_file.exists():
@@ -417,9 +415,9 @@ class WorkflowOrchestrator:
 
         # 2. Generate prompt if missing
         if not prompt_file.exists():
+            iteration_dir.mkdir(parents=True, exist_ok=True)
             profile_instance = ProfileFactory.create(state.profile)
             content = profile_instance.generate_revision_prompt(self._prompt_context(state=state))
-            prompts_dir.mkdir(parents=True, exist_ok=True)
             prompt_file.write_text(content, encoding="utf-8")
             return state
 
@@ -434,7 +432,7 @@ class WorkflowOrchestrator:
         """
         session_dir = self.sessions_root / session_id
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        response_file = iteration_dir / RESPONSES_DIR / "revision-response.md"
+        response_file = iteration_dir / "revision-response.md"
 
         if not response_file.exists():
             return state
@@ -446,22 +444,25 @@ class WorkflowOrchestrator:
         )
 
         if result.status == WorkflowStatus.SUCCESS:
-            # Extract and write artifacts
-            try:
-                profile_module = state.profile.replace("-", "_")
-                extractor_module = importlib.import_module(f"profiles.{profile_module}.bundle_extractor")
-                if hasattr(extractor_module, "extract_files"):
-                    files = extractor_module.extract_files(content)
-                    code_dir = iteration_dir / "code"
-                    code_dir.mkdir(parents=True, exist_ok=True)
-                    for filename, file_content in files.items():
-                        (code_dir / filename).write_text(file_content, encoding="utf-8")
-            except ImportError:
-                state.phase = WorkflowPhase.ERROR
-                state.status = WorkflowStatus.ERROR
-                self._append_phase_history(state, phase=state.phase, status=state.status)
-                self.session_store.save(state)
-                return state
+            if result.write_plan:
+                write_artifacts(session_dir=session_dir, state=state, result=result)
+            else:
+                # Fallback: Extract and write artifacts using legacy bundle_extractor
+                try:
+                    profile_module = state.profile.replace("-", "_")
+                    extractor_module = importlib.import_module(f"profiles.{profile_module}.bundle_extractor")
+                    if hasattr(extractor_module, "extract_files"):
+                        files = extractor_module.extract_files(content)
+                        code_dir = iteration_dir / "code"
+                        code_dir.mkdir(parents=True, exist_ok=True)
+                        for filename, file_content in files.items():
+                            (code_dir / filename).write_text(file_content, encoding="utf-8")
+                except ImportError:
+                    state.phase = WorkflowPhase.ERROR
+                    state.status = WorkflowStatus.ERROR
+                    self._append_phase_history(state, phase=state.phase, status=state.status)
+                    self.session_store.save(state)
+                    return state
 
             state.phase = WorkflowPhase.REVIEWING
             state.status = WorkflowStatus.IN_PROGRESS

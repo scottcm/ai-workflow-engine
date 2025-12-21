@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
-from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, WorkflowStatus
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
@@ -58,7 +57,8 @@ def test_planning_writes_prompt_if_missing_and_stays_in_planning(
     assert len(after.phase_history) == before_hist_len
 
     session_dir = sessions_root / session_id
-    prompt_file = session_dir / PROMPTS_DIR / "planning-prompt.md"
+    # Updated: prompt goes to iteration-1
+    prompt_file = session_dir / "iteration-1" / "planning-prompt.md"
     assert prompt_file.is_file()
     assert prompt_file.read_text(encoding="utf-8") == "PLANNING PROMPT"
     assert stub.generate_called == 1
@@ -85,8 +85,9 @@ def test_planning_is_noop_when_prompt_exists_and_response_missing(
     orch.step(session_id)  # INITIALIZED -> PLANNING
 
     session_dir = sessions_root / session_id
-    (session_dir / PROMPTS_DIR).mkdir(parents=True, exist_ok=True)
-    (session_dir / PROMPTS_DIR / "planning-prompt.md").write_text("X", encoding="utf-8")
+    iteration_dir = session_dir / "iteration-1"
+    iteration_dir.mkdir(parents=True, exist_ok=True)
+    (iteration_dir / "planning-prompt.md").write_text("X", encoding="utf-8")
 
     # Guard: profile must not be called in this no-op case
     monkeypatch.setattr(
@@ -128,11 +129,10 @@ def test_planning_transitions_to_planned_when_response_exists_without_processing
     orch.step(session_id)  # INITIALIZED -> PLANNING
 
     session_dir = sessions_root / session_id
-    (session_dir / PROMPTS_DIR).mkdir(parents=True, exist_ok=True)
-    (session_dir / PROMPTS_DIR / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
-
-    (session_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
-    (session_dir / RESPONSES_DIR / "planning-response.md").write_text("RESPONSE", encoding=utf8)
+    iteration_dir = session_dir / "iteration-1"
+    iteration_dir.mkdir(parents=True, exist_ok=True)
+    (iteration_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
+    (iteration_dir / "planning-response.md").write_text("RESPONSE", encoding=utf8)
 
     # Guard: no processing in PLANNING; no profile calls
     monkeypatch.setattr(

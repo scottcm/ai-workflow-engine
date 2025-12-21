@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
-from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, WorkflowStatus
 from aiwf.domain.persistence.session_store import SessionStore
@@ -47,10 +46,10 @@ def _arrange_at_generating(
     orch.step(session_id)  # -> PLANNING
 
     session_dir = sessions_root / session_id
-    (session_dir / PROMPTS_DIR).mkdir(parents=True, exist_ok=True)
-    (session_dir / PROMPTS_DIR / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
-    (session_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
-    (session_dir / RESPONSES_DIR / "planning-response.md").write_text("# PLAN\n", encoding=utf8)
+    it_dir = session_dir / "iteration-1"
+    it_dir.mkdir(parents=True, exist_ok=True)
+    (it_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
+    (it_dir / "planning-response.md").write_text("# PLAN\n", encoding=utf8)
 
     # PLANNING -> PLANNED (no profile)
     monkeypatch.setattr(
@@ -66,7 +65,7 @@ def _arrange_at_generating(
 
     state = store.load(session_id)
     assert state.phase == WorkflowPhase.GENERATING
-    it_dir = session_dir / "iteration-1"
+    # it_dir = session_dir / "iteration-1"
     assert it_dir.is_dir()
     return orch, store, session_id, it_dir
 
@@ -83,7 +82,7 @@ def test_generating_writes_generation_prompt_if_missing_and_stays_generating(
 
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.GENERATING
-    prompt_file = it_dir / PROMPTS_DIR / "generation-prompt.md"
+    prompt_file = it_dir / "generation-prompt.md"
     assert prompt_file.is_file()
     assert prompt_file.read_text(encoding=utf8) == "GENERATION PROMPT"
     assert stub.generate_called == 1
@@ -94,11 +93,8 @@ def test_generating_transitions_to_generated_when_response_exists_without_proces
 ) -> None:
     orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
 
-    (it_dir / PROMPTS_DIR).mkdir(parents=True, exist_ok=True)
-    (it_dir / PROMPTS_DIR / "generation-prompt.md").write_text("PROMPT", encoding=utf8)
-
-    (it_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
-    (it_dir / RESPONSES_DIR / "generation-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
+    (it_dir / "generation-prompt.md").write_text("PROMPT", encoding=utf8)
+    (it_dir / "generation-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
 
     monkeypatch.setattr(
         ProfileFactory,

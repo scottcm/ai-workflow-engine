@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
-from aiwf.domain.constants import RESPONSES_DIR
 from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, WorkflowStatus
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
@@ -39,7 +38,6 @@ def test_generated_noop_when_generation_response_missing(
     session_dir = sessions_root / session_id
     it_dir = session_dir / "iteration-1"
     it_dir.mkdir(parents=True, exist_ok=True)
-    (it_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
     # Intentionally no generation-response.md
 
     state = store.load(session_id)
@@ -89,7 +87,6 @@ def test_reviewed_noop_when_review_response_missing(
     session_dir = sessions_root / session_id
     it_dir = session_dir / "iteration-1"
     it_dir.mkdir(parents=True, exist_ok=True)
-    (it_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
     # Intentionally no review-response.md
 
     state = store.load(session_id)
@@ -139,7 +136,6 @@ def test_revised_noop_when_revision_response_missing(
     session_dir = sessions_root / session_id
     it_dir = session_dir / "iteration-2"
     it_dir.mkdir(parents=True, exist_ok=True)
-    (it_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
     # Intentionally no revision-response.md
 
     state = store.load(session_id)

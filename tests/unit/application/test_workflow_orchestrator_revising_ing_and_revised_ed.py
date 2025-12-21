@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
-from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, WorkflowStatus
 from aiwf.domain.persistence.session_store import SessionStore
@@ -36,7 +35,8 @@ class _StubRevisionProcessProfile:
 
 
 def _arrange_at_revising(
-    sessions_root: Path, utf8: str
+    sessions_root: Path,
+    utf8: str
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
@@ -68,7 +68,9 @@ def _arrange_at_revising(
 
 
 def test_revising_writes_revision_prompt_if_missing_and_stays_revising(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path,
+    utf8: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     orch, store, session_id, it_dir = _arrange_at_revising(sessions_root, utf8)
 
@@ -80,19 +82,20 @@ def test_revising_writes_revision_prompt_if_missing_and_stays_revising(
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.REVISING
 
-    prompt_file = it_dir / PROMPTS_DIR / "revision-prompt.md"
+    prompt_file = it_dir / "revision-prompt.md"
     assert prompt_file.is_file()
     assert prompt_file.read_text(encoding=utf8) == "REVISION PROMPT"
     assert stub.generate_called == 1
 
 
 def test_revising_is_noop_when_prompt_exists_and_response_missing(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path,
+    utf8: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     orch, store, session_id, it_dir = _arrange_at_revising(sessions_root, utf8)
 
-    (it_dir / PROMPTS_DIR).mkdir(parents=True, exist_ok=True)
-    (it_dir / PROMPTS_DIR / "revision-prompt.md").write_text("PROMPT", encoding=utf8)
+    (it_dir / "revision-prompt.md").write_text("PROMPT", encoding=utf8)
     # Intentionally no revision-response.md
 
     monkeypatch.setattr(
@@ -114,15 +117,15 @@ def test_revising_is_noop_when_prompt_exists_and_response_missing(
 
 
 def test_revising_transitions_to_revised_when_response_exists_without_processing(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path,
+    utf8: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _require_revised_phase()
     orch, store, session_id, it_dir = _arrange_at_revising(sessions_root, utf8)
 
-    (it_dir / PROMPTS_DIR).mkdir(parents=True, exist_ok=True)
-    (it_dir / PROMPTS_DIR / "revision-prompt.md").write_text("PROMPT", encoding=utf8)
-    (it_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
-    (it_dir / RESPONSES_DIR / "revision-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
+    (it_dir / "revision-prompt.md").write_text("PROMPT", encoding=utf8)
+    (it_dir / "revision-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
 
     # Guard: no processing in REVISING when response exists; must only phase-transition to REVISED.
     monkeypatch.setattr(
@@ -139,14 +142,15 @@ def test_revising_transitions_to_revised_when_response_exists_without_processing
 
 
 def test_revised_processes_revision_response_extracts_and_enters_reviewing(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path,
+    utf8: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _require_revised_phase()
     orch, store, session_id, it_dir = _arrange_at_revising(sessions_root, utf8)
 
     # Put state into REVISED with a response present
-    (it_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
-    (it_dir / RESPONSES_DIR / "revision-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
+    (it_dir / "revision-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
 
     state = store.load(session_id)
     state.phase = WorkflowPhase.REVISED

@@ -2,7 +2,6 @@ import click
 from pathlib import Path
 from pydantic import BaseModel
 
-from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 from aiwf.interface.cli.output_models import InitOutput, StatusOutput, StepOutput
 from aiwf.application.config_loader import load_config
@@ -46,12 +45,14 @@ def _awaiting_paths_for_state(session_id: str, state) -> tuple[bool, list[str]]:
 
     iteration = getattr(state, "current_iteration", None)
     if state.phase == WorkflowPhase.PLANNING:
-        prompt_path = session_dir / PROMPTS_DIR / prompt_name
-        response_path = session_dir / RESPONSES_DIR / response_name
+        # Planning is in iteration-1
+        prompt_path = session_dir / "iteration-1" / prompt_name
+        response_path = session_dir / "iteration-1" / response_name
     else:
+        # Others are in current iteration
         iteration_dir = session_dir / f"iteration-{iteration}"
-        prompt_path = iteration_dir / PROMPTS_DIR / prompt_name
-        response_path = iteration_dir / RESPONSES_DIR / response_name
+        prompt_path = iteration_dir / prompt_name
+        response_path = iteration_dir / response_name
 
     awaiting = prompt_path.exists() and not response_path.exists()
     return awaiting, [str(prompt_path), str(response_path)]

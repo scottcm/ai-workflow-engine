@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
-from aiwf.domain.constants import RESPONSES_DIR
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, WorkflowStatus
 from aiwf.domain.persistence.session_store import SessionStore
@@ -47,8 +46,7 @@ def _arrange_at_reviewed(
     session_dir = sessions_root / session_id
     it_dir = session_dir / "iteration-1"
     it_dir.mkdir(parents=True, exist_ok=True)
-    (it_dir / RESPONSES_DIR).mkdir(parents=True, exist_ok=True)
-    (it_dir / RESPONSES_DIR / "review-response.md").write_text("X", encoding=utf8)
+    (it_dir / "review-response.md").write_text("X", encoding=utf8)
 
     state = store.load(session_id)
     state.current_iteration = 1

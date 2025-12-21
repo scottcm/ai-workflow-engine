@@ -3,7 +3,6 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from aiwf.cli import cli
-from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 
 
@@ -78,10 +77,10 @@ def test_step_awaiting_artifact_exit_2_and_outputs_paths(monkeypatch) -> None:
         iteration = 1
 
         # IMPORTANT: match cli.py path logic exactly:
-        #   root/session_id/iteration-<n>/<PROMPTS_DIR>/<review-prompt.md>
+        #   root/session_id/iteration-<n>/<review-prompt.md>
         # and DO NOT create the response file.
-        prompt = root / session_id / f"iteration-{iteration}" / PROMPTS_DIR / "review-prompt.md"
-        response = root / session_id / f"iteration-{iteration}" / RESPONSES_DIR / "review-response.md"
+        prompt = root / session_id / f"iteration-{iteration}" / "review-prompt.md"
+        response = root / session_id / f"iteration-{iteration}" / "review-response.md"
 
         prompt.parent.mkdir(parents=True, exist_ok=True)
         prompt.write_text("# review prompt", encoding="utf-8")
@@ -119,8 +118,8 @@ def test_step_prompt_and_response_present_exit_0(monkeypatch):
         session_dir = root / "sess_123"
         iteration_dir = session_dir / "iteration-1"
 
-        prompt = iteration_dir / PROMPTS_DIR / "review-prompt.md"
-        response = iteration_dir / RESPONSES_DIR / "review-response.md"
+        prompt = iteration_dir / "review-prompt.md"
+        response = iteration_dir / "review-response.md"
 
         prompt.parent.mkdir(parents=True, exist_ok=True)
         response.parent.mkdir(parents=True, exist_ok=True)

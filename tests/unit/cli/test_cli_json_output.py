@@ -3,12 +3,12 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from aiwf.cli import cli
-from aiwf.domain.constants import PROMPTS_DIR, RESPONSES_DIR
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 
 
 def _norm(p: str) -> str:
-    return p.replace("\\", "/")
+    # Normalize backslashes to forward slashes for cross-platform assertions
+    return p.replace(chr(92), "/")
 
 def _state(*, phase, status, iteration):
     class _S:
@@ -79,7 +79,8 @@ def test_step_emits_json_only_awaiting(monkeypatch):
         monkeypatch.setattr(cli_mod, "DEFAULT_SESSIONS_ROOT", root, raising=True)
 
         # Create prompt only => awaiting response
-        prompt = root / "sess_123" / "iteration-1" / PROMPTS_DIR / "review-prompt.md"
+        # Updated: iteration-1 directly
+        prompt = root / "sess_123" / "iteration-1" / "review-prompt.md"
         prompt.parent.mkdir(parents=True, exist_ok=True)
         prompt.write_text("# prompt", encoding="utf-8")
 
@@ -98,8 +99,9 @@ def test_step_emits_json_only_awaiting(monkeypatch):
     assert isinstance(obj["awaiting_paths"], list)
     assert len(obj["awaiting_paths"]) == 2
 
-    assert any(_norm(p).endswith(f"{PROMPTS_DIR}/review-prompt.md") for p in obj["awaiting_paths"])
-    assert any(_norm(p).endswith(f"{RESPONSES_DIR}/review-response.md") for p in obj["awaiting_paths"])
+    # Updated assertions
+    assert any(_norm(p).endswith("iteration-1/review-prompt.md") for p in obj["awaiting_paths"])
+    assert any(_norm(p).endswith("iteration-1/review-response.md") for p in obj["awaiting_paths"])
 
     assert result.output.count("\n") == 1
 
@@ -123,8 +125,9 @@ def test_step_json_prompt_and_response_present_exit_0(monkeypatch):
         monkeypatch.setattr(cli_mod, "DEFAULT_SESSIONS_ROOT", root, raising=True)
 
         # Create both prompt + response => NOT awaiting
-        prompt = root / "sess_123" / "iteration-1" / PROMPTS_DIR / "review-prompt.md"
-        response = root / "sess_123" / "iteration-1" / RESPONSES_DIR / "review-response.md"
+        # Updated: iteration-1 directly
+        prompt = root / "sess_123" / "iteration-1" / "review-prompt.md"
+        response = root / "sess_123" / "iteration-1" / "review-response.md"
         prompt.parent.mkdir(parents=True, exist_ok=True)
         response.parent.mkdir(parents=True, exist_ok=True)
         prompt.write_text("# prompt", encoding="utf-8")
