@@ -92,6 +92,7 @@ class WorkflowOrchestrator:
         )
 
         profile_instance = ProfileFactory.create(profile)
+        profile_instance.validate_metadata(metadata)
         provider = profile_instance.get_standards_provider()
 
         context = self._build_context(state)
@@ -580,8 +581,12 @@ class WorkflowOrchestrator:
         state.phase_history.append(PhaseTransition(phase=phase, status=status))
 
     def _prompt_context(self, *, state: WorkflowState) -> dict[str, Any]:
-        metadata = state.metadata or {}
-        return {
+        """Build context dict for template rendering.
+
+        All metadata fields are flattened into the context so they're
+        automatically available as {{KEY}} placeholders in templates.
+        """
+        context = {
             "session_id": state.session_id,
             "profile": state.profile,
             "scope": state.scope,
@@ -592,13 +597,15 @@ class WorkflowOrchestrator:
             "table": state.table,
             "dev": state.dev,
             "task_id": state.task_id,
-            "metadata": state.metadata,
             "iteration": getattr(state, "current_iteration", None),
             "date": date.today().isoformat(),
             "phase": state.phase,
             "status": state.status,
-            "schema_file": metadata.get("schema_file"),
         }
+        # Flatten metadata fields into context for template access
+        if state.metadata:
+            context.update(state.metadata)
+        return context
 
 
 

@@ -28,7 +28,6 @@ if "ARTIFACT_ROOT" not in os.environ:
 try:
     from aiwf.domain.models.workflow_state import WorkflowPhase
     from profiles.jpa_mt.jpa_mt_profile import JpaMtProfile
-    from profiles.jpa_mt.template_renderer import TemplateRenderer
 except ImportError as e:
     print(f"Error importing required modules: {e}")
     print("Ensure you are running this script from the project root or have the environment set up correctly.")
@@ -77,14 +76,13 @@ def main():
         logger.error(f"Failed to create directory {session_dir}: {e}")
         sys.exit(1)
 
-    # 2. Initialize JpaMtProfile and TemplateRenderer
+    # 2. Initialize JpaMtProfile
     try:
         # Rely on default config loading logic
         profile = JpaMtProfile()
-        renderer = TemplateRenderer(profile)
-        logger.info("Initialized JpaMtProfile and TemplateRenderer.")
+        logger.info("Initialized JpaMtProfile.")
     except Exception as e:
-        logger.error(f"Failed to initialize profile or renderer: {e}")
+        logger.error(f"Failed to initialize profile: {e}")
         sys.exit(1)
 
     # 3. Build context dict
@@ -101,56 +99,39 @@ def main():
         "BOUNDED_CONTEXT": bounded_context,
         "SESSION_ID": session_id,
         "PROFILE": "jpa-mt",
-        "ITERATION": iteration
+        "ITERATION": iteration,
+        "scope": scope, # JpaMtProfile expects lowercase 'scope' in context
     }
 
     # 4. Render and Write Prompts
 
-    # Function to handle rendering and writing
-    def render_and_write(workflow_phase, output_filename, log_phase_name):
-        try:
-            # Render
-            logger.info(f"Rendering {log_phase_name} prompt for scope '{scope}'...")
-            prompt_content = renderer.render_template(
-                phase=workflow_phase,
-                scope=scope,
-                context=context
-            )
-            
-            # Log the resolved template path (need to access internal logic or just trust it worked)
-            # Since render_template calls prompt_template_for, we can call it here just for logging purposes
-            template_path = profile.prompt_template_for(workflow_phase, scope)
-            logger.info(f"Resolved template: {template_path}")
-
-            # Write
-            output_path = session_dir / output_filename
-            output_path.write_text(prompt_content, encoding='utf-8')
-            logger.info(f"Wrote {log_phase_name} prompt to: {output_path}")
-
-        except KeyError as e:
-            logger.error(f"Missing context key for {log_phase_name}: {e}")
-            # In a real scenario we might retry with more dummy values, 
-            # but we've populated all known required ones.
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"Failed to render/write {log_phase_name} prompt: {e}")
-            sys.exit(1)
-
     # Planning Phase
     if phase_selection in ["planning", "both"]:
-        render_and_write(
-            WorkflowPhase.INITIALIZED, 
-            "planning-prompt.md", 
-            "Planning"
-        )
+        try:
+            logger.info(f"Rendering Planning prompt for scope '{scope}'...")
+            prompt_content = profile.generate_planning_prompt(context)
+            
+            output_path = session_dir / "planning-prompt.md"
+            output_path.write_text(prompt_content, encoding='utf-8')
+            logger.info(f"Wrote Planning prompt to: {output_path}")
+        except Exception as e:
+            logger.error(f"Failed to render/write Planning prompt: {e}")
+            sys.exit(1)
 
     # Generation Phase
     if phase_selection in ["generation", "both"]:
-        render_and_write(
-            WorkflowPhase.PLANNED, 
-            "generation-prompt.md", 
-            "Generation"
-        )
+        try:
+            logger.info(f"Rendering Generation prompt for scope '{scope}'...")
+            prompt_content = profile.generate_generation_prompt(context)
+            
+            output_path = session_dir / "generation-prompt.md"
+            output_path.write_text(prompt_content, encoding='utf-8')
+            logger.info(f"Wrote Generation prompt to: {output_path}")
+        except Exception as e:
+            logger.error(f"Failed to render/write Generation prompt: {e}")
+            sys.exit(1)
+
+    logger.info("Done.")
 
     logger.info("Done.")
 

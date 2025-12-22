@@ -8,6 +8,26 @@ from aiwf.domain.profiles.profile_factory import ProfileFactory
 from aiwf.domain.models.workflow_state import WorkflowStatus
 
 
+class TestMetadataValidation:
+    """Tests for jpa-mt profile metadata validation."""
+
+    def test_validate_metadata_requires_schema_file(self, jpa_mt_profile):
+        """jpa-mt profile requires schema_file in metadata."""
+        with pytest.raises(ValueError, match="jpa-mt profile requires --schema-file argument"):
+            jpa_mt_profile.validate_metadata(None)
+
+        with pytest.raises(ValueError, match="jpa-mt profile requires --schema-file argument"):
+            jpa_mt_profile.validate_metadata({})
+
+        with pytest.raises(ValueError, match="jpa-mt profile requires --schema-file argument"):
+            jpa_mt_profile.validate_metadata({"other_field": "value"})
+
+    def test_validate_metadata_accepts_schema_file(self, jpa_mt_profile):
+        """jpa-mt profile accepts metadata with schema_file."""
+        # Should not raise
+        jpa_mt_profile.validate_metadata({"schema_file": "path/to/schema.sql"})
+
+
 @pytest.fixture
 def jpa_mt_profile(tmp_path, monkeypatch):
     """Create JPA-MT profile with test standards directory."""

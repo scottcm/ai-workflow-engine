@@ -18,16 +18,13 @@ Final Prompt (ready for AI)
 
 ## Usage
 
-### Step 1: Create Profile and Renderer
+### Step 1: Initialize Profile
 
 ```python
-from profiles.jpa_mt import JpaMtProfile, TemplateRenderer
+from profiles.jpa_mt import JpaMtProfile
 
 # Load profile with config
 profile = JpaMtProfile(config)
-
-# Create renderer
-renderer = TemplateRenderer(profile)
 ```
 
 ### Step 2: Prepare Context
@@ -46,20 +43,15 @@ context = {
     "SESSION_ID": session_id,
     "PROFILE": "jpa-mt",
     "ITERATION": str(iteration),
+    "scope": "domain", # Profile logic uses lowercase key for template selection
 }
 ```
 
 ### Step 3: Render Template
 
 ```python
-from aiwf.domain.models.workflow_state import WorkflowPhase
-
 # Render planning prompt
-prompt = renderer.render_template(
-    phase=WorkflowPhase.INITIALIZED,  # Planning
-    scope="domain",
-    context=context
-)
+prompt = profile.generate_planning_prompt(context)
 
 # Write to file
 prompt_path = session_dir / "iteration-1" / "planning-prompt.md"
@@ -71,7 +63,6 @@ prompt_path.write_text(prompt)
 ### Layer 1: Shared (_shared/)
 - `base.md` - Metadata, AI persona, file attachments
 - `fallback-rules.md` - Deterministic defaults
-- `standards-priority.md` - Standards override rule
 
 ### Layer 2: Phase-Specific (_phases/)
 - `planning-guidelines.md` - Planning phase behavior
@@ -85,73 +76,20 @@ prompt_path.write_text(prompt)
 
 ## Include Resolution Rules
 
-The renderer supports two types of include paths:
+The profile supports recursive include resolution:
 
 1.  **Relative Paths:** Start with `./` or `../`
     -   Resolved relative to the **current template file's directory**.
     -   Example: `{{include: ../_shared/base.md}}` inside `planning/domain.md` resolves to `templates/_shared/base.md`.
 
-2.  **Root-Relative Paths:** Do not start with `./` or `../`
-    -   Resolved relative to the **profile's templates root directory** (`profiles/jpa_mt/templates/`).
-    -   Example: `{{include: _shared/base.md}}` resolves to `templates/_shared/base.md` regardless of where it is included from.
-
 ## Phase 3 Integration Points
 
-### ManualProvider
-
-```python
-class ManualProvider(AIProvider):
-    def __init__(self, profile: JpaMtProfile):
-        self.renderer = TemplateRenderer(profile)
-    
-    async def generate(self, prompt: str, context: dict) -> str:
-        # Render complete prompt
-        rendered = self.renderer.render_template(
-            context["phase"],
-            context["scope"],
-            context
-        )
-        
-        # Write to session directory
-        prompt_path = self._get_prompt_path(context)
-        prompt_path.write_text(rendered)
-        
-        # Return placeholder (user will fill manually)
-        return f"Prompt written to: {prompt_path}"
-```
-
-### Commands
-
-```python
-class PreparePlanningCommand(Command):
-    def __init__(self, profile: JpaMtProfile):
-        self.renderer = TemplateRenderer(profile)
-    
-    async def execute(self, state: WorkflowState) -> None:
-        context = self._build_context(state)
-        
-        prompt = self.renderer.render_template(
-            WorkflowPhase.INITIALIZED,
-            state.scope,
-            context
-        )
-        
-        # Write prompt file
-        self._write_prompt(state, prompt)
-```
-
-## Testing
-
-Run tests:
-```bash
-pytest tests/unit/profiles/jpa_mt/test_template_renderer.py -v
-```
+The Orchestrator uses the profile's `generate_<phase>_prompt` methods during the `step()` execution to produce prompt files automatically.
 
 ## Troubleshooting
 
-### "Missing required context keys"
-Ensure all required placeholders are in context dict:
-- TASK_ID, DEV, DATE, ENTITY, SCOPE, TABLE, BOUNDED_CONTEXT, SESSION_ID, PROFILE, ITERATION
+### "schema_file not in metadata"
+The `jpa-mt` profile requires `--schema-file` during initialization to provide the `{{SCHEMA_DDL}}` placeholder.
 
 ### "Circular include detected"
 Check templates for circular references:

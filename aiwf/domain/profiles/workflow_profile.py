@@ -1,11 +1,26 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any
 
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.application.standards_provider import StandardsProvider  # Add import
 
 
 class WorkflowProfile(ABC):
+    def validate_metadata(self, metadata: dict[str, Any] | None) -> None:
+        """Validate metadata required by this profile.
+
+        Called during workflow initialization. Profiles should override
+        to check for required metadata fields.
+
+        Args:
+            metadata: Metadata dict from workflow init, may be None
+
+        Raises:
+            ValueError: If required metadata is missing or invalid
+        """
+        pass  # Default: no validation
+
     @abstractmethod
     def get_standards_provider(self) -> StandardsProvider:
         """

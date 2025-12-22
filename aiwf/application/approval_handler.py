@@ -44,15 +44,23 @@ class ApprovalHandler:
 
         # ED Phases (Planned, Generated, Revised, Reviewed)
         elif state.phase == WorkflowPhase.PLANNED:
-            spec = ED_APPROVAL_SPECS.get(state.phase)
-            if spec and spec.plan_relpath:
-                plan_relpath = spec.plan_relpath
+            ed_spec = ED_APPROVAL_SPECS.get(state.phase)
+            ing_spec = ING_APPROVAL_SPECS.get(WorkflowPhase.PLANNING)
+            if ed_spec and ed_spec.plan_relpath and ing_spec:
+                # Read planning-response.md from iteration directory
+                response_relpath = ing_spec.response_relpath_template.format(N=state.current_iteration)
+                response_path = session_dir / response_relpath
+                if not response_path.exists():
+                    raise FileNotFoundError(f"Cannot approve: missing planning response '{response_relpath}' (expected at {response_path})")
+
+                # Write to plan.md in session root
+                plan_relpath = ed_spec.plan_relpath
                 plan_path = session_dir / plan_relpath
-                if not plan_path.exists():
-                    raise FileNotFoundError(f"Cannot approve: missing plan file '{plan_relpath}' (expected at {plan_path})")
+                plan_content = response_path.read_bytes()
+                plan_path.write_bytes(plan_content)
 
                 state.plan_approved = True
-                state.plan_hash = hashlib.sha256(plan_path.read_bytes()).hexdigest()
+                state.plan_hash = hashlib.sha256(plan_content).hexdigest()
 
         elif state.phase == WorkflowPhase.REVIEWED:
             spec = ED_APPROVAL_SPECS[WorkflowPhase.REVIEWED]

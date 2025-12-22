@@ -2,6 +2,35 @@
 
 This document defines the full implementation plan for M7, broken into discrete, test-driven slices. Each slice is independently verifiable and builds on locked contracts from prior slices.
 
+Slice Contract Conventions (Global, Locked)
+
+A. Responsibility boundaries
+* Every slice that touches paths, I/O, hashing, state mutation, or persistence MUST include a Responsibility Assignment statement.
+* Default rule unless explicitly overridden by the slice:
+  * Profiles emit logical outputs (iteration-relative paths, write intents, structured results).
+  * Engine/Orchestrator performs physical materialization (iteration directories, session-root prefixing, file writes, metadata persistence).
+B. Path semantics (default)
+* For **iteration-scoped artifacts** (code, review, revision):
+  * `WriteOp.path` MUST be relative to iteration root (e.g., `code/Entity.java`)
+  * Engine prefixes with `iteration-{state.current_iteration}/`
+* For **session-scoped artifacts** (standards bundle, planning):
+  * Paths are relative to session root directly
+* Artifact metadata paths are always session-root-relative (`iteration-N/code/Entity.java`)
+* Tests MUST validate engine behavior by providing iteration-relative paths (no `iteration-N/` in fixtures/fakes).
+C. Artifact metadata semantics (default)
+* Every artifact written to disk MUST result in a corresponding Artifact record appended to state.artifacts.
+* Artifact.iteration MUST equal state.current_iteration at creation time.
+* Revision loops MUST NOT mutate prior iteration artifacts; new artifacts are additive under a new iteration root.
+D. Test fixture policy
+* If shared/autouse fixtures suppress behavior required by a slice, the slice tests MUST shadow/override those fixtures at module scope.
+* Slice tests MUST be hermetic: use tmp_path, no reliance on repo paths, home dir, or /tmp.
+E. Python version / forbidden boilerplate
+* Python is 3.13.
+* Forbidden in new code/tests unless a slice explicitly requires it:
+  * from __future__ import annotations
+F. “Anti-requirements” pattern (mandatory when a slice is easy to bypass)
+* Each slice MUST list at least one “Anti-requirement” that prevents tests from “cheating” the intended contract (e.g., “tests must not embed iteration prefixes in WritePlans”).
+
 ---
 
 ## Slice 1 — Core Domain Model Contracts

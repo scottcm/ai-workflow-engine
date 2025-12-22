@@ -69,6 +69,9 @@ class FakeProfile:
         self._revision_write_plan = revision_write_plan
         self._review_status = review_status
 
+    def validate_metadata(self, metadata):
+        pass  # No validation needed for tests
+
     def get_standards_provider(self) -> FakeStandardsProvider:
         return FakeStandardsProvider()
 

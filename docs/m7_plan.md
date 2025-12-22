@@ -14,6 +14,17 @@ This document is authoritative for M7 execution.
 
 ---
 
+## Status
+
+**M7 is COMPLETE.** This document reflects the implemented behavior.
+
+Completed slices:
+- 7A: Core domain model contracts
+- 7B: Approval system with deferred hashing
+- 7C: REVIEWED approval gate
+
+---
+
 ## Core Workflow Model
 
 ### Phase Structure
@@ -27,39 +38,45 @@ class WorkflowPhase(str, Enum):
     
     # Planning
     PLANNING = "planning"      # *ING: prompt issued, awaiting response
-    PLANNED = "planned"        # *ED: response received, processing
+    PLANNED = "planned"        # *ED: response received, awaiting approval
     
     # Generation
-    GENERATING = "generating"  # *ING: prompt issued, awaiting response
-    GENERATED = "generated"    # *ED: response received, code extracted
+    GENERATING = "generating"  # *ING: prompt issued, processes response, extracts code
+    GENERATED = "generated"    # *ED: gates on artifact hashes (approval required)
     
     # Review
     REVIEWING = "reviewing"    # *ING: prompt issued, awaiting response
-    REVIEWED = "reviewed"      # *ED: response received, verdict processed
+    REVIEWED = "reviewed"      # *ED: gates on review_approved, then processes verdict
     
     # Revision
-    REVISING = "revising"      # *ING: prompt issued, awaiting response
-    REVISED = "revised"        # *ED: response received, code extracted
+    REVISING = "revising"      # *ING: prompt issued, processes response, extracts code
+    REVISED = "revised"        # *ED: gates on artifact hashes (approval required)
     
     # Terminal
     COMPLETE = "complete"
+    ERROR = "error"
+    CANCELLED = "cancelled"
 ```
 
-### Phase Responsibility Split
+### Phase Responsibility Split (As Implemented)
 
-***ING* phases:**
-- Prompt issuance
-- File existence gating
-- Waiting for user to provide response file
-- No hashing occurs
+**PLANNING, REVIEWING (ING phases):**
+- Prompt issuance if missing
+- Gate on response file existence
+- Transition to ED phase when response exists
+- No response processing
 
-***ED* phases:**
-- Response processing
-- Artifact extraction
-- State transition decisions
-- No hashing occurs (happens on approval)
+**GENERATING, REVISING (ING phases with processing):**
+- Prompt issuance if missing
+- When response exists: process response, extract code, write artifacts
+- Transition to ED phase
+- Note: This deviates from pure ING/ED split but works correctly
 
-This split is documented in ADR-0001 (as amended) and enforced by tests.
+**PLANNED, GENERATED, REVISED, REVIEWED (ED phases):**
+- Gate on approval state
+- PLANNED: gates on `plan_approved`
+- GENERATED/REVISED: gates on all artifacts having `sha256` set
+- REVIEWED: gates on `review_approved`, then processes verdict
 
 ### Loop Semantics
 
@@ -109,33 +126,34 @@ If a required file is missing:
 **Session-Scoped Files:**
 ```
 .aiwf/sessions/{session-id}/
+├── session.json             # Workflow state
 ├── standards-bundle.md      # Created at init, immutable
-└── planning-response.md     # Created in PLANNING, immutable after approval
+└── plan.md                  # Created in PLANNED, hashed on approval
 ```
 
 **Iteration-Scoped Files:**
 ```
 .aiwf/sessions/{session-id}/
 ├── iteration-1/
-│   ├── generating-prompt.md
-│   ├── generating-response.md
+│   ├── planning-prompt.md
+│   ├── planning-response.md
+│   ├── generation-prompt.md
+│   ├── generation-response.md
 │   ├── code/
 │   │   ├── Tier.java
 │   │   └── TierRepository.java
-│   ├── reviewing-prompt.md
-│   └── reviewing-response.md
+│   ├── review-prompt.md
+│   └── review-response.md
 │
 └── iteration-2/              # Created only if revision needed
-    ├── revising-prompt.md
-    ├── revising-response.md
+    ├── revision-prompt.md
+    ├── revision-response.md
     ├── code/
     │   ├── Tier.java         # Revised
     │   └── TierRepository.java
-    ├── reviewing-prompt.md
-    └── reviewing-response.md
+    ├── review-prompt.md
+    └── review-response.md
 ```
-
-**Note:** Planning prompt/response are session-scoped (not in iteration directories).
 
 Filenames are intentional and semantic. They are part of the workflow contract and must not be treated as incidental.
 
@@ -157,9 +175,9 @@ Workflow state tracks **metadata only**, never content:
 ```python
 class Artifact(BaseModel):
     path: str                 # "iteration-1/code/Tier.java"
-    phase: WorkflowPhase      # GENERATED, REVISED
+    phase: WorkflowPhase      # GENERATING, REVISING (phase when written)
     iteration: int            # 1, 2, 3, ...
-    sha256: str | None        # File hash for deduplication
+    sha256: str | None        # None until approved, then file hash
     created_at: datetime      # When created
 ```
 
@@ -180,55 +198,11 @@ Semantics are encoded via filenames, phase, and iteration.
 
 To support diverse standards strategies while maintaining clean boundaries:
 
-**Interface definition:**
 ```python
 class StandardsProvider(ABC):
-    """
-    Provides standards content for a workflow session.
-    
-    This is the ONLY component allowed to perform I/O for standards.
-    Profiles provide a provider; engine invokes it.
-    """
-    
     @abstractmethod
     def create_bundle(self, context: dict[str, Any]) -> str:
-        """
-        Create standards bundle for the given context.
-        
-        Args:
-            context: Workflow context (scope, entity, etc.)
-            
-        Returns:
-            Complete standards bundle as string
-            
-        May perform I/O (filesystem, DB, API, etc.)
-        """
-        ...
-    
-    @abstractmethod
-    def read_bundle(self, session_dir: Path) -> str:
-        """
-        Read standards bundle from session directory.
-        
-        Args:
-            session_dir: Path to session directory
-            
-        Returns:
-            Standards bundle content
-            
-        Used for verification (hash checking)
-        """
-        ...
-```
-
-### Profile Registration
-
-**Profiles provide standards provider:**
-```python
-class WorkflowProfile(ABC):
-    @abstractmethod
-    def get_standards_provider(self) -> StandardsProvider:
-        """Return the standards provider for this profile."""
+        """Create standards bundle for the given context."""
         ...
 ```
 
@@ -248,246 +222,50 @@ class WorkflowState(BaseModel):
 
 Standards are **not tracked as artifacts** and are not part of iteration logic.
 
-### Boundary Rules
-
-- **Profile**: Zero I/O (provides provider)
-- **Provider**: I/O allowed (adapter pattern)
-- **Engine**: Invokes provider, writes bundle, computes hash
-
-### Implementation Examples
-
-**FileBasedStandardsProvider (jpa-mt):**
-- Reads markdown files from filesystem
-- Merges based on layer-to-standards mapping
-- Concatenates with separators
-
-**Future providers:**
-- RagStandardsProvider: Queries vector database
-- ApiStandardsProvider: Fetches from REST API
-- DatabaseStandardsProvider: Queries relational database
-
-### Standards Verification (Non-Blocking)
-
-Engine checks standards hash on approval:
-
-```python
-def check_standards_unchanged(
-    provider: StandardsProvider,
-    session_dir: Path,
-    expected_hash: str
-) -> bool:
-    """
-    Check if standards have changed.
-    
-    Returns:
-        True if unchanged, False if changed
-        
-    Does NOT raise exception.
-    Logs warning if mismatch.
-    Does NOT block workflow.
-    """
-    try:
-        current_bundle = provider.read_bundle(session_dir)
-        current_hash = hashlib.sha256(current_bundle.encode()).hexdigest()
-        
-        if current_hash != expected_hash:
-            logger.warning(
-                "⚠️  Standards bundle has changed since session creation. "
-                "This may affect workflow consistency."
-            )
-            return False
-        
-        return True
-    
-    except Exception as e:
-        logger.warning(f"Could not verify standards: {e}")
-        return False
-```
-
-**Verification behavior:**
-- If unchanged: Continue silently
-- If changed: Log warning, continue anyway
-- Hash mismatches **DO NOT** block workflow
-- Used for audit trail and user awareness only
-
 ---
 
-## Planning Semantics
+## Approval System
 
-### Editable Until Approval
+### Step vs Approve Semantics
 
-- During **PLANNING**, `planning-response.md` may be edited by the developer.
-- Planning is reviewed manually.
-
-### Plan Approval
-
-Planning is approved explicitly by the developer via:
-
-```bash
-aiwf approve
-```
-
-**Note:** No phase argument required. Engine knows current phase.
-
-### Approval Process
-
-When `aiwf approve` is issued during PLANNING → GENERATED transition:
-
-1. Developer reviews `planning-response.md`
-2. Developer runs: `aiwf approve`
-3. Profile validates planning response (profile-specific logic)
-4. If valid, profile returns `ProcessingResult(approved=True)`
-5. Engine computes `plan_hash` from `planning-response.md`
-6. Engine sets `plan_approved=True`
-7. Engine transitions to GENERATING
-
-How approval validation works is profile-specific.
-The engine only enforces that approval occurred via state transition.
-
-### After Approval
-
-- Planning becomes immutable (conceptually).
-- Engine computes and stores `plan_hash`.
-- Any change after approval is logged but does not block workflow.
-
-```python
-class WorkflowState(BaseModel):
-    plan_approved: bool
-    plan_hash: str | None  # SHA256 of planning-response.md
-```
-
-If the plan must change after approval, a **new session is required**.
-
----
-
-## Step vs Approve Semantics
-
-### Core Distinction
-
-| Command        | Responsibility                                         |
-| -------------- | ------------------------------------------------------ |
-| `aiwf step`    | Perform deterministic engine work and advance workflow |
-| `aiwf approve` | Commit current artifacts and compute/store hashes      |
+| Command                      | Responsibility                                    |
+| ---------------------------- | ------------------------------------------------- |
+| `aiwf step {session_id}`     | Perform deterministic engine work, advance phases |
+| `aiwf approve {session_id}`  | Hash artifacts, set approval flags                |
 
 **Step advances. Approve commits.**
 
-### Why Approval Exists
+### Approval Gates
 
-Approval is required for **technical correctness**, not UX preference.
+| Phase     | Gate Condition                    | Approval Sets                     |
+|-----------|-----------------------------------|-----------------------------------|
+| PLANNED   | `plan_approved == True`           | `plan_approved`, `plan_hash`      |
+| GENERATED | All artifacts have `sha256`       | `artifact.sha256` for each file   |
+| REVIEWED  | `review_approved == True`         | `review_approved`, `review_hash`  |
+| REVISED   | All artifacts have `sha256`       | `artifact.sha256` for each file   |
 
-Approval:
-1. Defines the **hash boundary**
-2. Ensures hashes reflect **what the developer accepted**
-3. Enables **no-op revision detection**
-4. Supports both **human-in-the-loop** and **automated profiles**
+### ING Phase Approval
 
-Hashing during `step` is explicitly rejected because files may still be edited.
+For ING phases (PLANNING, GENERATING, REVIEWING, REVISING), approval:
+1. Reads prompt from disk (captures user edits)
+2. Optionally hashes prompt (if `hash_prompts` enabled)
+3. Calls provider with prompt content
+4. Writes response if provider returns content
+
+### ED Phase Approval
+
+For ED phases (PLANNED, GENERATED, REVIEWED, REVISED), approval:
+1. Reads output files from disk (captures user edits)
+2. Computes and stores hashes
+3. Sets approval flags
 
 ### Approval Command
 
-**No phase argument required:**
 ```bash
-aiwf approve
+aiwf approve {session_id}
+aiwf approve {session_id} --hash-prompts
+aiwf approve {session_id} --no-hash-prompts
 ```
-
-The engine always knows the current phase; therefore approval applies to the current approval boundary in engine state.
-
----
-
-## Explicit Approvals
-
-Approvals are **explicit, user-driven checkpoints**.
-
-### Semantics of Approval
-
-When `aiwf approve` is issued, the engine:
-
-1. Verifies required files for the phase exist
-2. Computes SHA256 hashes for those files
-3. Records hashes and approval metadata in state
-
-Approval:
-- **does not lock the filesystem**
-- **does not prevent edits**
-- serves as an **audit and comparison point only**
-- **does not block workflow on hash mismatches**
-
----
-
-## ProcessingResult Contract
-
-### Updated Structure
-
-```python
-class ProcessingResult(BaseModel):
-    status: WorkflowStatus          # SUCCESS, ERROR, IN_PROGRESS
-    approved: bool = False          # True if no human review needed
-    write_plan: WritePlan | None = None
-    artifacts: list[Artifact] = []
-    error_message: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-```
-
-### approved Flag Semantics
-
-**`approved=True`:**
-- Profile completed all required checks
-- No human review required
-- Engine may proceed to next phase after `aiwf approve`
-
-**`approved=False` (default for M7):**
-- Engine must wait for `aiwf approve` before advancing
-- Human review required
-
-### Policy for M7
-
-**Policy A:**
-- One workflow transition per `step`
-- Even if `approved=True`, engine does not auto-step again
-- Explicit `aiwf approve` always required
-
-The flag exists to:
-- Reduce UX friction where possible (future)
-- Support future automated profiles
-- Make approval state explicit
-
-### WorkflowStatus Clarification
-
-`WorkflowStatus` describes **what happened**, not approval state:
-
-- `SUCCESS` → processing completed correctly
-- `ERROR` → invalid input / unrecoverable error
-- `IN_PROGRESS` → awaiting external input (missing response file)
-
-**Constraint:**
-- `IN_PROGRESS` must **only** mean "waiting for input"
-- Approval is **never inferred** from `WorkflowStatus`
-
----
-
-## ING / ED Execution Model
-
-### ING (Prompt Creation)
-
-- `step` executes ING logic
-- Engine writes prompt file
-- Profile may iterate internally (automated) or require human review (`approved=False`)
-- **No hashing occurs**
-
-### ED (Response Processing)
-
-- `step` executes ED logic
-- Engine processes response via profile
-- For generation/revision: code files are extracted
-- Developer may edit extracted code
-- **No hashing occurs** (happens on approval)
-
-### Approval
-
-- `aiwf approve` hashes the **final accepted state**
-- Hashes reflect post-edit prompt/response and post-edit code files
-- Hashes used for audit and deduplication only
-- Hash mismatches log warnings but **do not block workflow**
 
 ---
 
@@ -496,85 +274,103 @@ The flag exists to:
 ### General Rules
 
 - Hashing is performed **only on approval**.
-- The engine computes all hashes.
+- `write_artifacts()` writes files with `sha256=None`.
+- The engine computes all hashes during `approve()`.
 - Content is never stored in workflow state.
 - Hash mismatches **do not block workflow** (non-enforcement).
 
 ### What Gets Hashed
 
-#### Plan Approval
-- `planning-prompt.md` (optional)
-- `planning-response.md` (required)
-- `standards-bundle.md` (checked, not hashed again if already hashed at init)
+| Approval Point | What Gets Hashed                     | Stored In                |
+|----------------|--------------------------------------|--------------------------|
+| PLANNED        | `plan.md`                            | `state.plan_hash`        |
+| GENERATED      | `iteration-N/code/*` files           | `artifact.sha256`        |
+| REVIEWED       | `iteration-N/review-response.md`     | `state.review_hash`      |
+| REVISED        | `iteration-N/code/*` files           | `artifact.sha256`        |
+| ING (optional) | `*-prompt.md`                        | `state.prompt_hashes`    |
 
-#### Generation / Revision Approval
-- All files under `iteration-N/code/*` (per-file hashes)
-- `generating-response.md` or `revising-response.md` (optional, audit only)
+### Prompt Hashing (Optional)
 
-#### Review Approval
-- `reviewing-prompt.md` (optional)
-- `reviewing-response.md` (optional)
+Controlled by:
+- Config: `hash_prompts: false` (default)
+- CLI: `--hash-prompts` / `--no-hash-prompts` (overrides config)
 
-### Deduplication Algorithm
+When enabled, prompts are hashed during ING approval and stored in `state.prompt_hashes` dict.
 
-Dedup applies **only to code outputs**.
+---
 
-**Per-file hash comparison between iterations:**
+## WorkflowState Fields
 
 ```python
-def is_identical_to_previous_iteration(
-    current_iter: int, 
-    artifacts: list[Artifact]
-) -> bool:
-    """
-    Compare code artifacts between iteration N and N-1.
+class WorkflowState(BaseModel):
+    # Identity
+    session_id: str
+    profile: str
+    scope: str
+    entity: str
     
-    Returns True if all files are identical (same names, same hashes).
-    """
+    # Context
+    bounded_context: str | None
+    table: str | None
+    dev: str | None
+    task_id: str | None
     
-    # Get code artifacts for both iterations
-    prev_files = {
-        a.path.split('/')[-1]: a.sha256  # filename -> hash
-        for a in artifacts
-        if a.iteration == current_iter - 1 and '/code/' in a.path
-    }
+    # State
+    phase: WorkflowPhase
+    status: WorkflowStatus
+    execution_mode: ExecutionMode
+    current_iteration: int = 1
     
-    curr_files = {
-        a.path.split('/')[-1]: a.sha256
-        for a in artifacts
-        if a.iteration == current_iter and '/code/' in a.path
-    }
+    # Hashing and approval
+    standards_hash: str
+    plan_approved: bool = False
+    plan_hash: str | None = None
+    review_approved: bool = False
+    review_hash: str | None = None
+    prompt_hashes: dict[str, str] = {}
     
-    # File count must match
-    if len(prev_files) != len(curr_files):
-        return False
+    # Providers
+    providers: dict[str, str]  # role -> provider_key
     
-    # All filenames must match
-    if set(prev_files.keys()) != set(curr_files.keys()):
-        return False
+    # Artifacts
+    artifacts: list[Artifact] = []
     
-    # All hashes must match
-    for filename in prev_files:
-        if prev_files[filename] != curr_files[filename]:
-            return False
+    # Error tracking
+    last_error: str | None = None
     
-    return True
+    # Timestamps
+    created_at: datetime
+    updated_at: datetime
+    
+    # History
+    phase_history: list[PhaseTransition] = []
 ```
 
-**When identical code detected:**
-1. Log warning: `"⚠️  Revision produced no changes"`
-2. Provide user feedback about potential causes
-3. Optionally skip automatic review (implementation decision)
-4. Prompt user for next action
+---
 
-**Edge cases:**
-- **Different file count:** NOT identical (file added/removed)
-- **Different filenames:** NOT identical (rename counts as change)
-- **Same filename, different hash:** NOT identical (content changed)
+## Configuration
 
-### No Directory-Level Hashing
+### Location Precedence
 
-All hashing is per-file. No aggregate directory hashes are computed or stored.
+1. `./.aiwf/config.yml` (project-specific, highest priority)
+2. `~/.aiwf/config.yml` (user-specific)
+3. Built-in defaults (fallback)
+
+### Structure
+
+```yaml
+profile: jpa-mt
+
+providers:
+  planner: manual
+  generator: manual
+  reviewer: manual
+  reviser: manual
+
+hash_prompts: false
+
+dev: null
+```
 
 ---
 
@@ -598,12 +394,11 @@ All hashing is per-file. No aggregate directory hashes are computed or stored.
 ### Engine
 - Owns all session file I/O
 - Invokes StandardsProvider
-- Writes all files and artifacts
+- Writes all files and artifacts (with `sha256=None`)
 - Executes WritePlan
-- Computes all hashes
+- Computes all hashes (during `approve()`)
 - Records approvals
 - Advances workflow state
-- Performs hash verification (non-blocking)
 
 ---
 
@@ -613,7 +408,7 @@ This engine is **not adversarial**.
 
 ### File Editing Policy
 
-- Editing past files is allowed at any time
+- Editing files is allowed at any time
 - The engine does not refuse to proceed due to file edits
 - Hash mismatches log warnings but **never block workflow**
 
@@ -628,32 +423,6 @@ This engine is **not adversarial**.
 - Enforce immutability (not a goal)
 - Block workflow progression (never happens)
 - Prevent file modifications (developer freedom)
-- Lock filesystem state (not possible)
-
-### Hash Verification Behavior
-
-**Standards hash mismatch:**
-- Log: `"⚠️  Standards changed since session creation"`
-- Continue workflow
-- User awareness only
-
-**Plan hash mismatch:**
-- Log: `"⚠️  Plan changed since approval"`
-- Continue workflow
-- User awareness only
-
-**Code hash mismatch:**
-- Log: `"⚠️  Code changed since approval"`
-- May affect deduplication detection
-- Continue workflow
-
-**Rationale:**
-- Trust the developer
-- Hashes are for audit, not enforcement
-- Workflow correctness based on **current inputs**
-- No adversarial blocking
-
-Correctness depends on **current phase inputs and current iteration outputs**, not on historical files.
 
 ---
 
@@ -663,7 +432,7 @@ Profiles return WritePlan to specify what files to write:
 
 ```python
 class WriteOp(BaseModel):
-    path: str      # Relative to session root
+    path: str      # Relative path (e.g., "code/Tier.java")
     content: str   # File content
 
 class WritePlan(BaseModel):
@@ -671,67 +440,20 @@ class WritePlan(BaseModel):
 ```
 
 **Engine executes WritePlan:**
+- Prefixes paths with `iteration-{N}/`
 - Creates parent directories
 - Writes files
-- Computes SHA256 per file
-- Returns Artifact metadata with hashes
+- Creates Artifact records with `sha256=None`
+- Hashing deferred to `approve()`
 
 **Profile never performs file I/O.**
 
 ---
 
-## Configuration Architecture
-
-### Engine Configuration
-
-**Location precedence:**
-1. `./.aiwf/config.yml` (project-specific, highest priority)
-2. `~/.aiwf/config.yml` (user-specific)
-3. Built-in defaults (fallback)
-
-**Structure:**
-```yaml
-# Engine configuration
-working_directory: ".aiwf"
-standards_root: "${STANDARDS_DIR}"  # Default for all profiles
-default_profile: "jpa-mt"
-```
-
-### Profile Configuration
-
-**Location:** `profiles/jpa-mt/config.yml` (packaged with profile)
-
-**Structure:**
-```yaml
-# Domain policy (profile-specific)
-scopes:
-  domain:
-    layers: [entity, repository]
-  vertical:
-    layers: [entity, repository, service, controller, dto, mapper]
-
-layer_standards:
-  _universal:
-    - PACKAGES_AND_LAYERS.md
-    - NAMING_AND_API.md
-  entity:
-    - ORG.md
-    - JPA_AND_DATABASE.md
-    - ARCHITECTURE_AND_MULTITENANCY.md
-  repository:
-    - ORG.md
-    - JPA_AND_DATABASE.md
-  # etc.
-
-# Optional: Override engine defaults
-# standards_root: "/custom/jpa/standards"
-```
-
----
-
 ## Out of Scope for M7
 
-- ADR formalization
+- Hash mismatch warnings (Slice 8 - deferred)
+- Deduplication detection (Slice 8 - deferred)
 - Multi-profile filename conventions
 - Plugin systems beyond StandardsProvider
 - UI / IDE integrations
@@ -742,24 +464,10 @@ layer_standards:
 
 ---
 
-## Execution Strategy
+## Next Steps
 
-### Slice Discipline
-
-Work proceeds in discrete slices.
-Each slice must:
-- obey this plan,
-- avoid speculative abstraction,
-- minimize scope.
-
-If drift occurs:
-- stop,
-- return to this document,
-- realign.
-
----
-
-## Status
-
-This plan supersedes all prior guidance.
-Approved by project owner.
+Potential future work:
+1. **Slice 8**: Hash mismatch warnings and deduplication detection
+2. **README update**: Document current CLI and workflow
+3. **ING/ED separation**: Refactor GENERATING/REVISING to pure ING behavior (optional cleanup)
+4. **Consolidate hashes**: Move all hashes to single `hashes: dict[str, str]` field (tech debt)

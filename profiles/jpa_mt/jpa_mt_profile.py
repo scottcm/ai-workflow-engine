@@ -26,6 +26,11 @@ class JpaMtProfile(WorkflowProfile):
         model = JpaMtConfig.model_validate(config)
         self.config = model.model_dump()
 
+    def validate_metadata(self, metadata: dict[str, Any] | None) -> None:
+        """Validate that required metadata is provided for jpa-mt profile."""
+        if not metadata or "schema_file" not in metadata:
+            raise ValueError("jpa-mt profile requires --schema-file argument")
+
     def get_standards_provider(self) -> StandardsProvider:
         """Return JPA-MT specific standards provider."""
         return JpaMtStandardsProvider(self.config)
@@ -95,7 +100,8 @@ class JpaMtProfile(WorkflowProfile):
         result = content
         for key, value in effective_context.items():
             placeholder = f"{{{{{key.upper()}}}}}"
-            result = result.replace(placeholder, str(value))
+            display_value = "" if value is None else str(value)
+            result = result.replace(placeholder, display_value)
         return result
 
     def generate_planning_prompt(self, context: dict) -> str:

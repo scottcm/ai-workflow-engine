@@ -5,7 +5,7 @@ import pytest
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
 from aiwf.domain.models.workflow_state import Artifact, WorkflowPhase, WorkflowState, WorkflowStatus, ExecutionMode, PhaseTransition
 from aiwf.domain.persistence.session_store import SessionStore
-from aiwf.application.approval_specs import ED_APPROVAL_SPECS
+from aiwf.application.approval_specs import ED_APPROVAL_SPECS, ING_APPROVAL_SPECS
 
 
 def _sha256_text(text: str) -> str:
@@ -26,7 +26,7 @@ def _build_state(session_id: str, phase: WorkflowPhase, current_iteration: int) 
         phase_history=[PhaseTransition(phase=phase, status=WorkflowStatus.IN_PROGRESS)],
     )
 
-def test_approve_planned_hashes_plan_file(tmp_path: Path) -> None:
+def test_approve_planned_creates_plan_from_planning_response(tmp_path: Path) -> None:
     # Arrange
     sessions_root = tmp_path / 'sessions'
     store = SessionStore(sessions_root=sessions_root)
@@ -35,19 +35,17 @@ def test_approve_planned_hashes_plan_file(tmp_path: Path) -> None:
     phase = WorkflowPhase.PLANNED
     session_id = 'sess-planned'
     session_dir = sessions_root / session_id
-    session_dir.mkdir(parents=True, exist_ok=True)
+    iteration_dir = session_dir / 'iteration-1'
+    iteration_dir.mkdir(parents=True, exist_ok=True)
 
     state = _build_state(session_id=session_id, phase=phase, current_iteration=1)
     store.save(state)
 
-    # Resolve plan path from spec
-    plan_relpath = ED_APPROVAL_SPECS[phase].plan_relpath
-    assert plan_relpath is not None
-    plan_path = session_dir / plan_relpath
-
-    # Write plan file
+    # Write planning-response.md (source file)
+    response_relpath = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING].response_relpath_template.format(N=1)
+    response_path = session_dir / response_relpath
     plan_content = "Plan content\n"
-    plan_path.write_text(plan_content, encoding='utf-8', newline='\n')
+    response_path.write_text(plan_content, encoding='utf-8', newline='\n')
 
     # Act
     orch.approve(session_id=session_id)
@@ -56,6 +54,13 @@ def test_approve_planned_hashes_plan_file(tmp_path: Path) -> None:
     reloaded = store.load(session_id)
     assert reloaded.plan_approved is True
     assert reloaded.plan_hash == _sha256_text(plan_content)
+
+    # Verify plan.md was created in session root
+    plan_relpath = ED_APPROVAL_SPECS[phase].plan_relpath
+    assert plan_relpath is not None
+    plan_path = session_dir / plan_relpath
+    assert plan_path.exists()
+    assert plan_path.read_text(encoding='utf-8') == plan_content
 
 
 @pytest.mark.parametrize(
@@ -121,7 +126,7 @@ def test_approve_ed_hashes_all_code_files(tmp_path: Path, phase: WorkflowPhase, 
     assert artifact_by_path[a2_path].sha256 == _sha256_text('two-edited\n')
     assert artifact_by_path[extra_rel].sha256 == _sha256_text('extra\n')
 
-def test_approve_planned_missing_plan_sets_error_status(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_approve_planned_missing_response_sets_error_status(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     sessions_root = tmp_path / 'sessions'
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
@@ -139,14 +144,13 @@ def test_approve_planned_missing_plan_sets_error_status(tmp_path: Path, capsys: 
     assert state.status == WorkflowStatus.ERROR
     assert state.last_error is not None
 
-    plan_relpath = ED_APPROVAL_SPECS[phase].plan_relpath
-    assert plan_relpath is not None
+    # Error should reference the missing planning-response.md, not plan.md
+    response_relpath = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING].response_relpath_template.format(N=1)
 
     normalized_err = state.last_error.replace("\\", "/")
     err_lower = normalized_err.lower()
 
-    assert plan_relpath in normalized_err  # helpful: points to missing file
-    assert str(session_dir / plan_relpath).replace("\\", "/") in normalized_err
+    assert response_relpath in normalized_err  # helpful: points to missing file
     assert ("missing" in err_lower) or ("not found" in err_lower)
 
 
@@ -158,17 +162,17 @@ def test_successful_approve_clears_error_status(tmp_path: Path) -> None:
     phase = WorkflowPhase.PLANNED
     session_id = 'sess-clear-error'
     session_dir = sessions_root / session_id
-    session_dir.mkdir(parents=True, exist_ok=True)
+    iteration_dir = session_dir / 'iteration-1'
+    iteration_dir.mkdir(parents=True, exist_ok=True)
 
     state = _build_state(session_id=session_id, phase=phase, current_iteration=1)
     state.status = WorkflowStatus.ERROR
     store.save(state)
 
-    # Ensure plan exists so approve succeeds
-    plan_relpath = ED_APPROVAL_SPECS[phase].plan_relpath
-    assert plan_relpath is not None
-    plan_path = session_dir / plan_relpath
-    plan_path.write_text("Plan content\n", encoding='utf-8')
+    # Ensure planning-response.md exists so approve succeeds
+    response_relpath = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING].response_relpath_template.format(N=1)
+    response_path = session_dir / response_relpath
+    response_path.write_text("Plan content\n", encoding='utf-8')
 
     # Act
     orch.approve(session_id=session_id)

@@ -50,7 +50,7 @@ Dates are intentionally omitted; this is a side project intended to:
 
 ---
 
-## M4 — Review & Revision Loop ⏳ Planned
+## M4 — Review & Revision Loop ✅ Complete
 
 **Goal:** Support iterative refinement of generated artifacts.
 
@@ -62,7 +62,7 @@ Dates are intentionally omitted; this is a side project intended to:
 
 ---
 
-## M5 — Orchestration Engine & State Validation ⏳ Planned
+## DEFERRED (post M5) — Orchestration Engine & State Validation ⏳ Planned
 
 **Goal:** Automate workflow execution while hardening state correctness.
 

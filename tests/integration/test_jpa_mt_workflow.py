@@ -28,6 +28,13 @@ def orchestrator(tmp_path, monkeypatch):
     for filename in required_files:
         (standards_dir / filename).write_text(f"# {filename}\n\nStub content for testing.\n")
 
+    # Create schema file for jpa-mt profile
+    schema_file = tmp_path / "schema.sql"
+    schema_file.write_text("CREATE TABLE app.products (id BIGINT PRIMARY KEY);", encoding="utf-8")
+
+    # Change cwd to tmp_path so schema file can be found
+    monkeypatch.chdir(tmp_path)
+
     session_store = SessionStore(sessions_root=tmp_path)
     return WorkflowOrchestrator(
         session_store=session_store,
@@ -47,6 +54,7 @@ class TestJpaMtWorkflowIntegration:
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual"},
             bounded_context="catalog",
             table="app.products",
+            metadata={"schema_file": "schema.sql"},
         )
 
         assert session_id is not None
@@ -67,6 +75,7 @@ class TestJpaMtWorkflowIntegration:
             scope="domain",
             entity="Product",
             providers={"planner": "manual"},
+            metadata={"schema_file": "schema.sql"},
         )
 
         # Step to PLANNING
@@ -90,6 +99,7 @@ class TestJpaMtWorkflowIntegration:
             scope="domain",
             entity="Product",
             providers={"planner": "manual"},
+            metadata={"schema_file": "schema.sql"},
         )
 
         # Step to PLANNING and generate prompt
@@ -121,6 +131,7 @@ Standard JPA entity.
             scope="domain",
             entity="Product",
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual"},
+            metadata={"schema_file": "schema.sql"},
         )
         session_dir = tmp_path / session_id
 
@@ -238,6 +249,7 @@ Code looks good. All standards followed.
             scope="domain",
             entity="Product",
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual"},
+            metadata={"schema_file": "schema.sql"},
         )
         session_dir = tmp_path / session_id
 

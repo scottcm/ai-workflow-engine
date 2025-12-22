@@ -10,6 +10,7 @@ bounded-context: {{BOUNDED_CONTEXT}}
 session-id: {{SESSION_ID}}
 profile: {{PROFILE}}
 iteration: {{ITERATION}}
+schema-file: {{SCHEMA_FILE}}
 ---
 
 ## Purpose of This Prompt
@@ -31,6 +32,15 @@ Artifacts may be provided via:
 - copy-paste (when attachments are not supported)
 
 The **phase-specific guidelines** define which inputs are required for this prompt.
+
+---
+
+## Required Attachments
+
+The following files should be attached when submitting this prompt:
+
+- Schema DDL: @{{SCHEMA_FILE}}
+- Standards Bundle: @standards-bundle.md
 
 ---
 
@@ -60,3 +70,5 @@ and the **standards-bundle**, the **standards-bundle ALWAYS takes precedence**.
 If the standards-bundle is silent on a topic:
 - Follow the fallback rules
 - If ambiguity remains, request clarification rather than inventing behavior
+
+---

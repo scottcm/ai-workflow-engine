@@ -24,6 +24,9 @@ class _StubProfile:
         self._provider = provider
         self.calls: int = 0
 
+    def validate_metadata(self, metadata):
+        pass  # No validation needed for tests
+
     def get_standards_provider(self):
         self.calls += 1
         return self._provider
