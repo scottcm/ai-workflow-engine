@@ -1,15 +1,25 @@
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from aiwf.domain.profiles.workflow_profile import WorkflowProfile
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.application.standards_provider import StandardsProvider
 from profiles.jpa_mt.jpa_mt_standards_provider import JpaMtStandardsProvider
 from profiles.jpa_mt.jpa_mt_config import JpaMtConfig
 
+# Path to default config.yml relative to this file
+_DEFAULT_CONFIG_PATH = Path(__file__).parent / "config.yml"
+
 
 class JpaMtProfile(WorkflowProfile):
     def __init__(self, **config):
+        # Load default config from config.yml if no config provided
+        if not config and _DEFAULT_CONFIG_PATH.exists():
+            with open(_DEFAULT_CONFIG_PATH, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f) or {}
+
         model = JpaMtConfig.model_validate(config)
         self.config = model.model_dump()
 
