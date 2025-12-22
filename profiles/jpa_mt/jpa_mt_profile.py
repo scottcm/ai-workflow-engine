@@ -189,7 +189,31 @@ class JpaMtProfile(WorkflowProfile):
     def process_revision_response(
         self, content: str, session_dir: Path, iteration: int
     ) -> ProcessingResult:
-        # TODO: Implement in later slice
-        raise NotImplementedError("Revision response processing not yet implemented")
+        """Process revision response - extract corrected code files.
+
+        Same as generation response processing - extracts code blocks with WritePlan.
+        """
+        from aiwf.domain.models.write_plan import WriteOp, WritePlan
+
+        if not content or not content.strip():
+            return ProcessingResult(status=WorkflowStatus.ERROR)
+
+        # Extract code blocks from markdown (same as generation)
+        code_blocks = self._extract_code_blocks(content)
+        if not code_blocks:
+            return ProcessingResult(status=WorkflowStatus.ERROR)
+
+        # Build write plan from extracted files
+        writes = []
+        for filename, code in code_blocks.items():
+            writes.append(WriteOp(
+                path=f"iteration-{iteration}/code/{filename}",
+                content=code,
+            ))
+
+        return ProcessingResult(
+            status=WorkflowStatus.SUCCESS,
+            write_plan=WritePlan(writes=writes),
+        )
     
     
