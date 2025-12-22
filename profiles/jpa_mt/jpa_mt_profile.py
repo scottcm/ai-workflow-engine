@@ -164,8 +164,27 @@ class JpaMtProfile(WorkflowProfile):
         return files
     
     def process_review_response(self, content: str) -> ProcessingResult:
-        # TODO: Implement in later slice
-        raise NotImplementedError("Review response processing not yet implemented")
+        """Process review response - parse metadata and determine pass/fail.
+
+        Returns:
+            ProcessingResult with:
+            - SUCCESS if verdict is PASS
+            - FAILED if verdict is FAIL
+            - ERROR if content is empty or metadata is missing/malformed
+        """
+        from profiles.jpa_mt.review_metadata import parse_review_metadata
+
+        if not content or not content.strip():
+            return ProcessingResult(status=WorkflowStatus.ERROR)
+
+        metadata = parse_review_metadata(content)
+        if metadata is None:
+            return ProcessingResult(status=WorkflowStatus.ERROR)
+
+        if metadata["verdict"] == "PASS":
+            return ProcessingResult(status=WorkflowStatus.SUCCESS)
+        else:  # verdict == "FAIL"
+            return ProcessingResult(status=WorkflowStatus.FAILED)
     
     def process_revision_response(
         self, content: str, session_dir: Path, iteration: int
