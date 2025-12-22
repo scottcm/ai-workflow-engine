@@ -1,16 +1,19 @@
 from pathlib import Path
 from typing import Any
+import re
 
 import yaml
 
 from aiwf.domain.profiles.workflow_profile import WorkflowProfile
 from aiwf.domain.models.processing_result import ProcessingResult
+from aiwf.domain.models.workflow_state import WorkflowStatus
 from aiwf.application.standards_provider import StandardsProvider
 from profiles.jpa_mt.jpa_mt_standards_provider import JpaMtStandardsProvider
 from profiles.jpa_mt.jpa_mt_config import JpaMtConfig
 
 # Path to default config.yml relative to this file
 _DEFAULT_CONFIG_PATH = Path(__file__).parent / "config.yml"
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
 class JpaMtProfile(WorkflowProfile):
@@ -26,26 +29,77 @@ class JpaMtProfile(WorkflowProfile):
     def get_standards_provider(self) -> StandardsProvider:
         """Return JPA-MT specific standards provider."""
         return JpaMtStandardsProvider(self.config)
-    
+
+    def _load_template(self, phase: str, scope: str) -> str:
+        """Load a template file for the given phase and scope."""
+        template_path = _TEMPLATES_DIR / phase / f"{scope}.md"
+        if not template_path.exists():
+            raise FileNotFoundError(f"Template not found: {template_path}")
+        return template_path.read_text(encoding="utf-8")
+
+    def _resolve_includes(self, content: str, seen: set[str] | None = None) -> str:
+        """Resolve {{include: path}} directives recursively."""
+        if seen is None:
+            seen = set()
+
+        include_pattern = re.compile(r"\{\{include:\s*([^}]+)\}\}")
+
+        def replace_include(match: re.Match) -> str:
+            include_path = match.group(1).strip()
+            if include_path in seen:
+                raise RuntimeError(f"Circular include detected: {include_path}")
+
+            full_path = _TEMPLATES_DIR / include_path
+            if not full_path.exists():
+                raise FileNotFoundError(f"Include not found: {full_path}")
+
+            seen.add(include_path)
+            included_content = full_path.read_text(encoding="utf-8")
+            return self._resolve_includes(included_content, seen)
+
+        return include_pattern.sub(replace_include, content)
+
+    def _fill_placeholders(self, content: str, context: dict[str, Any]) -> str:
+        """Replace {{PLACEHOLDER}} with context values."""
+        result = content
+        for key, value in context.items():
+            placeholder = f"{{{{{key.upper()}}}}}"
+            result = result.replace(placeholder, str(value))
+        return result
+
     def generate_planning_prompt(self, context: dict) -> str:
-        # TODO: Implement in later slice
-        raise NotImplementedError("Planning prompt generation not yet implemented")
-    
+        """Generate planning prompt from template."""
+        scope = context.get("scope", "domain")
+        template = self._load_template("planning", scope)
+        resolved = self._resolve_includes(template)
+        return self._fill_placeholders(resolved, context)
+
     def generate_generation_prompt(self, context: dict) -> str:
-        # TODO: Implement in later slice
-        raise NotImplementedError("Generation prompt generation not yet implemented")
-    
+        """Generate generation prompt from template."""
+        scope = context.get("scope", "domain")
+        template = self._load_template("generation", scope)
+        resolved = self._resolve_includes(template)
+        return self._fill_placeholders(resolved, context)
+
     def generate_review_prompt(self, context: dict) -> str:
-        # TODO: Implement in later slice
-        raise NotImplementedError("Review prompt generation not yet implemented")
-    
+        """Generate review prompt from template."""
+        scope = context.get("scope", "domain")
+        template = self._load_template("review", scope)
+        resolved = self._resolve_includes(template)
+        return self._fill_placeholders(resolved, context)
+
     def generate_revision_prompt(self, context: dict) -> str:
-        # TODO: Implement in later slice
-        raise NotImplementedError("Revision prompt generation not yet implemented")
-    
+        """Generate revision prompt from template."""
+        scope = context.get("scope", "domain")
+        template = self._load_template("revision", scope)
+        resolved = self._resolve_includes(template)
+        return self._fill_placeholders(resolved, context)
+
     def process_planning_response(self, content: str) -> ProcessingResult:
-        # TODO: Implement in later slice
-        raise NotImplementedError("Planning response processing not yet implemented")
+        """Process planning response - validate it's non-empty."""
+        if not content or not content.strip():
+            return ProcessingResult(status=WorkflowStatus.ERROR)
+        return ProcessingResult(status=WorkflowStatus.SUCCESS)
     
     def process_generation_response(
         self, content: str, session_dir: Path, iteration: int
