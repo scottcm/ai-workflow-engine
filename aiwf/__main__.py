@@ -1,4 +1,4 @@
-from aiwf.cli import cli
+from aiwf.interface.cli.cli import cli
 
 def main() -> None:
     cli(prog_name="aiwf")

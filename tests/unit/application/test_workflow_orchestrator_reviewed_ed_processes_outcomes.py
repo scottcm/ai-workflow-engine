@@ -66,6 +66,7 @@ def test_reviewed_success_completes(
     stub = _StubReviewProfile(WorkflowStatus.SUCCESS)
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
 
+    orch.approve(session_id)
     orch.step(session_id)
 
     after = store.load(session_id)
@@ -83,6 +84,7 @@ def test_reviewed_failed_enters_revising_and_creates_next_iteration(
     stub = _StubReviewProfile(WorkflowStatus.FAILED)
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
 
+    orch.approve(session_id)
     orch.step(session_id)
 
     after = store.load(session_id)
@@ -102,6 +104,7 @@ def test_reviewed_error_terminal_error(
     stub = _StubReviewProfile(WorkflowStatus.ERROR)
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
 
+    orch.approve(session_id)
     orch.step(session_id)
 
     after = store.load(session_id)
@@ -118,6 +121,7 @@ def test_reviewed_cancelled_terminal_cancelled(
     stub = _StubReviewProfile(WorkflowStatus.CANCELLED)
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
 
+    orch.approve(session_id)
     orch.step(session_id)
 
     after = store.load(session_id)

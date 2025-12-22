@@ -12,9 +12,8 @@
 # Profile
 # -------------------------------------------------------------------
 # Logical workflow profile to use.
-# For M6, "default" is the only supported value.
 #
-profile: default
+profile: jpa-mt
 
 # -------------------------------------------------------------------
 # Providers
@@ -38,10 +37,22 @@ providers:
   reviser: manual
 
 # -------------------------------------------------------------------
+# Prompt Hashing
+# -------------------------------------------------------------------
+# Whether to hash prompts during ING phase approval.
+#
+# When enabled, prompts are hashed before being sent to the provider.
+# Useful for audit trails and detecting prompt edits.
+#
+# CLI flags --hash-prompts / --no-hash-prompts override this value.
+#
+hash_prompts: false
+
+# -------------------------------------------------------------------
 # Dev mode
 # -------------------------------------------------------------------
 # Optional developer flag passed through to the engine.
-# Meaning is the name or identifier of the "dev" performing the work
+# Meaning is profile-specific.
 #
 # Set to null to disable.
 # CLI --dev overrides this value.

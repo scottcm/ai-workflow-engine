@@ -117,8 +117,8 @@ def test_generated_artifacts_record_iteration_and_iteration_relative_paths(
     # Arrange
     gen_plan = WritePlan(
         writes=[
-            WriteOp(path="iteration-1/code/Foo.java", content="class Foo {}\n"),
-            WriteOp(path="iteration-1/code/Bar.java", content="class Bar {}\n"),
+            WriteOp(path="code/Foo.java", content="class Foo {}\n"),
+            WriteOp(path="code/Bar.java", content="class Bar {}\n"),
         ]
     )
 
@@ -128,10 +128,8 @@ def test_generated_artifacts_record_iteration_and_iteration_relative_paths(
         review_status=WorkflowStatus.SUCCESS,
     )
 
-    # Use the real registered profile name ("jpa-mt") to match repo reality.
     monkeypatch.setattr(ProfileFactory, "create", lambda _profile_key, **_kw: fake_profile)
 
-    # Avoid coupling the test to standards hashing semantics / filesystem.
     import aiwf.application.workflow_orchestrator as wo_mod
     monkeypatch.setattr(wo_mod, "materialize_standards", lambda session_dir, context, provider: "0" * 64)
 
@@ -139,7 +137,7 @@ def test_generated_artifacts_record_iteration_and_iteration_relative_paths(
         profile="jpa-mt",
         scope="domain",
         entity="Foo",
-        providers={"planner": "manual", "generator": "manual", "reviewer": "manual"},
+        providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
     )
     session_dir = sessions_root / session_id
@@ -149,35 +147,41 @@ def test_generated_artifacts_record_iteration_and_iteration_relative_paths(
     assert state.phase == WorkflowPhase.PLANNING
 
     # PLANNING -> PLANNED
-    # Updated: use iteration-1 for planning response
     _write_text(session_dir / "iteration-1" / "planning-response.md", "PLAN RESPONSE\n")
+    _write_text(session_dir / "plan.md", "PLAN RESPONSE\n")  # For ED approval
     state = orchestrator.step(session_id)
     assert state.phase == WorkflowPhase.PLANNED
+
+    # Approve PLANNED
+    orchestrator.approve(session_id)
 
     # PLANNED -> GENERATING
     state = orchestrator.step(session_id)
     assert state.phase == WorkflowPhase.GENERATING
     assert state.current_iteration == 1
 
-    # GENERATING -> GENERATED
-    # Updated: use iteration-1 for generation response
+    # GENERATING -> GENERATED (processes response, writes artifacts)
     _write_text(session_dir / "iteration-1" / "generation-response.md", "GEN RESPONSE\n")
     state = orchestrator.step(session_id)
     assert state.phase == WorkflowPhase.GENERATED
 
-    # GENERATED -> REVIEWING (process + write artifacts)
-    state = orchestrator.step(session_id)
-    assert state.phase == WorkflowPhase.REVIEWING
-
-    # Assert
+    # Artifacts recorded with sha256=None
     assert state.artifacts, "Expected at least one Artifact recorded from generation writes"
-
     for a in state.artifacts:
         assert a.iteration == 1
         assert a.path.startswith("iteration-1/")
         _assert_safe_rel_path(a.path)
-        # Artifacts are recorded while state.phase == GENERATED today.
-        assert a.phase == WorkflowPhase.GENERATED
+        assert a.sha256 is None  # Not hashed until approve()
+
+    # Approve GENERATED (hashes artifacts)
+    orchestrator.approve(session_id)
+    state = orchestrator.session_store.load(session_id)
+    for a in state.artifacts:
+        assert a.sha256 is not None
+
+    # GENERATED -> REVIEWING
+    state = orchestrator.step(session_id)
+    assert state.phase == WorkflowPhase.REVIEWING
 
 
 def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
@@ -187,10 +191,10 @@ def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
 ) -> None:
     # Arrange
     gen_plan = WritePlan(
-        writes=[WriteOp(path="iteration-1/code/Foo.java", content="class Foo {}\n")]
+        writes=[WriteOp(path="code/Foo.java", content="class Foo {}\n")]
     )
     rev_plan = WritePlan(
-        writes=[WriteOp(path="iteration-2/code/Foo.java", content="class Foo { /*rev*/ }\n")]
+        writes=[WriteOp(path="code/Foo.java", content="class Foo { /*rev*/ }\n")]
     )
 
     fake_profile = FakeProfile(
@@ -204,8 +208,7 @@ def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
     import aiwf.application.workflow_orchestrator as wo_mod
     monkeypatch.setattr(wo_mod, "materialize_standards", lambda session_dir, context, provider: "0" * 64)
 
-    # Compatibility: if current code still imports a bundle_extractor during revision,
-    # provide a concrete fake module with extract_files().
+    # Compatibility: if current code still imports a bundle_extractor during revision
     extractor = FakeBundleExtractor()
     monkeypatch.setattr(importlib, "import_module", lambda _name: extractor)
 
@@ -213,7 +216,7 @@ def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
         profile="jpa-mt",
         scope="domain",
         entity="Foo",
-        providers={"planner": "manual", "generator": "manual", "reviewer": "manual"},
+        providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
     )
     session_dir = sessions_root / session_id
@@ -223,10 +226,13 @@ def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
     assert state.phase == WorkflowPhase.PLANNING
 
     # PLANNING -> PLANNED
-    # Updated: use iteration-1
     _write_text(session_dir / "iteration-1" / "planning-response.md", "PLAN RESPONSE\n")
+    _write_text(session_dir / "plan.md", "PLAN RESPONSE\n")
     state = orchestrator.step(session_id)
     assert state.phase == WorkflowPhase.PLANNED
+
+    # Approve PLANNED
+    orchestrator.approve(session_id)
 
     # PLANNED -> GENERATING
     state = orchestrator.step(session_id)
@@ -234,21 +240,25 @@ def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
     assert state.current_iteration == 1
 
     # GENERATING -> GENERATED
-    # Updated: use iteration-1
     _write_text(session_dir / "iteration-1" / "generation-response.md", "GEN RESPONSE\n")
     state = orchestrator.step(session_id)
     assert state.phase == WorkflowPhase.GENERATED
-
-    # GENERATED -> REVIEWING (writes iteration-1 artifacts)
-    state = orchestrator.step(session_id)
-    assert state.phase == WorkflowPhase.REVIEWING
     assert any(a.iteration == 1 for a in state.artifacts)
 
+    # Approve GENERATED
+    orchestrator.approve(session_id)
+
+    # GENERATED -> REVIEWING
+    state = orchestrator.step(session_id)
+    assert state.phase == WorkflowPhase.REVIEWING
+
     # REVIEWING -> REVIEWED
-    # Updated: use iteration-1
     _write_text(session_dir / "iteration-1" / "review-response.md", "REVIEW RESPONSE\n")
     state = orchestrator.step(session_id)
     assert state.phase == WorkflowPhase.REVIEWED
+
+    # Approve REVIEWED (required per 7C)
+    orchestrator.approve(session_id)
 
     # REVIEWED -> REVISING (FAILED review => iteration increments)
     state = orchestrator.step(session_id)
@@ -256,23 +266,19 @@ def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
     assert state.current_iteration == 2
     assert (session_dir / "iteration-2").is_dir()
 
-    # REVISING -> REVISED
-    # Updated: use iteration-2
+    # REVISING -> REVISED (processes response, writes artifacts)
     _write_text(session_dir / "iteration-2" / "revision-response.md", "REV RESPONSE\n")
     state = orchestrator.step(session_id)
     assert state.phase == WorkflowPhase.REVISED
 
-    # REVISED -> REVIEWING (process revision)
-    state = orchestrator.step(session_id)
-    assert state.phase == WorkflowPhase.REVIEWING
-
-    # Assert: revision artifacts must be recorded (expected to FAIL until implemented)
+    # Revision artifacts recorded
     iter2 = [a for a in state.artifacts if a.iteration == 2]
     assert iter2, "Expected at least one Artifact recorded from revision writes"
 
     for a in iter2:
         assert a.path.startswith("iteration-2/")
         _assert_safe_rel_path(a.path)
+        assert a.sha256 is None  # Not hashed until approve()
 
     # Ensure iteration-1 artifacts remain intact (no mutation/pollution)
     iter1 = [a for a in state.artifacts if a.iteration == 1]
@@ -281,5 +287,12 @@ def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
         assert a.iteration == 1
         assert a.path.startswith("iteration-1/")
 
-    # Optional but valuable: ensure iteration-2 outputs exist on disk after fix
+    # Approve REVISED
+    orchestrator.approve(session_id)
+
+    # REVISED -> REVIEWING
+    state = orchestrator.step(session_id)
+    assert state.phase == WorkflowPhase.REVIEWING
+
+    # Verify iteration-2 outputs exist on disk
     assert (session_dir / "iteration-2" / "code" / "Foo.java").exists()

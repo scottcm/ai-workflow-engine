@@ -69,8 +69,8 @@ def test_write_artifacts_writes_files_in_order_and_creates_artifacts(tmp_path: P
     assert a1.phase == WorkflowPhase.GENERATED
     assert a2.phase == WorkflowPhase.GENERATED
 
-    assert a1.sha256 == _sha256_hex("class A {}\n")
-    assert a2.sha256 == _sha256_hex("class B {}\n")
+    assert a1.sha256 is None
+    assert a2.sha256 is None
 
     assert isinstance(a1.created_at, datetime)
     assert isinstance(a2.created_at, datetime)
@@ -115,7 +115,7 @@ def test_write_artifacts_propagates_write_failure_and_records_no_partial_artifac
     assert not (session_dir / "iteration-1/code/A.java").exists()
 
 
-def test_write_artifacts_treats_hash_failure_as_hard_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_artifacts_propagates_io_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     session_dir = tmp_path / "sess"
     session_dir.mkdir(parents=True, exist_ok=True)
 
@@ -127,11 +127,11 @@ def test_write_artifacts_treats_hash_failure_as_hard_failure(tmp_path: Path, mon
     result = ProcessingResult(status=WorkflowStatus.SUCCESS, write_plan=plan)
 
     def _boom(*args, **kwargs):
-        raise RuntimeError("hash failure")
+        raise OSError("I/O error")
 
-    monkeypatch.setattr(hashlib, "sha256", _boom)
+    monkeypatch.setattr(Path, "write_text", _boom)
 
-    with pytest.raises(RuntimeError, match="hash failure"):
+    with pytest.raises(OSError, match="I/O error"):
         write_artifacts(session_dir=session_dir, state=state, result=result)
 
     assert state.artifacts == []

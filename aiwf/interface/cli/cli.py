@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 from aiwf.interface.cli.output_models import InitOutput, StatusOutput, StepOutput
 from aiwf.application.config_loader import load_config
+from aiwf.application.approval_specs import ING_APPROVAL_SPECS
 
 
 # Patched by tests where the CLI reads it.
@@ -21,38 +22,30 @@ def _get_json_mode(ctx: click.Context) -> bool:
     return bool(obj.get("json", False))
 
 
-def _phase_files(phase: WorkflowPhase) -> tuple[str, str] | None:
-    mapping: dict[WorkflowPhase, tuple[str, str]] = {
-        WorkflowPhase.PLANNING: ("planning-prompt.md", "planning-response.md"),
-        WorkflowPhase.GENERATING: ("generation-prompt.md", "generation-response.md"),
-        WorkflowPhase.REVIEWING: ("review-prompt.md", "review-response.md"),
-        WorkflowPhase.REVISING: ("revision-prompt.md", "revision-response.md"),
-    }
-    return mapping.get(phase)
-
-
 def _awaiting_paths_for_state(session_id: str, state) -> tuple[bool, list[str]]:
     """
     Manual-workflow inference (Slice C): prompt exists + response missing => awaiting response.
     Returns (awaiting, [prompt_path, response_path]) for mapped phases; otherwise (False, []).
     """
-    files = _phase_files(state.phase)
-    if not files:
+    if state.phase not in ING_APPROVAL_SPECS:
         return False, []
 
-    prompt_name, response_name = files
-    session_dir = DEFAULT_SESSIONS_ROOT / session_id
+    spec = ING_APPROVAL_SPECS[state.phase]
+    
+    # Resolve templates
+    prompt_rel = spec.prompt_relpath_template
+    response_rel = spec.response_relpath_template
+    
+    iteration = getattr(state, "current_iteration", 1)
+    
+    if "{N}" in prompt_rel:
+        prompt_rel = prompt_rel.format(N=iteration)
+    if "{N}" in response_rel:
+        response_rel = response_rel.format(N=iteration)
 
-    iteration = getattr(state, "current_iteration", None)
-    if state.phase == WorkflowPhase.PLANNING:
-        # Planning is in iteration-1
-        prompt_path = session_dir / "iteration-1" / prompt_name
-        response_path = session_dir / "iteration-1" / response_name
-    else:
-        # Others are in current iteration
-        iteration_dir = session_dir / f"iteration-{iteration}"
-        prompt_path = iteration_dir / prompt_name
-        response_path = iteration_dir / response_name
+    session_dir = DEFAULT_SESSIONS_ROOT / session_id
+    prompt_path = session_dir / prompt_rel
+    response_path = session_dir / response_rel
 
     awaiting = prompt_path.exists() and not response_path.exists()
     return awaiting, [str(prompt_path), str(response_path)]
@@ -265,3 +258,42 @@ def status_cmd(ctx: click.Context, session_id: str) -> None:
             )
             raise click.exceptions.Exit(1)
         raise click.ClickException(str(e)) from e
+
+@cli.command("approve")
+@click.argument("session_id", type=str)
+@click.option("--hash-prompts", is_flag=True, help="Hash prompts.")
+@click.option("--no-hash-prompts", is_flag=True, help="Do not hash prompts.")
+@click.pass_context
+def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash_prompts: bool) -> None:
+    try:
+        from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
+        from aiwf.domain.persistence.session_store import SessionStore
+
+        cfg = load_config(project_root=Path.cwd(), user_home=Path.home())
+        
+        # Determine effective hash_prompts
+        effective_hash = cfg.get("hash_prompts", False)
+        if hash_prompts:
+            effective_hash = True
+        elif no_hash_prompts:
+            effective_hash = False
+
+        session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+        orchestrator = WorkflowOrchestrator(
+            session_store=session_store,
+            sessions_root=DEFAULT_SESSIONS_ROOT,
+        )
+
+        # Call orchestrator.approve
+        state = orchestrator.approve(session_id, hash_prompts=effective_hash)
+
+        if state.status == WorkflowStatus.ERROR:
+            # Orchestrator should have printed the error message already
+            raise click.exceptions.Exit(1)
+            
+    except click.exceptions.Exit:
+        raise
+    except Exception as e:
+        # If unexpected error
+        click.echo(f"Cannot approve: {e}", err=True)
+        raise click.exceptions.Exit(1)

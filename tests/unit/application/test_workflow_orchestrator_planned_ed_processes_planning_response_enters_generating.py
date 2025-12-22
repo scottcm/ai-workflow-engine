@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +29,7 @@ def test_planned_processes_planning_response_writes_plan_and_enters_generating_w
         profile="jpa-mt",
         scope="domain",
         entity="Client",
-        providers={"primary": "gemini"},
+        providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
         bounded_context="client",
         table="app.clients",
@@ -42,12 +40,17 @@ def test_planned_processes_planning_response_writes_plan_and_enters_generating_w
     orch.step(session_id)  # INITIALIZED -> PLANNING
 
     session_dir = sessions_root / session_id
+    
+    # Planning artifacts are in iteration-1 per approval_specs.py
     iteration_dir = session_dir / "iteration-1"
     iteration_dir.mkdir(parents=True, exist_ok=True)
     (iteration_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
     (iteration_dir / "planning-response.md").write_text("# PLAN\n- x\n", encoding=utf8)
+    
+    # Also create plan.md at session root for ED approval
+    (session_dir / "plan.md").write_text("# PLAN\n- x\n", encoding=utf8)
 
-    # PLANNING -> PLANNED
+    # PLANNING -> PLANNED (no profile call needed for phase transition)
     monkeypatch.setattr(
         ProfileFactory,
         "create",
@@ -57,8 +60,15 @@ def test_planned_processes_planning_response_writes_plan_and_enters_generating_w
 
     assert store.load(session_id).phase == WorkflowPhase.PLANNED
 
+    # PLANNED requires approval before step() advances
     stub = _StubPlanningProfile()
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
+
+    orch.approve(session_id)  # Sets plan_approved=True, plan_hash
+
+    state_after_approve = store.load(session_id)
+    assert state_after_approve.plan_approved is True
+    assert state_after_approve.plan_hash is not None
 
     orch.step(session_id)  # PLANNED processes response -> GENERATING
 
@@ -70,6 +80,6 @@ def test_planned_processes_planning_response_writes_plan_and_enters_generating_w
     # plan promoted to session scope
     assert (session_dir / "plan.md").is_file()
 
-    # iteration-1 allocated (already allocated in planning but verified)
+    # iteration-1 allocated
     assert (session_dir / "iteration-1").is_dir()
     assert stub.process_called == 1

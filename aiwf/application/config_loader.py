@@ -28,6 +28,7 @@ def _defaults() -> dict[str, Any]:
             "reviewer": "manual",
             "reviser": "manual",
         },
+        "hash_prompts": False,
         "dev": None,
     }
 

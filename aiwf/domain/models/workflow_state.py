@@ -110,9 +110,12 @@ class WorkflowState(BaseModel):
     current_iteration: int = 1  # Starts at 1, increments on revision
 
     # Hashing and approval
-    standards_hash: str              # Required, set at session init
-    plan_approved: bool = False      # Defaults to False
-    plan_hash: str | None = None     # None until plan approved
+    standards_hash: str                 # Required, set at session init
+    plan_approved: bool = False
+    plan_hash: str | None = None        # None until plan approved
+    prompt_hashes: dict[str, str] = Field(default_factory=dict)
+    review_approved: bool = False
+    review_hash: str | None = None      # None until review approved
 
     # Multi-provider strategy
     providers: dict[str, str]  # role -> provider_key

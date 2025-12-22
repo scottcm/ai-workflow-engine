@@ -1,4 +1,3 @@
-import hashlib
 from pathlib import Path
 
 from aiwf.domain.models.processing_result import ProcessingResult
@@ -30,15 +29,12 @@ def write_artifacts(*, session_dir: Path, state: WorkflowState, result: Processi
             # Write content
             full_path.write_text(op.content, encoding="utf-8")
             
-            # Compute SHA-256
-            sha256_hex = hashlib.sha256(op.content.encode("utf-8")).hexdigest()
-            
             # Create Artifact
             artifact = Artifact(
                 path=path_str,
                 phase=state.phase,
                 iteration=state.current_iteration,
-                sha256=sha256_hex
+                sha256=None
             )
             new_artifacts.append(artifact)
             

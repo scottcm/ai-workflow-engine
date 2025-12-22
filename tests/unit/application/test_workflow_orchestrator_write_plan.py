@@ -21,16 +21,17 @@ class _StubProfile:
 
 
 def _mk_state(*, session_id: str) -> WorkflowState:
+    """Create state at GENERATING phase (ING phase where response processing occurs)."""
     return WorkflowState(
         session_id=session_id,
         profile="jpa-mt",
         scope="domain",
         entity="Tier",
-        phase=WorkflowPhase.GENERATED,
+        phase=WorkflowPhase.GENERATING,  # Changed from GENERATED
         status=WorkflowStatus.IN_PROGRESS,
         execution_mode=ExecutionMode.INTERACTIVE,
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
-        standards_hash="sha256:deadbeef",
+        standards_hash="a" * 64,
         current_iteration=1,
     )
 
@@ -46,13 +47,12 @@ def test_orchestrator_executes_write_plan_exactly_once_when_present(tmp_path: Pa
     state = _mk_state(session_id=session_id)
     session_store.save(state)
 
-    # Create the expected generation response file that _step_generated consumes.
+    # Create the expected generation response file that _step_generating consumes
     iteration_dir = sessions_root / session_id / f"iteration-{state.current_iteration}"
     iteration_dir.mkdir(parents=True, exist_ok=True)
-    # Updated: generation-response.md directly in iteration-1
     (iteration_dir / "generation-response.md").write_text("ignored", encoding="utf-8")
 
-    plan = WritePlan(writes=[WriteOp(path="iteration-1/code/A.java", content="class A {}\n")])
+    plan = WritePlan(writes=[WriteOp(path="code/A.java", content="class A {}\n")])
     stub = _StubProfile(result=ProcessingResult(status=WorkflowStatus.SUCCESS, write_plan=plan))
 
     monkeypatch.setattr(profile_factory_module.ProfileFactory, "create", staticmethod(lambda profile: stub))
@@ -62,17 +62,20 @@ def test_orchestrator_executes_write_plan_exactly_once_when_present(tmp_path: Pa
     # Profile processing called exactly once
     assert stub.calls == 1
 
-    # File written under session dir
-    written = sessions_root / session_id / "iteration-1/code/A.java"
+    # File written under session dir (write_artifacts prefixes with iteration-N/)
+    written = sessions_root / session_id / "iteration-1" / "code" / "A.java"
     assert written.exists()
     assert written.read_text(encoding="utf-8") == "class A {}\n"
 
-    # Artifact appended
+    # Artifact appended with sha256=None (hashing deferred to ED approval)
     assert len(new_state.artifacts) == 1
     assert new_state.artifacts[0].path == "iteration-1/code/A.java"
     assert new_state.artifacts[0].iteration == 1
-    assert new_state.artifacts[0].phase == WorkflowPhase.GENERATED
-    assert new_state.artifacts[0].sha256 is not None
+    assert new_state.artifacts[0].phase == WorkflowPhase.GENERATING  # Phase when written
+    assert new_state.artifacts[0].sha256 is None  # Not hashed until approve()
+
+    # Phase advanced to GENERATED
+    assert new_state.phase == WorkflowPhase.GENERATED
 
 
 def test_orchestrator_does_not_write_files_when_write_plan_is_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -88,7 +91,6 @@ def test_orchestrator_does_not_write_files_when_write_plan_is_none(tmp_path: Pat
 
     iteration_dir = sessions_root / session_id / f"iteration-{state.current_iteration}"
     iteration_dir.mkdir(parents=True, exist_ok=True)
-    # Updated: generation-response.md directly in iteration-1
     (iteration_dir / "generation-response.md").write_text("ignored", encoding="utf-8")
 
     stub = _StubProfile(result=ProcessingResult(status=WorkflowStatus.SUCCESS, write_plan=None))
@@ -98,4 +100,7 @@ def test_orchestrator_does_not_write_files_when_write_plan_is_none(tmp_path: Pat
 
     assert stub.calls == 1
     assert new_state.artifacts == []
-    assert not (sessions_root / session_id / "iteration-1/code").exists()
+    assert not (sessions_root / session_id / "iteration-1" / "code").exists()
+
+    # Phase still advances to GENERATED even without artifacts
+    assert new_state.phase == WorkflowPhase.GENERATED

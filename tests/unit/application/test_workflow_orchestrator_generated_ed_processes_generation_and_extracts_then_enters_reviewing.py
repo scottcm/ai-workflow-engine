@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +7,7 @@ from aiwf.domain.models.write_plan import WriteOp, WritePlan
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
 from aiwf.domain.models.processing_result import ProcessingResult
-from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, WorkflowStatus
+from aiwf.domain.models.workflow_state import Artifact, ExecutionMode, WorkflowPhase, WorkflowStatus
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 
@@ -17,8 +15,6 @@ from aiwf.domain.profiles.profile_factory import ProfileFactory
 class _StubPlanningProfile:
     def process_planning_response(self, content: str) -> ProcessingResult:
         return ProcessingResult(status=WorkflowStatus.SUCCESS)
-
-
 
 
 class _StubGenerationProfile:
@@ -30,7 +26,7 @@ class _StubGenerationProfile:
         return ProcessingResult(
             status=WorkflowStatus.SUCCESS,
             write_plan=WritePlan(writes=[
-                WriteOp(path=f"iteration-{iteration}/code/x.py", content="pass\n")
+                WriteOp(path="code/x.py", content="pass\n")
             ])
         )
 
@@ -45,7 +41,7 @@ def _arrange_at_generated(
         profile="jpa-mt",
         scope="domain",
         entity="Client",
-        providers={"primary": "gemini"},
+        providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
         bounded_context="client",
         table="app.clients",
@@ -58,48 +54,79 @@ def _arrange_at_generated(
     session_dir = sessions_root / session_id
     it_dir = session_dir / "iteration-1"
     it_dir.mkdir(parents=True, exist_ok=True)
+    
     # Planning artifacts in iteration-1
     (it_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
     (it_dir / "planning-response.md").write_text("# PLAN\n", encoding=utf8)
+    
+    # Create plan.md at session root for ED approval
+    (session_dir / "plan.md").write_text("# PLAN\n", encoding=utf8)
 
+    # PLANNING -> PLANNED (no profile call needed)
     monkeypatch.setattr(
         ProfileFactory,
         "create",
         classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(AssertionError("ProfileFactory.create called"))),
     )
-    orch.step(session_id)  # PLANNING -> PLANNED
+    orch.step(session_id)
+    assert store.load(session_id).phase == WorkflowPhase.PLANNED
 
+    # Approve PLANNED (required before step advances)
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: _StubPlanningProfile()))
-    orch.step(session_id)  # PLANNED -> GENERATING
+    orch.approve(session_id)
 
+    # PLANNED -> GENERATING
+    orch.step(session_id)
+    assert store.load(session_id).phase == WorkflowPhase.GENERATING
+
+    # Create generation response
     (it_dir / "generation-prompt.md").write_text("PROMPT", encoding=utf8)
     (it_dir / "generation-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
 
-    monkeypatch.setattr(
-        ProfileFactory,
-        "create",
-        classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(AssertionError("ProfileFactory.create called"))),
-    )
-    orch.step(session_id)  # GENERATING -> GENERATED
-
+    # GENERATING -> GENERATED (processes response, writes artifacts in current impl)
+    gen_stub = _StubGenerationProfile()
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: gen_stub))
+    orch.step(session_id)
+    
     assert store.load(session_id).phase == WorkflowPhase.GENERATED
     return orch, store, session_id, it_dir
 
 
-def test_generated_processes_generation_response_extracts_and_enters_reviewing(
+def test_generated_gates_on_artifact_hashes_and_enters_reviewing(
     sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """GENERATED is an ED phase that gates on artifact hashes (approval required).
+    
+    After approval sets sha256 on artifacts, step() advances to REVIEWING.
+    """
     orch, store, session_id, it_dir = _arrange_at_generated(sessions_root, utf8, monkeypatch)
 
-    gen_profile = _StubGenerationProfile()
-    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: gen_profile))
+    # At GENERATED, artifacts exist but are unhashed
+    state = store.load(session_id)
+    assert state.phase == WorkflowPhase.GENERATED
+    assert len(state.artifacts) > 0
+    assert all(a.sha256 is None for a in state.artifacts)
 
-    orch.step(session_id)  # GENERATED -> REVIEWING (process + extract)
+    # Step should be blocked (no-op) because artifacts not approved
+    monkeypatch.setattr(
+        ProfileFactory,
+        "create",
+        classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(AssertionError("ProfileFactory.create called"))),
+    )
+    orch.step(session_id)
+    assert store.load(session_id).phase == WorkflowPhase.GENERATED  # Still blocked
+
+    # Approve GENERATED (hashes artifacts)
+    orch.approve(session_id)
+    
+    state = store.load(session_id)
+    assert all(a.sha256 is not None for a in state.artifacts)
+
+    # Now step advances to REVIEWING
+    orch.step(session_id)
 
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.REVIEWING
 
     code_file = it_dir / "code" / "x.py"
     assert code_file.is_file()
-    assert code_file.read_text(encoding=utf8) == "pass\n"
-    assert gen_profile.process_called == 1
