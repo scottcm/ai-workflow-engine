@@ -1,10 +1,10 @@
 # planning/domain.md
 
-{{include: _shared/base.md}}
+{{include: ../_shared/base.md}}
 
-{{include: _shared/fallback-rules.md}}
+{{include: ../_shared/fallback-rules.md}}
 
-{{include: _phases/planning-guidelines.md}}
+{{include: ../_phases/planning-guidelines.md}}
 
 ---
 

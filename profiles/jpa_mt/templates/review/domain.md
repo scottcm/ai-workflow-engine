@@ -1,6 +1,6 @@
-{{include: _shared/base.md}}
-{{include: _shared/fallback-rules.md}}
-{{include: _phases/review-guidelines.md}}
+{{include: ../_shared/base.md}}
+{{include: ../_shared/fallback-rules.md}}
+{{include: ../_phases/review-guidelines.md}}
 
 ---
 
