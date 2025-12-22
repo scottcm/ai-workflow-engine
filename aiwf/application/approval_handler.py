@@ -1,4 +1,5 @@
 import hashlib
+import importlib
 from pathlib import Path
 
 from aiwf.application.approval_specs import ED_APPROVAL_SPECS, ING_APPROVAL_SPECS
@@ -10,8 +11,69 @@ def run_provider(provider_key: str, prompt: str) -> str | None:
     raise NotImplementedError("Provider execution is not implemented in scaffolding")
 
 
+def _extract_and_write_code_files(
+    *,
+    session_dir: Path,
+    state: WorkflowState,
+    response_content: str,
+) -> None:
+    """Extract code files from response using bundle_extractor and write to code directory.
+
+    Creates Artifact records with computed hashes for each extracted file.
+    """
+    profile_module = state.profile.replace("-", "_")
+    extractor_module = importlib.import_module(f"profiles.{profile_module}.bundle_extractor")
+
+    if not hasattr(extractor_module, "extract_files"):
+        raise ValueError(f"Profile '{state.profile}' does not have a bundle_extractor.extract_files function")
+
+    files = extractor_module.extract_files(response_content)
+
+    code_dir = session_dir / f"iteration-{state.current_iteration}" / "code"
+    code_dir.mkdir(parents=True, exist_ok=True)
+
+    for filename, file_content in files.items():
+        file_path = code_dir / filename
+        file_path.write_text(file_content, encoding="utf-8")
+
+        relpath = file_path.relative_to(session_dir).as_posix()
+        sha256 = hashlib.sha256(file_path.read_bytes()).hexdigest()
+
+        state.artifacts.append(Artifact(
+            path=relpath,
+            phase=WorkflowPhase.GENERATED,
+            iteration=state.current_iteration,
+            sha256=sha256,
+        ))
+
+
 class ApprovalHandler:
     def approve(self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool) -> WorkflowState:
+        # Special handling for GENERATING phase when response already exists
+        if state.phase == WorkflowPhase.GENERATING:
+            spec = ING_APPROVAL_SPECS[state.phase]
+            response_relpath = spec.response_relpath_template.format(N=state.current_iteration)
+            response_path = session_dir / response_relpath
+
+            if response_path.exists():
+                # Response exists - extract code, write files, create artifacts, advance to GENERATED
+                prompt_relpath = spec.prompt_relpath_template.format(N=state.current_iteration)
+                if hash_prompts:
+                    prompt_path = session_dir / prompt_relpath
+                    if prompt_path.exists():
+                        state.prompt_hashes[prompt_relpath] = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
+
+                response_content = response_path.read_text(encoding="utf-8")
+                _extract_and_write_code_files(
+                    session_dir=session_dir,
+                    state=state,
+                    response_content=response_content,
+                )
+                state.phase = WorkflowPhase.GENERATED
+                return state
+
+            # Response doesn't exist - fall through to standard ING phase handling
+
         # ING Phases (Planning, Generating, Reviewing, Revising)
         if state.phase in ING_APPROVAL_SPECS:
             spec = ING_APPROVAL_SPECS[state.phase]

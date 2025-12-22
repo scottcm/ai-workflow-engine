@@ -180,6 +180,94 @@ def test_approve_ing_missing_prompt_sets_error_status(tmp_path: Path, monkeypatc
     assert not (session_dir / response_relpath).exists()
 
 
+def test_approve_generating_with_existing_response_extracts_files_and_advances(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When generation-response.md exists, approve extracts code, writes files, creates artifacts, advances to GENERATED."""
+    sessions_root = tmp_path / "sessions"
+    store = SessionStore(sessions_root=sessions_root)
+    orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
+
+    phase = WorkflowPhase.GENERATING
+    iteration = 1
+    spec = ING_APPROVAL_SPECS[phase]
+    provider_role = spec.provider_role
+
+    session_id = "sess-generating-existing-response"
+    session_dir = sessions_root / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    providers = {provider_role: "fake-llm"}
+    state = _build_state(session_id=session_id, phase=phase, current_iteration=iteration, providers=providers)
+    state.profile = "jpa_mt"  # Use profile with bundle_extractor
+    store.save(state)
+
+    prompt_relpath = spec.prompt_relpath_template.format(N=iteration)
+    response_relpath = spec.response_relpath_template.format(N=iteration)
+
+    # Create iteration directory
+    iteration_dir = session_dir / f"iteration-{iteration}"
+    iteration_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create prompt file
+    prompt_path = session_dir / prompt_relpath
+    prompt_path.write_text("generation prompt\n", encoding="utf-8", newline="\n")
+
+    # Create response file with FILE markers
+    response_content = """
+<<<FILE: Entity.java>>>
+package com.example;
+
+public class Entity {
+    private Long id;
+}
+
+<<<FILE: EntityRepository.java>>>
+package com.example;
+
+public interface EntityRepository {
+    Entity findById(Long id);
+}
+"""
+    response_path = session_dir / response_relpath
+    response_path.write_text(response_content, encoding="utf-8", newline="\n")
+
+    # Provider should NOT be called since response already exists
+    def fake_run_provider(provider_key: str, prompt: str) -> str | None:
+        raise AssertionError("Provider must not be invoked when response file already exists")
+
+    import aiwf.application.approval_handler as approval_handler_module
+    monkeypatch.setattr(approval_handler_module, "run_provider", fake_run_provider, raising=True)
+
+    result = orch.approve(session_id=session_id, hash_prompts=True)
+
+    # Verify phase advanced to GENERATED
+    assert result.phase == WorkflowPhase.GENERATED
+    assert result.status == WorkflowStatus.IN_PROGRESS
+
+    # Verify code files were written
+    code_dir = iteration_dir / "code"
+    assert code_dir.exists()
+    assert (code_dir / "Entity.java").exists()
+    assert (code_dir / "EntityRepository.java").exists()
+    assert "public class Entity" in (code_dir / "Entity.java").read_text(encoding="utf-8")
+
+    # Verify artifacts were created with hashes
+    assert len(result.artifacts) == 2
+    artifact_paths = {a.path for a in result.artifacts}
+    assert "iteration-1/code/Entity.java" in artifact_paths
+    assert "iteration-1/code/EntityRepository.java" in artifact_paths
+
+    # Verify all artifacts have sha256 hashes
+    for artifact in result.artifacts:
+        assert artifact.sha256 is not None
+        assert len(artifact.sha256) == 64  # SHA256 hex digest length
+        assert artifact.phase == WorkflowPhase.GENERATED
+        assert artifact.iteration == 1
+
+    # Verify prompt was hashed
+    assert prompt_relpath in result.prompt_hashes
+    assert len(result.prompt_hashes[prompt_relpath]) == 64
+
+
 def test_approve_reviewing_uses_reviewer_role_and_correct_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sessions_root = tmp_path / "sessions"
     store = SessionStore(sessions_root=sessions_root)
