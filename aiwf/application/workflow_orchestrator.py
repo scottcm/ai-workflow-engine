@@ -1,6 +1,7 @@
 import importlib
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -591,7 +592,8 @@ class WorkflowOrchestrator:
             "dev": state.dev,
             "task_id": state.task_id,
             "metadata": state.metadata,
-            "current_iteration": getattr(state, "current_iteration", None),
+            "iteration": getattr(state, "current_iteration", None),
+            "date": date.today().isoformat(),
             "phase": state.phase,
             "status": state.status,
         }
