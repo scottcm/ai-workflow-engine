@@ -1,10 +1,10 @@
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class BaseOutput(BaseModel):
     schema_version: int = 1
-    command: Literal["init", "step", "status"]
+    command: Literal["init", "step", "status", "approve"]
     exit_code: int
     error: str | None = None
 
@@ -32,3 +32,12 @@ class StatusOutput(BaseOutput):
     status: str | None = None
     iteration: int | None = None
     session_path: str
+
+
+class ApproveOutput(BaseOutput):
+    command: Literal["approve"] = "approve"
+    session_id: str
+    phase: str | None = None
+    status: str | None = None
+    approved: bool = False
+    hashes: dict[str, str] = Field(default_factory=dict)

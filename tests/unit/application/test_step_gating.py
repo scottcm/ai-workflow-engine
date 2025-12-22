@@ -60,7 +60,7 @@ def test_step_planned_blocks_until_plan_approved(tmp_path: Path, monkeypatch: py
 
     # Required inputs for _step_planned to run:
     # planning-response must exist (derive from ING specs; no hardcoding)
-    planning_resp_rel = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING].response_relpath_template
+    planning_resp_rel = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING].response_relpath_template.format(N=1)
     planning_resp_path = session_dir / planning_resp_rel
     planning_resp_path.parent.mkdir(parents=True, exist_ok=True)
     planning_resp_path.write_text("planning response\n", encoding="utf-8", newline="\n")

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from click.testing import CliRunner
 
-from aiwf.cli import cli
+from aiwf.interface.cli.cli import cli
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 
 
@@ -23,7 +23,7 @@ def _state(*, phase, status, iteration):
 
 def test_init_emits_json_only(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_initialize_run(self, **kwargs):
         return "sess_123"
@@ -62,7 +62,7 @@ def test_init_emits_json_only(monkeypatch):
 
 def test_step_emits_json_only_awaiting(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_step(self, session_id: str):
         return _state(
@@ -108,7 +108,7 @@ def test_step_emits_json_only_awaiting(monkeypatch):
 
 def test_step_json_prompt_and_response_present_exit_0(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_step(self, session_id: str):
         return _state(
@@ -148,7 +148,7 @@ def test_step_json_prompt_and_response_present_exit_0(monkeypatch):
 
 def test_status_emits_json_only(monkeypatch):
     import aiwf.domain.persistence.session_store as ss_mod
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_load(self, session_id: str):
         return _state(
@@ -179,7 +179,7 @@ def test_status_emits_json_only(monkeypatch):
 
 def test_exception_path_json_status(monkeypatch):
     import aiwf.domain.persistence.session_store as ss_mod
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_load(self, session_id: str):
         raise RuntimeError("boom")

@@ -22,8 +22,7 @@ class ApprovalHandler:
 
             provider_key = state.providers[provider_role]
 
-            iteration = 1 if state.phase == WorkflowPhase.PLANNING else state.current_iteration
-            prompt_relpath = spec.prompt_relpath_template.format(N=iteration)
+            prompt_relpath = spec.prompt_relpath_template.format(N=state.current_iteration)
             prompt_path = session_dir / prompt_relpath
 
             if not prompt_path.exists():
@@ -36,7 +35,7 @@ class ApprovalHandler:
             response = run_provider(provider_key, prompt_content)
 
             if response is not None:
-                response_relpath = spec.response_relpath_template.format(N=iteration)
+                response_relpath = spec.response_relpath_template.format(N=state.current_iteration)
                 response_path = session_dir / response_relpath
                 response_path.parent.mkdir(parents=True, exist_ok=True)
                 response_path.write_text(response, encoding="utf-8")

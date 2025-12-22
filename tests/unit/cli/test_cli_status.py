@@ -1,7 +1,7 @@
 from pathlib import Path
 from click.testing import CliRunner
 
-from aiwf.cli import cli
+from aiwf.interface.cli.cli import cli
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 
 
@@ -17,7 +17,7 @@ def _state(*, phase, status, iteration):
 
 
 def test_status_basic_output(monkeypatch):
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
     import aiwf.domain.persistence.session_store as ss_mod
 
     def fake_load(self, session_id: str):
@@ -43,7 +43,7 @@ def test_status_basic_output(monkeypatch):
 
 
 def test_status_terminal_state_has_summary_and_no_guidance_paths(monkeypatch):
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
     import aiwf.domain.persistence.session_store as ss_mod
 
     def fake_load(self, session_id: str):
@@ -70,7 +70,7 @@ def test_status_terminal_state_has_summary_and_no_guidance_paths(monkeypatch):
 
 
 def test_status_exception_exit_1(monkeypatch):
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
     import aiwf.domain.persistence.session_store as ss_mod
 
     def fake_load(self, session_id: str):

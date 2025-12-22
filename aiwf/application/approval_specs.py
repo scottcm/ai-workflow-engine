@@ -39,11 +39,12 @@ class EdApprovalSpec:
 # -----------------------------
 # ING phases (provider-backed)
 # -----------------------------
+# All prompts/responses are FLAT in iteration directories (no prompts/ or responses/ subdirs)
 ING_APPROVAL_SPECS: Mapping[WorkflowPhase, IngApprovalSpec] = {
     WorkflowPhase.PLANNING: IngApprovalSpec(
         provider_role="planner",
-        prompt_relpath_template="iteration-1/planning-prompt.md",
-        response_relpath_template="iteration-1/planning-response.md",
+        prompt_relpath_template="iteration-{N}/planning-prompt.md",
+        response_relpath_template="iteration-{N}/planning-response.md",
     ),
     WorkflowPhase.GENERATING: IngApprovalSpec(
         provider_role="generator",

@@ -1,6 +1,6 @@
 from pathlib import Path
 from click.testing import CliRunner
-from aiwf.cli import cli
+from aiwf.interface.cli.cli import cli
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 
 

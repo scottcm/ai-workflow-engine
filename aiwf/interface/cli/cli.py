@@ -3,13 +3,13 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
-from aiwf.interface.cli.output_models import InitOutput, StatusOutput, StepOutput
+from aiwf.interface.cli.output_models import ApproveOutput, InitOutput, StatusOutput, StepOutput
 from aiwf.application.config_loader import load_config
 from aiwf.application.approval_specs import ING_APPROVAL_SPECS
 
 
 # Patched by tests where the CLI reads it.
-DEFAULT_SESSIONS_ROOT = Path(".aiwf")
+DEFAULT_SESSIONS_ROOT = Path(".aiwf/sessions")
 
 
 def _json_emit(model: BaseModel) -> None:
@@ -270,7 +270,7 @@ def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash
         from aiwf.domain.persistence.session_store import SessionStore
 
         cfg = load_config(project_root=Path.cwd(), user_home=Path.home())
-        
+
         # Determine effective hash_prompts
         effective_hash = cfg.get("hash_prompts", False)
         if hash_prompts:
@@ -287,13 +287,71 @@ def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash
         # Call orchestrator.approve
         state = orchestrator.approve(session_id, hash_prompts=effective_hash)
 
+        # Collect hashes for output
+        hashes: dict[str, str] = {}
+        if state.plan_hash:
+            hashes["plan.md"] = state.plan_hash
+        if state.review_hash:
+            hashes["review-response.md"] = state.review_hash
+        hashes.update(state.prompt_hashes)
+        for artifact in state.artifacts:
+            if artifact.sha256:
+                hashes[artifact.path] = artifact.sha256
+
+        # Determine approval status
+        approved = (
+            state.plan_approved
+            or state.review_approved
+            or any(a.sha256 is not None for a in state.artifacts)
+        )
+
         if state.status == WorkflowStatus.ERROR:
-            # Orchestrator should have printed the error message already
+            if _get_json_mode(ctx):
+                _json_emit(
+                    ApproveOutput(
+                        exit_code=1,
+                        session_id=session_id,
+                        phase=state.phase.name,
+                        status=state.status.name,
+                        approved=False,
+                        hashes=hashes,
+                        error=state.last_error,
+                    )
+                )
             raise click.exceptions.Exit(1)
-            
+
+        if _get_json_mode(ctx):
+            _json_emit(
+                ApproveOutput(
+                    exit_code=0,
+                    session_id=session_id,
+                    phase=state.phase.name,
+                    status=state.status.name,
+                    approved=approved,
+                    hashes=hashes,
+                )
+            )
+            raise click.exceptions.Exit(0)
+
+        # Plain text output
+        click.echo(f"phase={state.phase.name}")
+        click.echo(f"status={state.status.name}")
+        click.echo(f"approved={approved}")
+
     except click.exceptions.Exit:
         raise
     except Exception as e:
-        # If unexpected error
+        if _get_json_mode(ctx):
+            _json_emit(
+                ApproveOutput(
+                    exit_code=1,
+                    session_id=session_id,
+                    phase="",
+                    status="",
+                    approved=False,
+                    error=str(e),
+                )
+            )
+            raise click.exceptions.Exit(1)
         click.echo(f"Cannot approve: {e}", err=True)
         raise click.exceptions.Exit(1)

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from aiwf.cli import cli
+from aiwf.interface.cli.cli import cli
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 
 
@@ -19,7 +19,7 @@ def _state(*, phase, status, iteration):
 
 def test_step_advances_exit_0_and_header_present(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     calls = {"step": 0, "init_called": False}
 
@@ -57,7 +57,7 @@ def test_step_awaiting_artifact_exit_2_and_outputs_paths(monkeypatch) -> None:
     prompt exists AND response missing under iteration-scoped dirs.
     """
     import aiwf.application.workflow_orchestrator as wo
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_step(self, session_id: str):
         return _state(
@@ -99,7 +99,7 @@ def test_step_prompt_and_response_present_exit_0(monkeypatch):
     so step must exit 0 (not 2).
     """
     import aiwf.application.workflow_orchestrator as wo
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_step(self, session_id: str):
         return _state(
@@ -133,7 +133,7 @@ def test_step_prompt_and_response_present_exit_0(monkeypatch):
 
 def test_step_terminal_success_exit_0(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_step(self, session_id: str):
         return _state(
@@ -156,7 +156,7 @@ def test_step_terminal_success_exit_0(monkeypatch):
 
 def test_step_cancelled_exit_3(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_step(self, session_id: str):
         return _state(
@@ -178,7 +178,7 @@ def test_step_cancelled_exit_3(monkeypatch):
 
 def test_step_exception_exit_1(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
-    import aiwf.cli as cli_mod
+    import aiwf.interface.cli.cli as cli_mod
 
     def fake_step(self, session_id: str):
         raise RuntimeError("boom")

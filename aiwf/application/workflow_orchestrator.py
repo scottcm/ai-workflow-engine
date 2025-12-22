@@ -232,10 +232,10 @@ class WorkflowOrchestrator:
         - If planning-prompt.md missing: generate and write it.
         """
         session_dir = self.sessions_root / session_id
-        
+
         spec = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING]
-        prompt_rel = spec.prompt_relpath_template
-        response_rel = spec.response_relpath_template
+        prompt_rel = spec.prompt_relpath_template.format(N=state.current_iteration)
+        response_rel = spec.response_relpath_template.format(N=state.current_iteration)
 
         prompt_file = session_dir / prompt_rel
         response_file = session_dir / response_rel
@@ -270,9 +270,9 @@ class WorkflowOrchestrator:
             return state
 
         session_dir = self.sessions_root / session_id
-        
+
         spec = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING]
-        response_rel = spec.response_relpath_template
+        response_rel = spec.response_relpath_template.format(N=state.current_iteration)
         response_file = session_dir / response_rel
 
         # Should strictly exist if we are in PLANNED, but safety check
