@@ -90,7 +90,7 @@ def test_init_success_prints_only_session_id_and_calls_orchestrator_once(monkeyp
         "bounded_context": "bc",
         "dev": None,
         "task_id": None,
-        "extra_kwargs": {},
+        "extra_kwargs": {"metadata": None},
     }
     assert calls["step_called"] is False
 
@@ -115,3 +115,39 @@ def test_init_missing_required_option_is_nonzero_and_mentions_missing_option() -
     assert result.exit_code != 0
     assert "Missing option" in result.output
     assert "--bounded-context" in result.output
+
+
+def test_init_with_schema_file_stores_path_in_metadata(monkeypatch) -> None:
+    """When --schema-file is provided, path is stored in metadata (not content)."""
+    calls: dict[str, object] = {"init": None}
+
+    import aiwf.application.workflow_orchestrator as wo
+    import aiwf.domain.constants as constants
+
+    def fake_initialize_run(self, *, metadata=None, **kwargs):
+        calls["init"] = {"metadata": metadata, **kwargs}
+        return "sess_456"
+
+    monkeypatch.setattr(wo.WorkflowOrchestrator, "initialize_run", fake_initialize_run, raising=True)
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        monkeypatch.setattr(constants, "DEFAULT_SESSIONS_ROOT", Path(".aiwf"), raising=True)
+
+        result = runner.invoke(
+            cli,
+            [
+                "init",
+                "--scope", "domain",
+                "--entity", "Foo",
+                "--table", "foo",
+                "--bounded-context", "bc",
+                "--schema-file", "schema.sql",
+            ],
+            prog_name="aiwf",
+        )
+
+    # Path stored, not content - file existence not checked at init time
+    assert result.exit_code == 0
+    assert result.output == "sess_456\n"
+    assert calls["init"]["metadata"] == {"schema_file": "schema.sql"}

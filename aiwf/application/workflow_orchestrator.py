@@ -580,6 +580,7 @@ class WorkflowOrchestrator:
         state.phase_history.append(PhaseTransition(phase=phase, status=status))
 
     def _prompt_context(self, *, state: WorkflowState) -> dict[str, Any]:
+        metadata = state.metadata or {}
         return {
             "session_id": state.session_id,
             "profile": state.profile,
@@ -596,6 +597,7 @@ class WorkflowOrchestrator:
             "date": date.today().isoformat(),
             "phase": state.phase,
             "status": state.status,
+            "schema_file": metadata.get("schema_file"),
         }
 
 

@@ -66,6 +66,7 @@ def cli(ctx: click.Context, json_output: bool) -> None:
 @click.option("--bounded-context", required=True, type=str)
 @click.option("--dev", required=False, type=str)
 @click.option("--task-id", "task_id", required=False, type=str)
+@click.option("--schema-file", "schema_file", required=False, type=str)
 @click.pass_context
 def init_cmd(
     ctx: click.Context,
@@ -75,6 +76,7 @@ def init_cmd(
     bounded_context: str,
     dev: str | None,
     task_id: str | None,
+    schema_file: str | None,
 ) -> None:
 
     try:
@@ -88,6 +90,11 @@ def init_cmd(
 
         # CLI --dev overrides config; config overrides default
         dev = dev if dev is not None else cfg["dev"]
+
+        # Store schema file path if provided (content read at render time)
+        metadata: dict | None = None
+        if schema_file:
+            metadata = {"schema_file": schema_file}
 
         session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
         orchestrator = WorkflowOrchestrator(
@@ -104,6 +111,7 @@ def init_cmd(
             bounded_context=bounded_context,
             dev=dev,
             task_id=task_id,
+            metadata=metadata,
         )
 
         if _get_json_mode(ctx):

@@ -85,3 +85,46 @@ Standard JPA entity with multi-tenant support.
         result = jpa_mt_profile.process_planning_response("   \n\n\t  ")
 
         assert result.status == WorkflowStatus.ERROR
+
+
+class TestSchemaFileRendering:
+    """Tests for schema file content rendering."""
+
+    def test_schema_file_content_available_as_schema_ddl(self, jpa_mt_profile, tmp_path, monkeypatch):
+        """When schema_file is provided, content is read and available as SCHEMA_DDL."""
+        # Create schema file
+        schema_file = tmp_path / "schema.sql"
+        schema_file.write_text("CREATE TABLE foo (id INT);", encoding="utf-8")
+
+        # Change cwd to tmp_path so relative path resolves
+        monkeypatch.chdir(tmp_path)
+
+        # Test _fill_placeholders directly with a template containing {{SCHEMA_DDL}}
+        template = "Schema:\n{{SCHEMA_DDL}}\nEnd"
+        context = {"schema_file": "schema.sql"}
+
+        result = jpa_mt_profile._fill_placeholders(template, context)
+
+        assert "CREATE TABLE foo (id INT);" in result
+        assert "{{SCHEMA_DDL}}" not in result
+
+    def test_schema_file_not_found_at_render_time_errors(self, jpa_mt_profile, tmp_path, monkeypatch):
+        """When schema_file path doesn't exist at render time, error is raised."""
+        monkeypatch.chdir(tmp_path)
+
+        template = "Schema: {{SCHEMA_DDL}}"
+        context = {"schema_file": "nonexistent.sql"}
+
+        with pytest.raises(FileNotFoundError, match="Schema file not found"):
+            jpa_mt_profile._fill_placeholders(template, context)
+
+    def test_no_schema_file_renders_empty_schema_ddl(self, jpa_mt_profile):
+        """When no schema_file provided, {{SCHEMA_DDL}} renders as empty string."""
+        template = "Schema: {{SCHEMA_DDL}} End"
+        context = {}
+
+        result = jpa_mt_profile._fill_placeholders(template, context)
+
+        # SCHEMA_DDL replaced with empty string
+        assert result == "Schema:  End"
+        assert "{{SCHEMA_DDL}}" not in result

@@ -74,9 +74,26 @@ class JpaMtProfile(WorkflowProfile):
         return include_pattern.sub(replace_include, content)
 
     def _fill_placeholders(self, content: str, context: dict[str, Any]) -> str:
-        """Replace {{PLACEHOLDER}} with context values."""
+        """Replace {{PLACEHOLDER}} with context values.
+
+        Special handling for schema_file: if provided, reads file content
+        and makes it available as {{SCHEMA_DDL}}.
+        """
+        # Read schema file content if path provided
+        effective_context = dict(context)
+        schema_file = effective_context.get("schema_file")
+        if schema_file:
+            schema_path = Path(schema_file)
+            if not schema_path.is_absolute():
+                schema_path = Path.cwd() / schema_file
+            if not schema_path.exists():
+                raise FileNotFoundError(f"Schema file not found: {schema_path}")
+            effective_context["schema_ddl"] = schema_path.read_text(encoding="utf-8")
+        else:
+            effective_context["schema_ddl"] = ""
+
         result = content
-        for key, value in context.items():
+        for key, value in effective_context.items():
             placeholder = f"{{{{{key.upper()}}}}}"
             result = result.replace(placeholder, str(value))
         return result
