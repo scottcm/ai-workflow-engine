@@ -605,6 +605,23 @@ class WorkflowOrchestrator:
         # Flatten metadata fields into context for template access
         if state.metadata:
             context.update(state.metadata)
+
+        # Add code_files for REVIEWING and REVISING phases
+        if state.phase in (WorkflowPhase.REVIEWING, WorkflowPhase.REVISING):
+            # For REVIEWING: code is in current iteration
+            # For REVISING: iteration was incremented, so code is in previous iteration
+            code_iteration = (
+                state.current_iteration
+                if state.phase == WorkflowPhase.REVIEWING
+                else state.current_iteration - 1
+            )
+            code_dir_prefix = f"iteration-{code_iteration}/code/"
+            code_files = [
+                a.path for a in state.artifacts
+                if a.path.startswith(code_dir_prefix)
+            ]
+            context["code_files"] = code_files
+
         return context
 
 
