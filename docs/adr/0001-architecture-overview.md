@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** December 2, 2024  
-**Last Updated:** December 6, 2024  
+**Last Updated:** December 22, 2024  
 **Deciders:** Scott
 
 ---
@@ -71,28 +71,37 @@ Interface Layer → Application Layer → Domain Layer → Infrastructure Layer
 ---
 
 ## Core Domain Model
+
 ```python
 class WorkflowPhase(str, Enum):
     INITIALIZED = "initialized"
 
     # Planning
-    PLANNING = "planning"      # *ING: prompt issuance + artifact gate
-    PLANNED = "planned"        # *ED: process planning response
+    PLANNING = "planning"      # ING: prompt issuance + artifact gate
+    PLANNED = "planned"        # ED: gates on plan_approved
 
     # Generation
-    GENERATING = "generating"  # *ING: prompt issuance + artifact gate
-    GENERATED = "generated"    # *ED: process generation response + extract code
+    GENERATING = "generating"  # ING: prompt issuance, response processing, code extraction
+    GENERATED = "generated"    # ED: gates on artifact hashes
 
     # Review
-    REVIEWING = "reviewing"    # *ING: prompt issuance + artifact gate
-    REVIEWED = "reviewed"      # *ED: process review response
+    REVIEWING = "reviewing"    # ING: prompt issuance + artifact gate
+    REVIEWED = "reviewed"      # ED: gates on review_approved, processes verdict
 
     # Revision (mirrors generation)
-    REVISING = "revising"      # *ING: prompt issuance + artifact gate
-    REVISED = "revised"        # *ED: process revision response + extract code
+    REVISING = "revising"      # ING: prompt issuance, response processing, code extraction
+    REVISED = "revised"        # ED: gates on artifact hashes
 
     # Terminal
     COMPLETE = "complete"
+    ERROR = "error"
+    CANCELLED = "cancelled"
+
+
+class WorkflowStatus(str, Enum):
+    IN_PROGRESS = "in_progress"
+    SUCCESS = "success"
+    FAILED = "failed"
     ERROR = "error"
     CANCELLED = "cancelled"
 ```
@@ -101,62 +110,181 @@ class WorkflowPhase(str, Enum):
 
 ## Phase Responsibility Split
 
-This ADR is amended to clarify phase responsibilities as implemented and enforced by tests.
+### ING Phases: PLANNING, REVIEWING
 
-### `*ING` phases
-(`PLANNING`, `GENERATING`, `REVIEWING`, `REVISING`)
-
-Responsible only for:
-- issuing the appropriate prompt artifact if missing
-- gating on artifact presence
+Responsible for:
+- Issuing the appropriate prompt artifact if missing
+- Gating on response artifact presence
+- Transitioning to ED phase when response exists
 
 Must not:
-- process response artifacts
-- advance phase when required artifacts are missing
+- Process response content
+- Extract code or artifacts
 
-If the required response artifact is missing, `step()` returns state unchanged.
+### ING Phases with Processing: GENERATING, REVISING
 
-### `*ED` phases
-(`PLANNED`, `GENERATED`, `REVIEWED`, `REVISED`)
+Responsible for:
+- Issuing the appropriate prompt artifact if missing
+- When response exists: process via profile, extract code, write artifacts
+- Transitioning to ED phase after processing
 
-Responsible only for:
-- processing the corresponding response artifact via the profile
-- extracting/materializing code where applicable
-- setting workflow phase and status
-- persisting state and appending phase history
+Note: This deviates from pure ING/ED separation but maintains correct behavior.
+
+### ED Phases: PLANNED, GENERATED, REVIEWED, REVISED
+
+Responsible for:
+- Gating on approval state (approval must occur before advancement)
+- PLANNED: gates on `plan_approved == True`
+- GENERATED/REVISED: gates on all artifacts having `sha256` set
+- REVIEWED: gates on `review_approved == True`, then processes verdict
 
 Must not:
-- create prompt artifacts
+- Create prompt artifacts
+- Process responses (except REVIEWED processing verdict after approval)
 
-If the required response artifact is missing, `step()` returns state unchanged.
+---
+
+## Approval System
+
+### Core Principle
+
+> Every output must be editable before it becomes input to the next step.
+
+### Commands
+
+| Command | Responsibility |
+|---------|----------------|
+| `aiwf step {session_id}` | Perform deterministic engine work, advance phases |
+| `aiwf approve {session_id}` | Hash artifacts, set approval flags, call providers |
+
+**Step advances. Approve commits.**
+
+### Approval Gates
+
+| Phase | Gate Condition | What Gets Hashed |
+|-------|----------------|------------------|
+| PLANNED | `plan_approved == True` | `plan.md` → `plan_hash` |
+| GENERATED | All artifacts have `sha256` | `iteration-N/code/*` files |
+| REVIEWED | `review_approved == True` | `review-response.md` → `review_hash` |
+| REVISED | All artifacts have `sha256` | `iteration-N/code/*` files |
+
+### Deferred Hashing
+
+Artifacts are written with `sha256=None` during `step()`. Hashes are computed during `approve()` to capture any user edits.
 
 ---
 
 ## Iteration Semantics
 
-This ADR is amended to record iteration behavior enforced by tests.
-
-- Iteration 1 is created when entering `GENERATING`.
+- Iteration 1 is created when entering GENERATING.
 - The iteration number increments only when:
-  - `REVIEWED → REVISING` occurs due to a FAIL outcome.
+  - REVIEWED → REVISING occurs due to a FAIL outcome.
 - The iteration number remains stable across all other phases and transitions.
 - No iteration directories are created speculatively or implicitly.
 
 ---
 
-## Revision Symmetry Clarification
+## Canonical File Locations
 
-Revision mirrors generation structurally.
+### Session-Scoped Files
 
-- `REVISING` behaves like `GENERATING` (prompt issuance + gating).
-- `REVISED` behaves like `GENERATED` (response processing + code extraction).
-- Revision is not a special case; it follows the same orchestration contract.
+```
+.aiwf/sessions/{session-id}/
+├── session.json             # Workflow state
+├── standards-bundle.md      # Created at init, immutable
+└── plans/
+    └── plan.md              # Created in PLANNED, hashed on approval
+```
+
+### Iteration-Scoped Files
+
+```
+.aiwf/sessions/{session-id}/
+├── prompts/
+│   └── planning-prompt.md
+├── responses/
+│   └── planning-response.md
+├── iteration-1/
+│   ├── prompts/
+│   │   ├── generation-prompt.md
+│   │   └── review-prompt.md
+│   ├── responses/
+│   │   ├── generation-response.md
+│   │   └── review-response.md
+│   └── code/
+│       ├── Entity.java
+│       └── EntityRepository.java
+│
+└── iteration-2/              # Created only if revision needed
+    ├── prompts/
+    │   ├── revision-prompt.md
+    │   └── review-prompt.md
+    ├── responses/
+    │   ├── revision-response.md
+    │   └── review-response.md
+    └── code/
+        └── [revised files]
+```
+
+### File Naming Convention
+
+Prompt and response files use the phase name without "-ing" suffix:
+- `planning-prompt.md`, `planning-response.md`
+- `generation-prompt.md`, `generation-response.md`
+- `review-prompt.md`, `review-response.md`
+- `revision-prompt.md`, `revision-response.md`
+
+---
+
+## WorkflowState Model
+
+```python
+class WorkflowState(BaseModel):
+    # Identity
+    session_id: str
+    profile: str
+    scope: str
+    entity: str
+    
+    # Context
+    bounded_context: str | None
+    table: str | None
+    dev: str | None
+    task_id: str | None
+    providers: dict[str, str]  # role -> provider_key
+    execution_mode: ExecutionMode
+    metadata: dict[str, Any]
+    
+    # State
+    phase: WorkflowPhase
+    status: WorkflowStatus
+    current_iteration: int = 1
+    
+    # Hashing and approval
+    standards_hash: str
+    plan_approved: bool = False
+    plan_hash: str | None = None
+    review_approved: bool = False
+    review_hash: str | None = None
+    prompt_hashes: dict[str, str] = {}
+    
+    # Artifacts
+    artifacts: list[Artifact] = []
+    
+    # Error tracking
+    last_error: str | None = None
+    
+    # Timestamps
+    created_at: datetime
+    updated_at: datetime
+    
+    # History
+    phase_history: list[PhaseTransition] = []
+```
 
 ---
 
 ## Pattern Justifications
-
-Each pattern solves a specific architectural problem:
 
 ### 1. Strategy Pattern (AI Providers)
 
@@ -167,26 +295,24 @@ Each pattern solves a specific architectural problem:
 ```python
 class AIProvider(ABC):
     async def generate(self, prompt: str, context: dict | None) -> str: ...
-
-# Implementations (only ManualProvider is built by this project):
-# - ClaudeCliProvider (calls 'claude' CLI)
-# - GeminiCliProvider (calls 'gemini' CLI)
-# - OllamaGptOssProvider (calls private 'Ollama" using gpt-oss model)
-# - ManualProvider (writes prompt to disk, returns placeholder)
 ```
 
 ### 2. Strategy Pattern (Workflow Profiles)
 
-**Problem:** Different code generation domains (ORM, testing, infrastructure) have different templates, standards, and parsing rules.
+**Problem:** Different code generation domains have different templates, standards, and parsing rules.
 
 **Solution:** `WorkflowProfile` interface where profiles are concrete implementations.
 
 ```python
 class WorkflowProfile(ABC):
-    def prompt_template_for(self, phase: WorkflowPhase, scope: str) -> Path: ...
-    def standards_bundle_for(self, context: dict) -> str: ...
-    def parse_bundle(self, content: str) -> dict[str, str]: ...
-    def artifact_dir_for(self, entity: str, scope: str) -> Path: ...
+    def generate_planning_prompt(self, context: dict) -> str: ...
+    def generate_generation_prompt(self, context: dict) -> str: ...
+    def generate_review_prompt(self, context: dict) -> str: ...
+    def generate_revision_prompt(self, context: dict) -> str: ...
+    def process_planning_response(self, content: str) -> ProcessingResult: ...
+    def process_generation_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult: ...
+    def process_review_response(self, content: str) -> ProcessingResult: ...
+    def process_revision_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult: ...
 ```
 
 ### 3. Factory Pattern
@@ -194,119 +320,47 @@ class WorkflowProfile(ABC):
 **Problem:** Need runtime instantiation of providers and profiles based on configuration.
 
 **Solution:** `ProviderFactory` and `ProfileFactory` with registries.
-These are examples of how **custom providers** that wrap agents or make direct API calls could be added.
-The current engine only provides "manual".
+
 ```python
-class ProviderFactory:
-    _registry: dict[str, type[AIProvider]] = {
-        "claude": ClaudeCliProvider,
-        "gemini": GeminiCliProvider,
-        "gpt-oss": OllamaGptOssProvider,
-        "manual": ManualProvider,
-    }
+class ProfileFactory:
+    _registry: dict[str, type[WorkflowProfile]] = {}
     
     @classmethod
-    def create(cls, provider_key: str, config: dict) -> AIProvider: ...
+    def create(cls, profile_key: str, config: dict | None = None) -> WorkflowProfile: ...
     
     @classmethod
-    def register(cls, key: str, provider_class: type[AIProvider]): ...
+    def register(cls, key: str, profile_class: type[WorkflowProfile]): ...
 ```
 
 ### 4. Chain of Responsibility Pattern
 
-**Problem:** Workflow phases (planning, generation, review, revision) need conditional execution based on state, with different chains per profile.
+**Problem:** Workflow phases need conditional execution based on state.
 
 **Solution:** Handler chain where each handler decides whether to process or pass to next.
 
-```python
-class WorkflowHandler(ABC):
-    def set_next(self, handler: "WorkflowHandler") -> "WorkflowHandler": ...
-    async def handle(self, state: WorkflowState) -> WorkflowState: ...
-
-# Handlers:
-# - PlanningHandler
-# - GenerationHandler
-# - ReviewHandler  
-# - RevisionLoopHandler
-```
-
 ### 5. Command Pattern
 
-**Problem:** Operations need encapsulation for undo capability, logging, and testability.
+**Problem:** Operations need encapsulation for testability.
 
-**Solution:** Each operation is a command with execute/undo methods.
-
-```python
-class Command(ABC):
-    async def execute(self, state: WorkflowState) -> None: ...
-    async def undo(self, state: WorkflowState) -> None: ...
-
-# Commands:
-# - PrepareRequestCommand
-# - ExtractBundleCommand
-# - BuildReviewRequestCommand
-# - BuildRevisionRequestCommand
-```
+**Solution:** Each operation is a command with execute methods.
 
 ### 6. Builder Pattern
 
-**Problem:** Handler chains are complex to construct—easy to forget a handler or wire them incorrectly.
+**Problem:** Handler chains are complex to construct.
 
 **Solution:** Fluent `WorkflowBuilder` that constructs valid chains.
 
-```python
-chain = (WorkflowBuilder(profile, providers, mode)
-    .with_planning()
-    .with_generation()
-    .with_review()
-    .with_revision_loop(max_iterations=2)
-    .build())
-```
-
 ### 7. Adapter Pattern
 
-**Problem:** Need to integrate existing scripts and external tools (CLI agents) without tight coupling.
+**Problem:** Need to integrate external tools without tight coupling.
 
 **Solution:** Adapters wrap external dependencies.
 
-```python
-# Legacy adapter: wraps existing script logic
-class ExtractBundleAdapter:
-    def extract(self, bundle_content: str) -> dict[str, str]:
-        # Reuses logic from legacy workflow scripts
-        return extract_files_from_bundle(bundle_content)
-
-# Provider adapter: wraps Claude CLI
-class ClaudeCliProvider(AIProvider):
-    async def generate(self, prompt: str, context: dict | None) -> str:
-        # Calls 'claude' CLI via subprocess
-```
-
 ### 8. Template Method Pattern
 
-**Problem:** Prompts follow a common structure (header, metadata, instructions, standards, context) but vary by profile.
+**Problem:** Prompts follow a common structure but vary by profile.
 
 **Solution:** `PromptTemplate` base class with overridable sections.
-
-```python
-class PromptTemplate(ABC):
-    def render(self, context: dict) -> str:
-        """Template method - defines skeleton"""
-        sections = [
-            self._render_header(context),
-            self._render_metadata(context),
-            self._render_instructions(context),
-            self._render_standards(context),
-            self._render_context(context),
-        ]
-        return "\n\n---\n\n".join(s for s in sections if s)
-    
-    @abstractmethod
-    def _render_header(self, context: dict) -> str: ...
-    
-    @abstractmethod  
-    def _render_instructions(self, context: dict) -> str: ...
-```
 
 ---
 
@@ -316,36 +370,22 @@ class PromptTemplate(ABC):
 ai-workflow-engine/
 ├── aiwf/
 │   ├── domain/
-│   │   ├── models/              # Domain models (WorkflowState, Artifact, etc.)
-│   │   ├── profiles/            # Strategy: WorkflowProfile interface + implementations
-│   │   ├── providers/           # Strategy: AIProvider interface + Factory
-│   │   ├── commands/            # Command: Operation encapsulation
-│   │   ├── handlers/            # Chain of Responsibility: Phase handlers
-│   │   ├── templates/           # Template Method: Prompt templates
-│   │   ├── validation/          # Security utilities (PathValidator)
+│   │   ├── models/              # WorkflowState, Artifact, ProcessingResult, WritePlan
+│   │   ├── profiles/            # WorkflowProfile interface + Factory
+│   │   ├── providers/           # AIProvider interface + Factory
 │   │   ├── persistence/         # SessionStore
-│   │   └── workflow/
-│   │       ├── builder.py       # Builder: Handler chain construction
-│   │       └── executor.py      # Workflow execution with state persistence
-│   ├── infrastructure/          # Adapter: External integrations
-│   │   ├── ai/                  # AI provider adapters (CLI tools)
-│   │   ├── filesystem/          # File operations
-│   │   └── legacy/              # Existing script adapters
-│   ├── application/             # Application layer
-│   │   ├── engine_service.py   # Orchestration
-│   │   └── config_service.py   # Configuration loading
-│   └── interface/               # Interface layer
-│       └── cli/                 # CLI commands
+│   │   └── validation/          # PathValidator
+│   ├── application/             # WorkflowOrchestrator, ConfigLoader
+│   ├── infrastructure/          # Provider implementations
+│   └── interface/
+│       └── cli/                 # CLI commands, output models
 ├── profiles/
-│   └── jpa-mt/                  # First profile implementation
-│       ├── config.yml           # Profile configuration
-│       ├── profile.py           # Profile implementation
-│       ├── templates/           # Prompt templates
-│       │   ├── planning/
-│       │   ├── generation/
-│       │   ├── review/
-│       │   └── revision/
-│       └── README.md            # Profile documentation
+│   └── jpa_mt/                  # JPA multi-tenant profile
+│       ├── config.yml
+│       ├── jpa_mt_profile.py
+│       ├── bundle_extractor.py
+│       ├── file_writer.py
+│       └── templates/
 ├── docs/
 │   └── adr/                     # Architecture Decision Records
 └── tests/
@@ -355,231 +395,90 @@ ai-workflow-engine/
 
 ---
 
-## Key Architectural Decisions
+## CLI Commands
 
-### 1. Dual Execution Modes (First-Class)
+```bash
+# Initialize a new workflow session
+aiwf init --scope domain --entity Product --table app.products --bounded-context catalog
 
-The system explicitly supports two modes:
+# Advance workflow by one step
+aiwf step {session_id}
 
-**Interactive Mode:** For budget-constrained teams using web UIs
-- Generates prompt files to disk
-- Sets `pending_action` checkpoint in state
-- User manually copies/pastes
-- Resumes from saved state
+# Approve current phase (hash artifacts, call providers)
+aiwf approve {session_id}
+aiwf approve {session_id} --hash-prompts
+aiwf approve {session_id} --no-hash-prompts
 
-**Automated Mode:** For teams with CLI agents or API access
-- Directly calls AI providers
-- Runs entire workflow without manual intervention
-- Still persists state for crash recovery
+# Check session status
+aiwf status {session_id}
+```
 
-**Trade-off:** More complexity in handlers (mode-aware behavior) vs. better user experience and future-proofing.
+---
 
-### 2. Profiles Over Configuration
+## Configuration
 
-Profiles are **strategies**, not just config files. They encapsulate:
-- Scope definitions (domain, vertical, etc.)
-- Layer-to-standards mapping
-- Template selection logic
-- Bundle parsing rules
-- Artifact layout conventions
-- Standards management approach
+### Location Precedence (highest wins)
 
-**Trade-off:** More code per profile vs. proper separation of domain-specific concerns.
+1. CLI flags
+2. `./.aiwf/config.yml` (project-specific)
+3. `~/.aiwf/config.yml` (user-specific)
+4. Built-in defaults
 
-### 3. Scope and Layer Design
+### Structure
 
-**Scope** = What to generate (business request)
-- `domain` — Entity + Repository
-- `vertical` — Full stack (Entity → Controller)
-- `service-only` — Service layer only
-
-**Layer** = Architectural component
-- `entity`, `repository`, `service`, `controller`, `dto`, `mapper`
-
-**Configuration:**
 ```yaml
-scopes:
-  domain:
-    layers: [entity, repository]
-  vertical:
-    layers: [entity, repository, service, controller, dto, mapper]
+profile: jpa-mt
 
-layer_standards:
-  _universal:
-    - PACKAGES_AND_LAYERS.md
-  entity:
-    - ORG.md
-    - JPA_AND_DATABASE.md
-    - ARCHITECTURE_AND_MULTITENANCY.md
-    - NAMING_AND_API.md
+providers:
+  planner: manual
+  generator: manual
+  reviewer: manual
+  reviser: manual
+
+hash_prompts: false
+
+dev: null
 ```
 
-**Benefits:**
-- Flexible scope definitions without duplicating standards
-- Layer-based standards deduplication
-- Easy to add custom scopes
+---
 
-### 4. Artifact Directory Structure
+## Responsibility Boundaries
 
-**Session Directory** (iteration-based organization):
-```
-.aiwf/sessions/{session-id}/
-├── session.json
-├── workflow.log
-├── standards-bundle.md          # Immutable
-│
-├── iteration-1/
-│   ├── planning-prompt.md
-│   ├── planning-response.md
-│   ├── generation-prompt.md
-│   ├── generation-response.md
-│   ├── review-prompt.md
-│   ├── review-response.md
-│   └── code/
-│
-└── iteration-2/                 # Revision
-    └── [same structure]
-```
+### Profiles
+- Parse AI responses
+- Decide domain-specific policy
+- Generate content strings
+- Return WritePlan (what to write)
+- **Never read or write files**
+- **Never mutate workflow state**
 
-**Target Directory** (optional):
-```
-{target_root}/{entity}/{scope}/
-├── standards-bundle.md
-├── Entity.java                  # Final code at root
-├── EntityRepository.java
-├── iteration-1/
-└── iteration-2/
-```
+### Engine (WorkflowOrchestrator)
+- Owns all session file I/O
+- Writes all files and artifacts (with `sha256=None`)
+- Executes WritePlan
+- Computes all hashes (during `approve()`)
+- Records approvals
+- Advances workflow state
 
-**Rationale:**
-- Iteration folders keep all related artifacts together
-- Final code at root level (not in subdirectory) for easy access
-- Full audit trail preserved
-- Easy to compare iterations
+### Providers
+- Accept prompt content
+- Return response content (AI providers)
+- Or no-op (manual provider)
 
-### 5. Standards Bundling Strategy
+---
 
-**Decision:** Session-scoped, immutable standards bundles.
+## Non-Enforcement Policy
 
-**Approach:**
-1. Collect all layers for requested scope
-2. Gather standards files for each layer
-3. Add universal standards
-4. Deduplicate (files referenced multiple times loaded once)
-5. Concatenate with separators: `--- FILENAME.md ---`
+This engine is **not adversarial**.
 
-**Immutability Enforcement:**
-- Standards bundled once at session start
-- Engine validates bundle hasn't changed between iterations
-- Prevents workflow corruption from mid-session standards changes
-- If standards update needed, create new session
+- Editing files is allowed at any time
+- The engine does not refuse to proceed due to file edits
+- Hash mismatches log warnings but **never block workflow**
 
-**Trade-off:** Cannot change standards mid-workflow vs. workflow integrity.
-
-### 6. Security Validation
-
-**Shared Validation Library:** `aiwf/domain/validation/path_validator.py`
-
-**Protections:**
-- Entity name sanitization (alphanumeric, hyphens, underscores only)
-- Path traversal prevention
-- Environment variable expansion safety
-- Template variable validation
-- Standards file validation (must be within standards root)
-
-**Usage:**
-```python
-from aiwf.domain.validation import PathValidator
-
-# Sanitize entity name
-clean = PathValidator.sanitize_entity_name(entity)
-
-# Validate standards root
-root = PathValidator.validate_directory(standards_root)
-
-# Validate standards file
-file = validate_standards_file(filename, standards_root)
-```
-
-**Trade-off:** More validation overhead vs. security and error prevention.
-
-### 7. State Persistence Format
-
-**JSON for WorkflowState:** Machine-readable, easy to serialize with Pydantic  
-**YAML for human-editable config:** Profile configs, provider settings
-
-**Trade-off:** Two formats vs. human-editable state files. We prioritize machine reliability for state, human convenience for config.
-
-### 8. CLI-Only (No HTTP)
-
-**Implementation:** CLI + library interface only
-
-**Rationale:**
-- VS Code extension can use subprocess (standard pattern for tools like `black`, `ruff`)
-- Focuses one-month timeline on core engine patterns
-- Simpler deployment (no server management)
-- Works offline
-- TypeScript developer can work independently with CLI
-
-**Trade-off:** No web UI or real-time progress updates vs. faster delivery and simpler collaboration.
-
-### 9. File-Based Prompts (Not stdin)
-
-**Decision:** Write prompts to disk rather than streaming via stdin.
-
-**Rationale:**
-- Prompts are multi-file bundles (template + standards + schemas)
-- Standards bundles are 10k+ characters
-- Need to reference attachments by path
-- Interactive mode requires persistent artifacts for user review
-- Clear audit trail of what was sent to AI
-
-**Trade-off:** More filesystem I/O vs. user visibility and debuggability.
-
-### 10. Planning as First-Class Phase
-
-**Decision:** Keep planning as separate phase before generation.
-
-**Provider role assignments:**
-```python
-providers = {
-    "planner": "gemini",      # Cheap, good at structured thinking
-    "generator": "claude",    # Expensive, excellent at code
-    "reviewer": "gemini",     # Different perspective
-    "reviser": "claude"       # Consistency with generator
-}
-```
-
-**Benefits:**
-- Different AIs for different roles (budget control)
-- Plan becomes versioned artifact
-- User approval checkpoint in interactive mode
-- Can use same AI for both if desired
-
-### 11. Template Organization
-
-**Structure:** Hierarchical by phase, scope-specific files
-
-```
-profiles/jpa-mt/templates/
-├── planning/
-│   ├── domain.md
-│   └── vertical.md
-├── generation/
-│   ├── domain.md
-│   └── vertical.md
-├── review/
-│   ├── domain.md
-│   └── vertical.md
-└── revision/
-    ├── domain.md
-    └── vertical.md
-```
-
-**Rationale:**
-- Easy to compare templates across scopes for same phase
-- Natural grouping by workflow stage
-- Extensible for new scopes without restructuring
+Hashes exist for:
+- Audit trail (record what was approved)
+- No-op revision detection (UX improvement)
+- Post-hoc visibility (debugging)
 
 ---
 
@@ -596,72 +495,22 @@ profiles/jpa-mt/templates/
 7. **Language-agnostic** — Core engine supports any target language through profiles
 8. **Secure by design** — Shared validation prevents common vulnerabilities
 9. **Auditable** — Full iteration tracking with all prompts and responses
-10. **Flexible** — Scope/layer system allows custom generation configurations
 
 ### Negative
 
 1. **Upfront complexity** — More design work than simple scripts
 2. **Learning curve** — New contributors need to understand patterns
 3. **Abstraction overhead** — More files/classes than direct implementation
-4. **Configuration complexity** — More options than simple flat config
-
-### Risks and Mitigations
-
-| Risk | Mitigation |
-|------|-----------|
-| Over-engineering | Focus on patterns that solve real problems; avoid pattern-for-pattern's-sake |
-| VS Code extension coupling | Define clear CLI contract; use subprocess (standard practice) |
-| State corruption from manual editing | Validate state on load; provide `aiwf validate` command |
-| Profile proliferation | Document profile creation guidelines; encourage composition over duplication |
-| Standards drift | Immutability enforcement; validation on each iteration |
-| Path traversal attacks | Shared PathValidator; all inputs sanitized |
-
----
-
-## Phase vs State Naming Convention
-
-**Internal Phases** (WorkflowPhase enum):
-- Used in domain models and handler chain
-- Detailed granularity: `INITIALIZED`, `PLANNING`, `PLANNED`, `PLAN_APPROVED`, `GENERATED`, `REVIEWED`, `REVISED`, `COMPLETE`
-
-**External API States** (CLI output):
-- Simplified for user-facing communication
-- Examples: `"awaiting_planning_response"`, `"awaiting_generation_response"`, `"completed"`
-
-**Mapping:**
-```python
-def api_state_from_phase(phase: WorkflowPhase, mode: ExecutionMode) -> str:
-    if mode == ExecutionMode.INTERACTIVE:
-        return f"awaiting_{phase.value}_response"
-    else:
-        return f"processing_{phase.value}"
-```
-
-**Rationale:**
-- Internal phases provide workflow precision
-- External states provide user clarity
-- Maintains backward compatibility if phases change
 
 ---
 
 ## Related Decisions
 
-Future ADRs may cover:
-- Profile-specific design patterns
-- Multi-tenant implementation patterns
-- Testing strategy for AI-generated code
-- Extension integration patterns
-
----
-
-## References
-
-- [Martin Fowler - Patterns of Enterprise Application Architecture](https://martinfowler.com/eaaCatalog/)
-- [Gang of Four - Design Patterns](https://en.wikipedia.org/wiki/Design_Patterns)
-- [Clean Architecture - Robert C. Martin](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+- ADR-0002: Template Layering System
+- ADR-0003: Workflow State Validation with Pydantic
+- ADR-0004: Structured Review Metadata
 
 ---
 
 **Document Status:** Living document, updated as implementation progresses  
-**Last Reviewed:** December 6, 2024  
-**Next Review:** After Phase 3 implementation
+**Last Reviewed:** December 22, 2024

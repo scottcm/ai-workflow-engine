@@ -1,7 +1,11 @@
 # ADR-0003: Workflow State Validation with Pydantic
 
-## Status
-Proposed
+**Status:** Accepted  
+**Date:** December 2024  
+**Last Updated:** December 22, 2024  
+**Deciders:** Scott
+
+---
 
 ## Context
 
@@ -13,22 +17,16 @@ multi-step, AI-assisted generation workflows. This state enables:
 - ensuring immutability of completed steps,
 - and protecting against corrupted or malformed state.
 
-As the system evolves toward automated orchestration (Milestone M5),
-the correctness of this state becomes increasingly critical. Errors in the
+As the system evolved toward automated orchestration (Milestone M5+),
+the correctness of this state became increasingly critical. Errors in the
 workflow state can lead to invalid generation steps, lost work, or undefined
 behavior that is difficult to diagnose.
 
-While the current implementation uses plain JSON-compatible structures,
-there is no centralized, declarative validation mechanism that enforces
-schema correctness or version compatibility.
-
 ## Decision
 
-The project will adopt **Pydantic** for validating and serializing the
-workflow state model beginning in Milestone M5 (Orchestration Engine & State Validation).
-**DEFFERRED: post-M5.**
+The project uses **Pydantic** for validating and serializing the workflow state model.
 
-Pydantic will be used to:
+Pydantic is used to:
 
 - define an explicit schema for workflow state,
 - validate state on load and before persistence,
@@ -37,6 +35,23 @@ Pydantic will be used to:
 
 This decision applies specifically to **workflow state representation** and
 does not mandate Pydantic usage for other domain models unless separately decided.
+
+## Implementation
+
+The following models use Pydantic:
+
+- `WorkflowState` - Core workflow state with all fields
+- `Artifact` - Code artifact metadata with deferred hashing
+- `PhaseTransition` - Phase history entries
+- `ProcessingResult` - Profile response processing results
+- `WritePlan` / `WriteOp` - File write specifications
+
+### Key Features Used
+
+- **Field validation** - Type checking, optional fields with defaults
+- **JSON serialization** - `model_dump(mode='json')` for persistence
+- **Datetime handling** - Automatic ISO format serialization
+- **Enum support** - `WorkflowPhase`, `WorkflowStatus`, `ExecutionMode`
 
 ## Alternatives Considered
 
