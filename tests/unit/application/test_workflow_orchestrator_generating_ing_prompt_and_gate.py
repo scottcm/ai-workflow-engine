@@ -18,12 +18,14 @@ class _StubPlanningProfile:
 
 
 class _StubGenProcessProfile:
-    def __init__(self) -> None:
+    def __init__(self, status: WorkflowStatus = WorkflowStatus.SUCCESS, error_message: str | None = None) -> None:
         self.process_called = 0
+        self._status = status
+        self._error_message = error_message
 
     def process_generation_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
         self.process_called += 1
-        return ProcessingResult(status=WorkflowStatus.SUCCESS)
+        return ProcessingResult(status=self._status, error_message=self._error_message)
 
 
 def _arrange_at_generating(
@@ -122,3 +124,48 @@ def test_generating_processes_response_and_transitions_to_generated(
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.GENERATED
     assert stub.process_called == 1
+
+
+def test_generating_error_is_recoverable_stays_in_phase(
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When process_generation_response returns ERROR, stay in GENERATING with last_error set."""
+    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
+
+    (it_dir / "generation-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
+
+    error_msg = "No code blocks found in generation response."
+    stub = _StubGenProcessProfile(status=WorkflowStatus.ERROR, error_message=error_msg)
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
+
+    orch.step(session_id)
+
+    after = store.load(session_id)
+    # Should NOT transition to terminal ERROR phase
+    assert after.phase == WorkflowPhase.GENERATING
+    assert after.status == WorkflowStatus.IN_PROGRESS
+    assert after.last_error == error_msg
+    assert stub.process_called == 1
+
+
+def test_generating_success_clears_last_error(
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When process_generation_response succeeds after previous error, clear last_error."""
+    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
+
+    # Set up previous error
+    state = store.load(session_id)
+    state.last_error = "Previous error"
+    store.save(state)
+
+    (it_dir / "generation-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
+
+    stub = _StubGenProcessProfile()
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
+
+    orch.step(session_id)
+
+    after = store.load(session_id)
+    assert after.phase == WorkflowPhase.GENERATED
+    assert after.last_error is None

@@ -277,7 +277,15 @@ class WorkflowOrchestrator:
         profile_instance = ProfileFactory.create(state.profile)
         result: ProcessingResult = profile_instance.process_planning_response(content)
 
+        if result.status == WorkflowStatus.ERROR:
+            # Recoverable error - stay in PLANNED, set last_error
+            state.last_error = result.error_message or "Failed to process planning response"
+            self.session_store.save(state)
+            return state
+
         if result.status == WorkflowStatus.SUCCESS:
+            # Clear any previous error on success
+            state.last_error = None
             # Plan is a session-level file now
             plan_relpath = ED_APPROVAL_SPECS[WorkflowPhase.PLANNED].plan_relpath
             plan_path = session_dir / plan_relpath
@@ -328,7 +336,15 @@ class WorkflowOrchestrator:
                 content, session_dir, state.current_iteration
             )
 
+            if result.status == WorkflowStatus.ERROR:
+                # Recoverable error - stay in GENERATING, set last_error
+                state.last_error = result.error_message or "Failed to process generation response"
+                self.session_store.save(state)
+                return state
+
             if result.status == WorkflowStatus.SUCCESS:
+                # Clear any previous error on success
+                state.last_error = None
                 write_artifacts(session_dir=session_dir, state=state, result=result)
                 state.phase = WorkflowPhase.GENERATED
                 state.status = WorkflowStatus.IN_PROGRESS
@@ -416,7 +432,10 @@ class WorkflowOrchestrator:
 
     def _step_reviewed(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
         """Handle REVIEWED outcomes based on review-response.md."""
+        print(f"[DEBUG] _step_reviewed called")
+        print(f"[DEBUG] state.review_approved: {state.review_approved}")
         if not state.review_approved:
+            print(f"[DEBUG] Early return - review_approved is False")
             return state
 
         session_dir = self.sessions_root / session_id
@@ -424,15 +443,29 @@ class WorkflowOrchestrator:
         spec = ED_APPROVAL_SPECS[WorkflowPhase.REVIEWED]
         response_rel = spec.response_relpath_template.format(N=state.current_iteration)
         response_file = session_dir / response_rel
+        print(f"[DEBUG] response_file: {response_file}")
+        print(f"[DEBUG] response_file.exists(): {response_file.exists()}")
 
         if not response_file.exists():
+            print(f"[DEBUG] Early return - response file does not exist")
             return state
 
         content = response_file.read_text(encoding="utf-8")
+        print(f"[DEBUG] Read content, length: {len(content)}")
         profile_instance = ProfileFactory.create(state.profile)
         result: ProcessingResult = profile_instance.process_review_response(content)
+        print(f"[DEBUG] ProcessingResult.status: {result.status}")
+
+        # Recoverable error - stay in REVIEWED, set last_error
+        if result.status == WorkflowStatus.ERROR:
+            state.last_error = result.error_message or "Failed to process review response"
+            self.session_store.save(state)
+            return state
 
         entering_revising = False
+
+        # Clear any previous error on success
+        state.last_error = None
 
         if result.status == WorkflowStatus.SUCCESS:
             state.phase = WorkflowPhase.COMPLETE
@@ -444,9 +477,6 @@ class WorkflowOrchestrator:
             state.phase = WorkflowPhase.REVISING
             state.status = WorkflowStatus.IN_PROGRESS
             entering_revising = True
-        elif result.status == WorkflowStatus.ERROR:
-            state.phase = WorkflowPhase.ERROR
-            state.status = WorkflowStatus.ERROR
         elif result.status == WorkflowStatus.CANCELLED:
             state.phase = WorkflowPhase.CANCELLED
             state.status = WorkflowStatus.CANCELLED
@@ -490,7 +520,15 @@ class WorkflowOrchestrator:
             content, session_dir, state.current_iteration
         )
 
+        # Recoverable error - stay in REVISING, set last_error
+        if result.status == WorkflowStatus.ERROR:
+            state.last_error = result.error_message or "Failed to process revision response"
+            self.session_store.save(state)
+            return state
+
         if result.status == WorkflowStatus.SUCCESS:
+            # Clear any previous error on success
+            state.last_error = None
             if result.write_plan:
                 write_artifacts(session_dir=session_dir, state=state, result=result)
             else:
@@ -513,12 +551,6 @@ class WorkflowOrchestrator:
 
             state.phase = WorkflowPhase.REVISED
             state.status = WorkflowStatus.IN_PROGRESS
-            self._append_phase_history(state, phase=state.phase, status=state.status)
-            self.session_store.save(state)
-
-        elif result.status == WorkflowStatus.ERROR:
-            state.phase = WorkflowPhase.ERROR
-            state.status = WorkflowStatus.ERROR
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
 

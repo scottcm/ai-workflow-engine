@@ -23,6 +23,7 @@ class StepOutput(BaseOutput):
     iteration: int | None = None
     noop_awaiting_artifact: bool = False
     awaiting_paths: list[str] = []
+    last_error: str | None = None
 
 
 class StatusOutput(BaseOutput):
@@ -32,6 +33,7 @@ class StatusOutput(BaseOutput):
     status: str | None = None
     iteration: int | None = None
     session_path: str
+    last_error: str | None = None
 
 
 class ApproveOutput(BaseOutput):

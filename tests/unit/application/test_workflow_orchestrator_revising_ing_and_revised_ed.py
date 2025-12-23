@@ -16,12 +16,14 @@ def _require_revised_phase() -> None:
 
 
 class _StubRevisionProcessProfile:
-    def __init__(self) -> None:
+    def __init__(self, status: WorkflowStatus = WorkflowStatus.SUCCESS, error_message: str | None = None) -> None:
         self.process_called = 0
+        self._status = status
+        self._error_message = error_message
 
     def process_revision_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
         self.process_called += 1
-        return ProcessingResult(status=WorkflowStatus.SUCCESS)
+        return ProcessingResult(status=self._status, error_message=self._error_message)
 
 
 class _StubReviewPromptProfile:
@@ -241,3 +243,56 @@ def test_revised_blocks_when_artifacts_not_hashed(
 
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.REVISED  # Still blocked
+
+
+def test_revising_error_is_recoverable_stays_in_phase(
+    sessions_root: Path,
+    utf8: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When process_revision_response returns ERROR, stay in REVISING with last_error set."""
+    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8)
+
+    (it_dir / "revision-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
+
+    error_msg = "No code blocks found in revision response."
+    proc = _StubRevisionProcessProfile(status=WorkflowStatus.ERROR, error_message=error_msg)
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: proc))
+
+    orch.step(session_id)
+
+    after = store.load(session_id)
+    # Should NOT transition to terminal ERROR phase
+    assert after.phase == WorkflowPhase.REVISING
+    assert after.status == WorkflowStatus.IN_PROGRESS
+    assert after.last_error == error_msg
+    assert proc.process_called == 1
+
+
+def test_revising_success_clears_last_error(
+    sessions_root: Path,
+    utf8: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When process_revision_response succeeds after previous error, clear last_error."""
+    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8)
+
+    # Set up previous error
+    state = store.load(session_id)
+    state.last_error = "Previous error"
+    store.save(state)
+
+    (it_dir / "revision-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
+
+    proc = _StubRevisionProcessProfile()
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: proc))
+
+    # Patch extractor
+    import profiles.jpa_mt.bundle_extractor as be
+    monkeypatch.setattr(be, "extract_files", lambda raw: {"x.py": "pass\n"})
+
+    orch.step(session_id)
+
+    after = store.load(session_id)
+    assert after.phase == WorkflowPhase.REVISED
+    assert after.last_error is None

@@ -5,7 +5,7 @@ from aiwf.interface.cli.cli import cli
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 
 
-def _state(*, phase, status, iteration):
+def _state(*, phase, status, iteration, last_error=None):
     class _S:
         pass
 
@@ -13,6 +13,7 @@ def _state(*, phase, status, iteration):
     s.phase = phase
     s.status = status
     s.current_iteration = iteration
+    s.last_error = last_error
     return s
 
 

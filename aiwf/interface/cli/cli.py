@@ -166,6 +166,8 @@ def step_cmd(ctx: click.Context, session_id: str) -> None:
         elif awaiting:
             exit_code = 2
 
+        last_error = state.last_error
+
         if _get_json_mode(ctx):
             _json_emit(
                 StepOutput(
@@ -176,6 +178,7 @@ def step_cmd(ctx: click.Context, session_id: str) -> None:
                     iteration=iteration,
                     noop_awaiting_artifact=awaiting,
                     awaiting_paths=paths if awaiting else [],
+                    last_error=last_error,
                 )
             )
             raise click.exceptions.Exit(exit_code)
@@ -187,6 +190,9 @@ def step_cmd(ctx: click.Context, session_id: str) -> None:
             f"noop_awaiting_artifact={'true' if awaiting else 'false'}"
         )
         click.echo(header)
+
+        if last_error:
+            click.echo(f"error: {last_error}")
 
         if awaiting:
             for p in paths:
@@ -231,6 +237,8 @@ def status_cmd(ctx: click.Context, session_id: str) -> None:
         status = state.status.name
         iteration = getattr(state, "current_iteration", None)
 
+        last_error = state.last_error
+
         if _get_json_mode(ctx):
             _json_emit(
                 StatusOutput(
@@ -240,6 +248,7 @@ def status_cmd(ctx: click.Context, session_id: str) -> None:
                     status=status,
                     iteration=iteration,
                     session_path=session_path,
+                    last_error=last_error,
                 )
             )
             raise click.exceptions.Exit(0)
@@ -248,6 +257,8 @@ def status_cmd(ctx: click.Context, session_id: str) -> None:
         click.echo(f"status={status}")
         click.echo(f"iteration={iteration}")
         click.echo(f"session_path={session_path}")
+        if last_error:
+            click.echo(f"last_error={last_error}")
 
     except click.exceptions.Exit:
         raise

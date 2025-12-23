@@ -10,7 +10,7 @@ def _norm(p: str) -> str:
     # Normalize backslashes to forward slashes for cross-platform assertions
     return p.replace(chr(92), "/")
 
-def _state(*, phase, status, iteration):
+def _state(*, phase, status, iteration, last_error=None):
     class _S:
         pass
 
@@ -18,6 +18,7 @@ def _state(*, phase, status, iteration):
     s.phase = phase
     s.status = status
     s.current_iteration = iteration
+    s.last_error = last_error
     return s
 
 

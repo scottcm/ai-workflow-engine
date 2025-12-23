@@ -16,13 +16,14 @@ def _require_reviewed_phase() -> None:
 
 
 class _StubReviewProfile:
-    def __init__(self, status: WorkflowStatus) -> None:
+    def __init__(self, status: WorkflowStatus, error_message: str | None = None) -> None:
         self._status = status
+        self._error_message = error_message
         self.process_called = 0
 
     def process_review_response(self, content: str) -> ProcessingResult:
         self.process_called += 1
-        return ProcessingResult(status=self._status)
+        return ProcessingResult(status=self._status, error_message=self._error_message)
 
     def generate_revision_prompt(self, context: dict) -> str:
         """Called when REVIEWED fails and enters REVISING."""
@@ -99,21 +100,49 @@ def test_reviewed_failed_enters_revising_and_creates_next_iteration(
     assert stub.process_called == 1
 
 
-def test_reviewed_error_terminal_error(
+def test_reviewed_error_is_recoverable_stays_in_phase(
     sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """When process_review_response returns ERROR, stay in REVIEWED with last_error set."""
     _require_reviewed_phase()
     orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8)
 
-    stub = _StubReviewProfile(WorkflowStatus.ERROR)
+    error_msg = "Could not parse review metadata."
+    stub = _StubReviewProfile(WorkflowStatus.ERROR, error_message=error_msg)
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
 
     orch.approve(session_id)
     orch.step(session_id)
 
     after = store.load(session_id)
-    assert after.phase == WorkflowPhase.ERROR
-    assert after.status == WorkflowStatus.ERROR
+    # Should NOT transition to terminal ERROR phase
+    assert after.phase == WorkflowPhase.REVIEWED
+    assert after.status == WorkflowStatus.IN_PROGRESS
+    assert after.last_error == error_msg
+
+
+def test_reviewed_success_clears_last_error(
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When process_review_response succeeds after previous error, clear last_error."""
+    _require_reviewed_phase()
+    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8)
+
+    # First, simulate a previous error by setting last_error
+    state = store.load(session_id)
+    state.last_error = "Previous error"
+    store.save(state)
+
+    stub = _StubReviewProfile(WorkflowStatus.SUCCESS)
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
+
+    orch.approve(session_id)
+    orch.step(session_id)
+
+    after = store.load(session_id)
+    assert after.phase == WorkflowPhase.COMPLETE
+    assert after.status == WorkflowStatus.SUCCESS
+    assert after.last_error is None
 
 
 def test_reviewed_cancelled_terminal_cancelled(

@@ -11,12 +11,14 @@ from aiwf.domain.profiles.profile_factory import ProfileFactory
 
 
 class _StubPlanningProfile:
-    def __init__(self) -> None:
+    def __init__(self, status: WorkflowStatus = WorkflowStatus.SUCCESS, error_message: str | None = None) -> None:
         self.process_called = 0
+        self._status = status
+        self._error_message = error_message
 
     def process_planning_response(self, content: str) -> ProcessingResult:
         self.process_called += 1
-        return ProcessingResult(status=WorkflowStatus.SUCCESS)
+        return ProcessingResult(status=self._status, error_message=self._error_message)
 
     def generate_generation_prompt(self, context: dict) -> str:
         """Called on entry to GENERATING."""
@@ -87,3 +89,109 @@ def test_planned_processes_planning_response_writes_plan_and_enters_generating_w
     # iteration-1 allocated
     assert (session_dir / "iteration-1").is_dir()
     assert stub.process_called == 1
+
+
+def test_planned_error_is_recoverable_stays_in_phase(
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When process_planning_response returns ERROR, stay in PLANNED with last_error set."""
+    store = SessionStore(sessions_root=sessions_root)
+    orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
+
+    session_id = orch.initialize_run(
+        profile="jpa-mt",
+        scope="domain",
+        entity="Client",
+        providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
+        execution_mode=ExecutionMode.INTERACTIVE,
+        bounded_context="client",
+        table="app.clients",
+        dev="test",
+        task_id="LMS-000",
+        metadata={"test": True},
+    )
+    orch.step(session_id)  # INITIALIZED -> PLANNING
+
+    session_dir = sessions_root / session_id
+    iteration_dir = session_dir / "iteration-1"
+    iteration_dir.mkdir(parents=True, exist_ok=True)
+    (iteration_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
+    (iteration_dir / "planning-response.md").write_text("# PLAN\n- x\n", encoding=utf8)
+    (session_dir / "plan.md").write_text("# PLAN\n- x\n", encoding=utf8)
+
+    # PLANNING -> PLANNED
+    monkeypatch.setattr(
+        ProfileFactory,
+        "create",
+        classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(AssertionError("ProfileFactory.create called"))),
+    )
+    orch.step(session_id)
+    assert store.load(session_id).phase == WorkflowPhase.PLANNED
+
+    # PLANNED requires approval before step() advances
+    error_msg = "Planning response is empty."
+    stub = _StubPlanningProfile(status=WorkflowStatus.ERROR, error_message=error_msg)
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
+
+    orch.approve(session_id)
+    orch.step(session_id)
+
+    after = store.load(session_id)
+    # Should NOT transition to terminal ERROR phase
+    assert after.phase == WorkflowPhase.PLANNED
+    assert after.status == WorkflowStatus.IN_PROGRESS
+    assert after.last_error == error_msg
+    assert stub.process_called == 1
+
+
+def test_planned_success_clears_last_error(
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When process_planning_response succeeds after previous error, clear last_error."""
+    store = SessionStore(sessions_root=sessions_root)
+    orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
+
+    session_id = orch.initialize_run(
+        profile="jpa-mt",
+        scope="domain",
+        entity="Client",
+        providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
+        execution_mode=ExecutionMode.INTERACTIVE,
+        bounded_context="client",
+        table="app.clients",
+        dev="test",
+        task_id="LMS-000",
+        metadata={"test": True},
+    )
+    orch.step(session_id)  # INITIALIZED -> PLANNING
+
+    session_dir = sessions_root / session_id
+    iteration_dir = session_dir / "iteration-1"
+    iteration_dir.mkdir(parents=True, exist_ok=True)
+    (iteration_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
+    (iteration_dir / "planning-response.md").write_text("# PLAN\n- x\n", encoding=utf8)
+    (session_dir / "plan.md").write_text("# PLAN\n- x\n", encoding=utf8)
+
+    # PLANNING -> PLANNED
+    monkeypatch.setattr(
+        ProfileFactory,
+        "create",
+        classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(AssertionError("ProfileFactory.create called"))),
+    )
+    orch.step(session_id)
+
+    # Set up previous error
+    state = store.load(session_id)
+    state.last_error = "Previous error"
+    store.save(state)
+
+    # PLANNED -> GENERATING with success
+    stub = _StubPlanningProfile()
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
+
+    orch.approve(session_id)
+    orch.step(session_id)
+
+    after = store.load(session_id)
+    assert after.phase == WorkflowPhase.GENERATING
+    assert after.last_error is None

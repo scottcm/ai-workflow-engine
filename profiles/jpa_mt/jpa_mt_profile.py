@@ -143,7 +143,10 @@ class JpaMtProfile(WorkflowProfile):
     def process_planning_response(self, content: str) -> ProcessingResult:
         """Process planning response - validate it's non-empty."""
         if not content or not content.strip():
-            return ProcessingResult(status=WorkflowStatus.ERROR)
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="Planning response is empty. Please provide a valid planning response.",
+            )
         return ProcessingResult(status=WorkflowStatus.SUCCESS)
     
     def process_generation_response(
@@ -153,12 +156,18 @@ class JpaMtProfile(WorkflowProfile):
         from aiwf.domain.models.write_plan import WriteOp, WritePlan
 
         if not content or not content.strip():
-            return ProcessingResult(status=WorkflowStatus.ERROR)
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="Generation response is empty. Please provide a valid generation response.",
+            )
 
         # Extract code blocks from markdown
         code_blocks = self._extract_code_blocks(content)
         if not code_blocks:
-            return ProcessingResult(status=WorkflowStatus.ERROR)
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="No code blocks found in generation response. Ensure response contains ```java code blocks with // FILE: filename.java comments.",
+            )
 
         # Build write plan from extracted files
         writes = []
@@ -205,16 +214,34 @@ class JpaMtProfile(WorkflowProfile):
         """
         from profiles.jpa_mt.review_metadata import parse_review_metadata
 
+        print(f"[DEBUG] process_review_response called")
+        print(f"[DEBUG] content empty? {not content or not content.strip()}")
+        print(f"[DEBUG] content length: {len(content) if content else 0}")
+
         if not content or not content.strip():
-            return ProcessingResult(status=WorkflowStatus.ERROR)
+            print(f"[DEBUG] Returning ERROR - content is empty")
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="Review response is empty. Please provide a valid review response.",
+            )
+
+        print(f"[DEBUG] First 500 chars of content:\n{content[:500]}")
 
         metadata = parse_review_metadata(content)
+        print(f"[DEBUG] metadata result: {metadata}")
+
         if metadata is None:
-            return ProcessingResult(status=WorkflowStatus.ERROR)
+            print(f"[DEBUG] Returning ERROR - metadata is None")
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="Could not parse review metadata. Ensure response contains @@@REVIEW_META block with verdict: PASS or verdict: FAIL.",
+            )
 
         if metadata["verdict"] == "PASS":
+            print(f"[DEBUG] Returning SUCCESS - verdict is PASS")
             return ProcessingResult(status=WorkflowStatus.SUCCESS)
         else:  # verdict == "FAIL"
+            print(f"[DEBUG] Returning FAILED - verdict is FAIL")
             return ProcessingResult(status=WorkflowStatus.FAILED)
     
     def process_revision_response(
@@ -227,12 +254,18 @@ class JpaMtProfile(WorkflowProfile):
         from aiwf.domain.models.write_plan import WriteOp, WritePlan
 
         if not content or not content.strip():
-            return ProcessingResult(status=WorkflowStatus.ERROR)
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="Revision response is empty. Please provide a valid revision response.",
+            )
 
         # Extract code blocks from markdown (same as generation)
         code_blocks = self._extract_code_blocks(content)
         if not code_blocks:
-            return ProcessingResult(status=WorkflowStatus.ERROR)
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message="No code blocks found in revision response. Ensure response contains ```java code blocks with // FILE: filename.java comments.",
+            )
 
         # Build write plan from extracted files
         writes = []
