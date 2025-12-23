@@ -35,7 +35,8 @@ def test_step_transitions_initialized_to_planning_only(
     assert after.phase == WorkflowPhase.PLANNING
     assert after.status == WorkflowStatus.IN_PROGRESS
 
-    # No iteration dirs created yet
+    # Planning prompt generated on entry to PLANNING
     session_dir = sessions_root / session_id
     assert session_dir.is_dir()
-    assert not any(p.name.startswith("iteration-") for p in session_dir.iterdir())
+    prompt_file = session_dir / "iteration-1" / "planning-prompt.md"
+    assert prompt_file.is_file()

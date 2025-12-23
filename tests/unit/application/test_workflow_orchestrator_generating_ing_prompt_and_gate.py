@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -14,13 +13,7 @@ class _StubPlanningProfile:
     def process_planning_response(self, content: str) -> ProcessingResult:
         return ProcessingResult(status=WorkflowStatus.SUCCESS)
 
-
-class _StubGenPromptProfile:
-    def __init__(self) -> None:
-        self.generate_called = 0
-
-    def generate_generation_prompt(self, context: dict[str, Any]) -> str:
-        self.generate_called += 1
+    def generate_generation_prompt(self, context: dict) -> str:
         return "GENERATION PROMPT"
 
 
@@ -36,6 +29,7 @@ class _StubGenProcessProfile:
 def _arrange_at_generating(
     sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
+    """Arrange state at GENERATING with prompt already generated."""
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
     session_id = orch.initialize_run(
@@ -50,14 +44,12 @@ def _arrange_at_generating(
         task_id="LMS-000",
         metadata={"test": True},
     )
-    orch.step(session_id)  # -> PLANNING
+    orch.step(session_id)  # -> PLANNING (generates planning-prompt.md)
 
     session_dir = sessions_root / session_id
     it_dir = session_dir / "iteration-1"
-    it_dir.mkdir(parents=True, exist_ok=True)
-    (it_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
     (it_dir / "planning-response.md").write_text("# PLAN\n", encoding=utf8)
-    
+
     # Create plan.md at session root for ED approval
     (session_dir / "plan.md").write_text("# PLAN\n", encoding=utf8)
 
@@ -74,7 +66,7 @@ def _arrange_at_generating(
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: _StubPlanningProfile()))
     orch.approve(session_id)
 
-    # PLANNED -> GENERATING
+    # PLANNED -> GENERATING (also generates generation-prompt.md)
     orch.step(session_id)
 
     state = store.load(session_id)
@@ -83,35 +75,43 @@ def _arrange_at_generating(
     return orch, store, session_id, it_dir
 
 
-def test_generating_writes_generation_prompt_if_missing_and_stays_generating(
+def test_generation_prompt_generated_on_entry_from_planned(
     sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Prompt generation now happens on entry to GENERATING (in _step_planned)."""
     orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
 
-    stub = _StubGenPromptProfile()
-    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
-
-    orch.step(session_id)
-
-    after = store.load(session_id)
-    assert after.phase == WorkflowPhase.GENERATING
+    # Check that generation-prompt.md was created on entry
     prompt_file = it_dir / "generation-prompt.md"
     assert prompt_file.is_file()
     assert prompt_file.read_text(encoding=utf8) == "GENERATION PROMPT"
-    assert stub.generate_called == 1
+
+
+def test_generating_is_noop_when_response_missing(
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GENERATING phase is a no-op waiting for response (prompt already exists)."""
+    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
+
+    # Guard: profile must not be called in GENERATING phase when no response exists
+    # (auto-approval bypass may call it but with empty content, so we allow that)
+    before = store.load(session_id)
+    before_hist_len = len(before.phase_history)
+
+    orch.step(session_id)  # GENERATING - no response, stays in GENERATING
+
+    after = store.load(session_id)
+    assert after.phase == WorkflowPhase.GENERATING
+    assert len(after.phase_history) == before_hist_len
 
 
 def test_generating_processes_response_and_transitions_to_generated(
     sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """When response exists, GENERATING processes it and transitions to GENERATED.
-    
-    Note: Current implementation processes response in GENERATING (ING phase).
-    This differs from ADR-0001's intended ING/ED split but matches actual implementation.
-    """
+    """When response exists, GENERATING processes it and transitions to GENERATED."""
     orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
 
-    (it_dir / "generation-prompt.md").write_text("PROMPT", encoding=utf8)
+    # Prompt already exists from _arrange_at_generating
     (it_dir / "generation-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
 
     stub = _StubGenProcessProfile()

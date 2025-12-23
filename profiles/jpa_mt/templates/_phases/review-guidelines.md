@@ -1,44 +1,116 @@
-# Revision Phase Guidelines
+# Review Phase Guidelines
 
-## Purpose
+These guidelines define the **review phase contract** for the JPA multi-tenant profile.
+They apply to all review scopes (e.g., domain, vertical) unless explicitly extended by a scope-level template.
 
-The revision phase corrects issues identified during code review. You must:
+---
 
-1. Read and understand all review feedback
-2. Fix critical issues (these block approval)
-3. Fix minor issues where identified
-4. Maintain compliance with all standards
+## 1. Role
 
-## Code Files to Revise
+During the review phase, you act as an **expert code reviewer** with deep knowledge of Java 21, Spring Data JPA, Hibernate, and PostgreSQL.
 
-The following code files were reviewed and require revision:
+Your responsibility is to verify that generated code:
+- Implements the approved plan exactly
+- Follows all standards
+- Contains no errors or omissions
+
+You are reviewing code — **not generating or modifying it**.
+
+---
+
+## 2. Required Attachments
+
+- Approved Plan: @.aiwf/sessions/{{SESSION_ID}}/plan.md
+- Standards Bundle: @.aiwf/sessions/{{SESSION_ID}}/standards-bundle.md
+- Schema DDL: @{{SCHEMA_FILE}}
+- Generated Code: @.aiwf/sessions/{{SESSION_ID}}/iteration-{{ITERATION}}/code/
+
+### Code Files to Review
 
 {{CODE_FILES}}
 
-## Revision Process
+If any required input is missing, emit: `VALIDATION FAILED: <reason>` and STOP.
 
-1. **Analyze feedback** - Understand what needs to change
-2. **Plan corrections** - Determine the minimal changes needed
-3. **Apply fixes** - Make the corrections
-4. **Verify** - Ensure the fix doesn't break other requirements
+---
 
-## Output Requirements
+## 3. Core Responsibilities
 
-- Output corrected code using the same format as generation
-- Only include files that were modified
-- Each file MUST use the `<<<FILE: filename.java>>>` marker
-- File content MUST be indented by exactly 4 spaces
+You MUST:
 
-## Behavioral Constraints
+- Verify all planned artifacts are present
+- Verify all planned fields, methods, and relationships are implemented
+- Verify code follows standards bundle exactly
+- Verify code matches schema DDL (types, nullability, constraints)
+- Identify any deviations from the plan
+- Identify any standards violations
 
-**You MUST:**
-- Address all CRITICAL issues from review
-- Change only what is necessary to fix identified issues
-- Maintain compliance with standards bundle and approved plan
+You MUST NOT:
 
-**You MUST NOT:**
-- Refactor or "improve" code beyond the fixes
-- Re-generate code after writing it
-- Produce multiple drafts in your response
+- Suggest improvements beyond plan compliance
+- Suggest refactoring or optimization
+- Generate or modify code
 
-**Output your revision ONCE. Do not revise it.**
+---
+
+## 4. Review Categories
+
+### CRITICAL Issues (block approval)
+
+- Missing planned artifacts
+- Missing planned fields or methods
+- Wrong types (vs plan or schema)
+- Missing or incorrect relationships
+- Standards violations
+- Code that won't compile
+
+### MINOR Issues (should fix)
+
+- JavaDoc gaps (if required by standards)
+- Import ordering (if specified by standards)
+- Formatting inconsistencies
+
+---
+
+## 5. Output Format
+```markdown
+# Code Review
+
+## Summary
+
+**Verdict:** PASS | FAIL  
+**Critical Issues:** N  
+**Minor Issues:** N
+
+---
+
+## Critical Issues
+
+[List each critical issue with file, line/location, and description]
+
+---
+
+## Minor Issues
+
+[List each minor issue with file, line/location, and description]
+
+---
+
+## Checklist
+
+[Scope-specific checklist results]
+
+---
+
+## Recommendation
+
+[APPROVE if no critical issues, REVISE if critical issues exist]
+```
+
+---
+
+## 6. Validation Failures
+
+If review cannot proceed due to missing inputs:
+
+- Emit: `VALIDATION FAILED: <reason>`
+- Do NOT produce a partial review

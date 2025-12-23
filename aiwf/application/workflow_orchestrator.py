@@ -141,37 +141,25 @@ class WorkflowOrchestrator:
         the workflow is considered blocked and this method returns the current
         state unchanged without persisting.
 
+        Prompt generation is combined with phase entry: when transitioning into
+        an ING phase (PLANNING, GENERATING, REVIEWING, REVISING), the prompt
+        file is generated immediately in the same step.
+
         Implemented transitions:
-        - INITIALIZED -> PLANNING
-        - PLANNING:
-            - Generates planning-prompt.md if missing.
-            - Transitions to PLANNED if planning-response.md exists.
-        - PLANNED:
-            - Processes planning-response.md.
-            - If success: Writes plan.md, creates iteration-1/, sets current_iteration=1 -> GENERATING.
-        - GENERATING:
-            - Generates generation-prompt.md if missing.
-            - Transitions to GENERATED if generation-response.md exists.
-        - GENERATED:
-            - Processes generation-response.md.
-            - If success: Transitions to REVIEWING.
-        - REVIEWING:
-            - Generates review-prompt.md if missing.
-            - Transitions to REVIEWED if review-response.md exists.
+        - INITIALIZED -> PLANNING: generates planning-prompt.md
+        - PLANNING -> PLANNED: when planning-response.md exists
+        - PLANNED -> GENERATING: processes response, writes plan.md, creates
+            iteration-1/, generates generation-prompt.md
+        - GENERATING -> GENERATED: when generation-response.md exists and valid
+        - GENERATED -> REVIEWING: gates on approved artifacts, generates review-prompt.md
+        - REVIEWING -> REVIEWED: when review-response.md exists
         - REVIEWED:
-            - Processes review-response.md.
             - SUCCESS   -> COMPLETE (status=SUCCESS)
-            - FAILED    -> REVISING (status=IN_PROGRESS; increments iteration; creates new iteration dir)
+            - FAILED    -> REVISING: increments iteration, creates dir, generates revision-prompt.md
             - ERROR     -> ERROR (status=ERROR)
             - CANCELLED -> CANCELLED (status=CANCELLED)
-        - REVISING:
-            - Generates revision-prompt.md if missing.
-            - Transitions to REVISED if revision-response.md exists.
-        - REVISED:
-            - Processes revision-response.md.
-            - If success: transitions to REVIEWING.
-            - ERROR     -> ERROR
-            - CANCELLED -> CANCELLED
+        - REVISING -> REVISED: when revision-response.md exists and valid
+        - REVISED -> REVIEWING: gates on approved artifacts, generates review-prompt.md
 
         Args:
             session_id: Identifier of the workflow session to advance.
@@ -182,7 +170,7 @@ class WorkflowOrchestrator:
         state = self.session_store.load(session_id)
 
         if state.phase == WorkflowPhase.INITIALIZED:
-            return self._step_initialized(state)
+            return self._step_initialized(session_id=session_id, state=state)
 
         if state.phase == WorkflowPhase.PLANNING:
             return self._step_planning(session_id=session_id, state=state)
@@ -222,46 +210,47 @@ class WorkflowOrchestrator:
             "metadata": state.metadata,
         }
 
-    def _step_initialized(self, state: WorkflowState) -> WorkflowState:
-        """Handle INITIALIZED -> PLANNING."""
+    def _step_initialized(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
+        """Handle INITIALIZED -> PLANNING.
+
+        Transitions to PLANNING and immediately generates planning-prompt.md.
+        """
+        session_dir = self.sessions_root / session_id
+
         state.phase = WorkflowPhase.PLANNING
         state.status = WorkflowStatus.IN_PROGRESS
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
+
+        # Generate planning prompt immediately on entry
+        spec = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING]
+        prompt_rel = spec.prompt_relpath_template.format(N=state.current_iteration)
+        prompt_file = session_dir / prompt_rel
+        prompt_file.parent.mkdir(parents=True, exist_ok=True)
+
+        profile_instance = ProfileFactory.create(state.profile)
+        content = profile_instance.generate_planning_prompt(self._prompt_context(state=state))
+        prompt_file.write_text(content, encoding="utf-8")
+
         return state
 
     def _step_planning(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
         """Handle PLANNING phase logic.
 
-        - If planning-response.md exists: transition to PLANNED (no processing).
-        - If planning-prompt.md missing: generate and write it.
+        Prompt was generated on entry to PLANNING.
+        Check if response exists and transition to PLANNED.
         """
         session_dir = self.sessions_root / session_id
 
         spec = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING]
-        prompt_rel = spec.prompt_relpath_template.format(N=state.current_iteration)
         response_rel = spec.response_relpath_template.format(N=state.current_iteration)
-
-        prompt_file = session_dir / prompt_rel
         response_file = session_dir / response_rel
 
-        # 1. Check for response
         if response_file.exists():
             state.phase = WorkflowPhase.PLANNED
             state.status = WorkflowStatus.IN_PROGRESS
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
-            return state
-
-        # 2. Generate prompt if missing
-        if not prompt_file.exists():
-            prompt_file.parent.mkdir(parents=True, exist_ok=True)
-            profile_instance = ProfileFactory.create(state.profile)
-            # Assuming profile has generate_planning_prompt - implicitly required by flow
-            content = profile_instance.generate_planning_prompt(self._prompt_context(state=state))
-            prompt_file.write_text(content, encoding="utf-8")
-            # Stay in PLANNING waiting for response
-            return state
 
         return state
 
@@ -304,28 +293,37 @@ class WorkflowOrchestrator:
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
 
+            # Generate generation prompt immediately on entry
+            gen_spec = ING_APPROVAL_SPECS[WorkflowPhase.GENERATING]
+            gen_prompt_rel = gen_spec.prompt_relpath_template.format(N=state.current_iteration)
+            gen_prompt_file = session_dir / gen_prompt_rel
+            gen_prompt_file.parent.mkdir(parents=True, exist_ok=True)
+
+            gen_content = profile_instance.generate_generation_prompt(self._prompt_context(state=state))
+            gen_prompt_file.write_text(gen_content, encoding="utf-8")
+
         return state
 
     def _step_generating(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
         """Handle GENERATING phase logic.
 
-        - If generation-response.md exists: process it, write artifacts, transition to GENERATED.
-        - If generation-prompt.md missing: generate and write it.
+        Prompt was generated on entry to GENERATING.
+        Check if response exists and transition to GENERATED.
         """
         session_dir = self.sessions_root / session_id
-        
+
         spec = ING_APPROVAL_SPECS[WorkflowPhase.GENERATING]
         prompt_rel = spec.prompt_relpath_template.format(N=state.current_iteration)
         response_rel = spec.response_relpath_template.format(N=state.current_iteration)
-        
+
         prompt_file = session_dir / prompt_rel
         response_file = session_dir / response_rel
 
-        # 1. Check for response and process if exists
+        # Check for response and process if exists
         if response_file.exists():
             content = response_file.read_text(encoding="utf-8")
             profile_instance = ProfileFactory.create(state.profile)
-            
+
             result: ProcessingResult = profile_instance.process_generation_response(
                 content, session_dir, state.current_iteration
             )
@@ -338,7 +336,7 @@ class WorkflowOrchestrator:
                 self.session_store.save(state)
             return state
 
-        # 2. Auto-approval bypass
+        # Auto-approval bypass (for profiles that auto-approve generation)
         if prompt_file.exists():
             profile_instance = ProfileFactory.create(state.profile)
             try:
@@ -348,37 +346,28 @@ class WorkflowOrchestrator:
                     state.status = WorkflowStatus.IN_PROGRESS
                     self._append_phase_history(state, phase=state.phase, status=state.status)
                     self.session_store.save(state)
-                    return state
             except Exception:
                 pass
-
-        # 3. Generate prompt if missing
-        if not prompt_file.exists():
-            prompt_file.parent.mkdir(parents=True, exist_ok=True)
-            profile_instance = ProfileFactory.create(state.profile)
-            # Assuming profile has generate_generation_prompt
-            content = profile_instance.generate_generation_prompt(self._prompt_context(state=state))
-            prompt_file.write_text(content, encoding="utf-8")
-            return state
 
         return state
 
     def _step_generated(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
-        """Handle GENERATED -> REVIEWING (Gating Only).
+        """Handle GENERATED -> REVIEWING.
 
         - Gate on code artifacts under the resolver-derived code directory.
         - If no relevant artifacts exist, or any are unhashed, block.
-        - If all relevant artifacts are hashed, transition to REVIEWING.
-        - Does NOT process responses or write artifacts.
+        - If all relevant artifacts are hashed, transition to REVIEWING and generate review-prompt.md.
         """
+        session_dir = self.sessions_root / session_id
+
         spec = ED_APPROVAL_SPECS[WorkflowPhase.GENERATED]
         code_dir_rel = spec.code_dir_relpath_template.format(N=state.current_iteration)
-        
+
         relevant_artifacts = [
-            a for a in state.artifacts 
+            a for a in state.artifacts
             if a.path.startswith(f"{code_dir_rel}/")
         ]
-        
+
         # If there are NO relevant code artifacts, block.
         if not relevant_artifacts:
             return state
@@ -386,45 +375,42 @@ class WorkflowOrchestrator:
         # If any relevant code artifact is unhashed, block.
         if any(a.sha256 is None for a in relevant_artifacts):
             return state
-        
-        # All present and hashed -> Advance
+
+        # All present and hashed -> Advance to REVIEWING
         state.phase = WorkflowPhase.REVIEWING
         state.status = WorkflowStatus.IN_PROGRESS
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
+
+        # Generate review prompt immediately on entry
+        review_spec = ING_APPROVAL_SPECS[WorkflowPhase.REVIEWING]
+        review_prompt_rel = review_spec.prompt_relpath_template.format(N=state.current_iteration)
+        review_prompt_file = session_dir / review_prompt_rel
+        review_prompt_file.parent.mkdir(parents=True, exist_ok=True)
+
+        profile_instance = ProfileFactory.create(state.profile)
+        review_content = profile_instance.generate_review_prompt(self._prompt_context(state=state))
+        review_prompt_file.write_text(review_content, encoding="utf-8")
+
         return state
 
     def _step_reviewing(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
         """Handle REVIEWING phase logic.
 
-        - If review-response.md exists: transition to REVIEWED (no processing).
-        - If review-prompt.md missing: generate and write it.
+        Prompt was generated on entry to REVIEWING.
+        Check if response exists and transition to REVIEWED.
         """
         session_dir = self.sessions_root / session_id
-        
+
         spec = ING_APPROVAL_SPECS[WorkflowPhase.REVIEWING]
-        prompt_rel = spec.prompt_relpath_template.format(N=state.current_iteration)
         response_rel = spec.response_relpath_template.format(N=state.current_iteration)
-        
-        prompt_file = session_dir / prompt_rel
         response_file = session_dir / response_rel
 
-        # 1. Check for response
         if response_file.exists():
             state.phase = WorkflowPhase.REVIEWED
             state.status = WorkflowStatus.IN_PROGRESS
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
-            return state
-
-        # 2. Generate prompt if missing
-        if not prompt_file.exists():
-            prompt_file.parent.mkdir(parents=True, exist_ok=True)
-            profile_instance = ProfileFactory.create(state.profile)
-            # Assuming profile has generate_review_prompt
-            content = profile_instance.generate_review_prompt(self._prompt_context(state=state))
-            prompt_file.write_text(content, encoding="utf-8")
-            return state
 
         return state
 
@@ -434,7 +420,7 @@ class WorkflowOrchestrator:
             return state
 
         session_dir = self.sessions_root / session_id
-        
+
         spec = ED_APPROVAL_SPECS[WorkflowPhase.REVIEWED]
         response_rel = spec.response_relpath_template.format(N=state.current_iteration)
         response_file = session_dir / response_rel
@@ -446,6 +432,8 @@ class WorkflowOrchestrator:
         profile_instance = ProfileFactory.create(state.profile)
         result: ProcessingResult = profile_instance.process_review_response(content)
 
+        entering_revising = False
+
         if result.status == WorkflowStatus.SUCCESS:
             state.phase = WorkflowPhase.COMPLETE
             state.status = WorkflowStatus.SUCCESS
@@ -455,6 +443,7 @@ class WorkflowOrchestrator:
             new_iteration_dir.mkdir(parents=True, exist_ok=True)
             state.phase = WorkflowPhase.REVISING
             state.status = WorkflowStatus.IN_PROGRESS
+            entering_revising = True
         elif result.status == WorkflowStatus.ERROR:
             state.phase = WorkflowPhase.ERROR
             state.status = WorkflowStatus.ERROR
@@ -466,101 +455,98 @@ class WorkflowOrchestrator:
 
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
+
+        # Generate revision prompt immediately on entry to REVISING
+        if entering_revising:
+            rev_spec = ING_APPROVAL_SPECS[WorkflowPhase.REVISING]
+            rev_prompt_rel = rev_spec.prompt_relpath_template.format(N=state.current_iteration)
+            rev_prompt_file = session_dir / rev_prompt_rel
+            rev_prompt_file.parent.mkdir(parents=True, exist_ok=True)
+
+            rev_content = profile_instance.generate_revision_prompt(self._prompt_context(state=state))
+            rev_prompt_file.write_text(rev_content, encoding="utf-8")
+
         return state
 
     def _step_revising(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
         """Handle REVISING phase logic.
 
-        - If revision-response.md exists: process it, write artifacts, transition to REVISED.
-        - If revision-prompt.md missing: generate and write it.
+        Prompt was generated on entry to REVISING.
+        Check if response exists, process it, and transition to REVISED.
         """
         session_dir = self.sessions_root / session_id
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        
+
         spec = ING_APPROVAL_SPECS[WorkflowPhase.REVISING]
-        prompt_rel = spec.prompt_relpath_template.format(N=state.current_iteration)
         response_rel = spec.response_relpath_template.format(N=state.current_iteration)
-        
-        prompt_file = session_dir / prompt_rel
         response_file = session_dir / response_rel
 
-        # 1. Check for response and process if exists
-        if response_file.exists():
-            content = response_file.read_text(encoding="utf-8")
-            profile_instance = ProfileFactory.create(state.profile)
-            result: ProcessingResult = profile_instance.process_revision_response(
-                content, session_dir, state.current_iteration
-            )
-
-            if result.status == WorkflowStatus.SUCCESS:
-                if result.write_plan:
-                    write_artifacts(session_dir=session_dir, state=state, result=result)
-                else:
-                    # Fallback: Extract and write artifacts using legacy bundle_extractor
-                    try:
-                        profile_module = state.profile.replace("-", "_")
-                        extractor_module = importlib.import_module(f"profiles.{profile_module}.bundle_extractor")
-                        if hasattr(extractor_module, "extract_files"):
-                            files = extractor_module.extract_files(content)
-                            code_dir = iteration_dir / "code"
-                            code_dir.mkdir(parents=True, exist_ok=True)
-                            for filename, file_content in files.items():
-                                (code_dir / filename).write_text(file_content, encoding="utf-8")
-                    except ImportError:
-                        state.phase = WorkflowPhase.ERROR
-                        state.status = WorkflowStatus.ERROR
-                        self._append_phase_history(state, phase=state.phase, status=state.status)
-                        self.session_store.save(state)
-                        return state
-
-                state.phase = WorkflowPhase.REVISED
-                state.status = WorkflowStatus.IN_PROGRESS
-                self._append_phase_history(state, phase=state.phase, status=state.status)
-                self.session_store.save(state)
-                return state
-            
-            elif result.status == WorkflowStatus.ERROR:
-                state.phase = WorkflowPhase.ERROR
-                state.status = WorkflowStatus.ERROR
-                self._append_phase_history(state, phase=state.phase, status=state.status)
-                self.session_store.save(state)
-                return state
-            
-            elif result.status == WorkflowStatus.CANCELLED:
-                state.phase = WorkflowPhase.CANCELLED
-                state.status = WorkflowStatus.CANCELLED
-                self._append_phase_history(state, phase=state.phase, status=state.status)
-                self.session_store.save(state)
-                return state
-
+        if not response_file.exists():
             return state
 
-        # 2. Generate prompt if missing
-        if not prompt_file.exists():
-            prompt_file.parent.mkdir(parents=True, exist_ok=True)
-            profile_instance = ProfileFactory.create(state.profile)
-            content = profile_instance.generate_revision_prompt(self._prompt_context(state=state))
-            prompt_file.write_text(content, encoding="utf-8")
-            return state
+        content = response_file.read_text(encoding="utf-8")
+        profile_instance = ProfileFactory.create(state.profile)
+        result: ProcessingResult = profile_instance.process_revision_response(
+            content, session_dir, state.current_iteration
+        )
+
+        if result.status == WorkflowStatus.SUCCESS:
+            if result.write_plan:
+                write_artifacts(session_dir=session_dir, state=state, result=result)
+            else:
+                # Fallback: Extract and write artifacts using legacy bundle_extractor
+                try:
+                    profile_module = state.profile.replace("-", "_")
+                    extractor_module = importlib.import_module(f"profiles.{profile_module}.bundle_extractor")
+                    if hasattr(extractor_module, "extract_files"):
+                        files = extractor_module.extract_files(content)
+                        code_dir = iteration_dir / "code"
+                        code_dir.mkdir(parents=True, exist_ok=True)
+                        for filename, file_content in files.items():
+                            (code_dir / filename).write_text(file_content, encoding="utf-8")
+                except ImportError:
+                    state.phase = WorkflowPhase.ERROR
+                    state.status = WorkflowStatus.ERROR
+                    self._append_phase_history(state, phase=state.phase, status=state.status)
+                    self.session_store.save(state)
+                    return state
+
+            state.phase = WorkflowPhase.REVISED
+            state.status = WorkflowStatus.IN_PROGRESS
+            self._append_phase_history(state, phase=state.phase, status=state.status)
+            self.session_store.save(state)
+
+        elif result.status == WorkflowStatus.ERROR:
+            state.phase = WorkflowPhase.ERROR
+            state.status = WorkflowStatus.ERROR
+            self._append_phase_history(state, phase=state.phase, status=state.status)
+            self.session_store.save(state)
+
+        elif result.status == WorkflowStatus.CANCELLED:
+            state.phase = WorkflowPhase.CANCELLED
+            state.status = WorkflowStatus.CANCELLED
+            self._append_phase_history(state, phase=state.phase, status=state.status)
+            self.session_store.save(state)
 
         return state
 
     def _step_revised(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
-        """Handle REVISED outcome (Gating Only).
+        """Handle REVISED -> REVIEWING.
 
         - Gate on code artifacts under the resolver-derived code directory.
         - If no relevant artifacts exist, or any are unhashed, block.
-        - If all relevant artifacts are hashed, transition to REVIEWING.
-        - Does NOT process responses or write artifacts.
+        - If all relevant artifacts are hashed, transition to REVIEWING and generate review-prompt.md.
         """
+        session_dir = self.sessions_root / session_id
+
         spec = ED_APPROVAL_SPECS[WorkflowPhase.REVISED]
         code_dir_rel = spec.code_dir_relpath_template.format(N=state.current_iteration)
-        
+
         relevant_artifacts = [
-            a for a in state.artifacts 
+            a for a in state.artifacts
             if a.path.startswith(f"{code_dir_rel}/")
         ]
-        
+
         # If there are NO relevant code artifacts, block.
         if not relevant_artifacts:
             return state
@@ -568,12 +554,23 @@ class WorkflowOrchestrator:
         # If any relevant code artifact is unhashed, block.
         if any(a.sha256 is None for a in relevant_artifacts):
             return state
-        
-        # All present and hashed -> Advance
+
+        # All present and hashed -> Advance to REVIEWING
         state.phase = WorkflowPhase.REVIEWING
         state.status = WorkflowStatus.IN_PROGRESS
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
+
+        # Generate review prompt immediately on entry
+        review_spec = ING_APPROVAL_SPECS[WorkflowPhase.REVIEWING]
+        review_prompt_rel = review_spec.prompt_relpath_template.format(N=state.current_iteration)
+        review_prompt_file = session_dir / review_prompt_rel
+        review_prompt_file.parent.mkdir(parents=True, exist_ok=True)
+
+        profile_instance = ProfileFactory.create(state.profile)
+        review_content = profile_instance.generate_review_prompt(self._prompt_context(state=state))
+        review_prompt_file.write_text(review_content, encoding="utf-8")
+
         return state
 
     @staticmethod

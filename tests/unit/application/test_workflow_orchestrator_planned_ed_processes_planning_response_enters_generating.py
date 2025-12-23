@@ -18,6 +18,10 @@ class _StubPlanningProfile:
         self.process_called += 1
         return ProcessingResult(status=WorkflowStatus.SUCCESS)
 
+    def generate_generation_prompt(self, context: dict) -> str:
+        """Called on entry to GENERATING."""
+        return "GENERATION PROMPT"
+
 
 def test_planned_processes_planning_response_writes_plan_and_enters_generating_with_iteration_1(
     sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch

@@ -24,6 +24,10 @@ class _StubReviewProfile:
         self.process_called += 1
         return ProcessingResult(status=self._status)
 
+    def generate_revision_prompt(self, context: dict) -> str:
+        """Called when REVIEWED fails and enters REVISING."""
+        return "REVISION PROMPT"
+
 
 def _arrange_at_reviewed(
     sessions_root: Path, utf8: str

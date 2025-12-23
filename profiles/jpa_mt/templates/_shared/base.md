@@ -35,15 +35,6 @@ The **phase-specific guidelines** define which inputs are required for this prom
 
 ---
 
-## Required Attachments
-
-The following files should be attached when submitting this prompt:
-
-- Schema DDL: @{{SCHEMA_FILE}}
-- Standards Bundle: @standards-bundle.md
-
----
-
 ## Validation Contract
 
 If any input explicitly marked as **required** by the phase-specific guidelines is missing, you MUST:

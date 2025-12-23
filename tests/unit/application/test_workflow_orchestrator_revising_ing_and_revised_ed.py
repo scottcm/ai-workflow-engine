@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -16,15 +15,6 @@ def _require_revised_phase() -> None:
     assert hasattr(WorkflowPhase, "REVISED"), "WorkflowPhase.REVISED must exist for this contract"
 
 
-class _StubRevisionPromptProfile:
-    def __init__(self) -> None:
-        self.generate_called = 0
-
-    def generate_revision_prompt(self, context: dict[str, Any]) -> str:
-        self.generate_called += 1
-        return "REVISION PROMPT"
-
-
 class _StubRevisionProcessProfile:
     def __init__(self) -> None:
         self.process_called = 0
@@ -34,10 +24,16 @@ class _StubRevisionProcessProfile:
         return ProcessingResult(status=WorkflowStatus.SUCCESS)
 
 
-def _arrange_at_revising(
+class _StubReviewPromptProfile:
+    def generate_review_prompt(self, context: dict) -> str:
+        return "REVIEW PROMPT FROM REVISED"
+
+
+def _arrange_at_revising_with_prompt(
     sessions_root: Path,
     utf8: str
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
+    """Arrange state at REVISING with revision prompt already written (as if from REVIEWED)."""
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
@@ -58,6 +54,9 @@ def _arrange_at_revising(
     it_dir = session_dir / "iteration-2"
     it_dir.mkdir(parents=True, exist_ok=True)
 
+    # Simulate prompt was already generated on entry to REVISING
+    (it_dir / "revision-prompt.md").write_text("REVISION PROMPT", encoding=utf8)
+
     state = store.load(session_id)
     state.current_iteration = 2
     state.phase = WorkflowPhase.REVISING
@@ -67,37 +66,15 @@ def _arrange_at_revising(
     return orch, store, session_id, it_dir
 
 
-def test_revising_writes_revision_prompt_if_missing_and_stays_revising(
+def test_revising_is_noop_when_response_missing(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    orch, store, session_id, it_dir = _arrange_at_revising(sessions_root, utf8)
+    """REVISING phase is a no-op waiting for response (prompt was generated on entry)."""
+    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8)
 
-    stub = _StubRevisionPromptProfile()
-    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
-
-    orch.step(session_id)
-
-    after = store.load(session_id)
-    assert after.phase == WorkflowPhase.REVISING
-
-    prompt_file = it_dir / "revision-prompt.md"
-    assert prompt_file.is_file()
-    assert prompt_file.read_text(encoding=utf8) == "REVISION PROMPT"
-    assert stub.generate_called == 1
-
-
-def test_revising_is_noop_when_prompt_exists_and_response_missing(
-    sessions_root: Path,
-    utf8: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    orch, store, session_id, it_dir = _arrange_at_revising(sessions_root, utf8)
-
-    (it_dir / "revision-prompt.md").write_text("PROMPT", encoding=utf8)
-    # Intentionally no revision-response.md
-
+    # Guard: profile must not be called in REVISING phase (only checks for response)
     monkeypatch.setattr(
         ProfileFactory,
         "create",
@@ -121,15 +98,11 @@ def test_revising_processes_response_and_transitions_to_revised(
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When response exists, REVISING processes it, writes artifacts, and transitions to REVISED.
-    
-    Note: Current implementation processes response in REVISING (ING phase), not REVISED (ED phase).
-    This differs from ADR-0001's intended ING/ED split but matches actual implementation.
-    """
+    """When response exists, REVISING processes it, writes artifacts, and transitions to REVISED."""
     _require_revised_phase()
-    orch, store, session_id, it_dir = _arrange_at_revising(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8)
 
-    (it_dir / "revision-prompt.md").write_text("PROMPT", encoding=utf8)
+    # Prompt already exists from arrangement
     (it_dir / "revision-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
 
     proc = _StubRevisionProcessProfile()
@@ -157,15 +130,34 @@ def test_revised_gates_on_artifact_hashes_and_advances_to_reviewing(
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """REVISED only advances to REVIEWING when code artifacts exist and are hashed (approved).
-    
-    REVISED is an ED phase that gates on approval, not processes responses.
+    """REVISED advances to REVIEWING when code artifacts exist and are hashed (approved).
+
+    On entry to REVIEWING, the review prompt is also generated.
     """
     _require_revised_phase()
-    orch, store, session_id, it_dir = _arrange_at_revising(sessions_root, utf8)
+    store = SessionStore(sessions_root=sessions_root)
+    orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
+
+    session_id = orch.initialize_run(
+        profile="jpa-mt",
+        scope="domain",
+        entity="Client",
+        providers={"primary": "gemini"},
+        execution_mode=ExecutionMode.INTERACTIVE,
+        bounded_context="client",
+        table="app.clients",
+        dev="test",
+        task_id="LMS-000",
+        metadata={"test": True},
+    )
+
+    session_dir = sessions_root / session_id
+    it_dir = session_dir / "iteration-2"
+    it_dir.mkdir(parents=True, exist_ok=True)
 
     # Put state into REVISED with artifacts that have sha256 set (simulating post-approval)
     state = store.load(session_id)
+    state.current_iteration = 2
     state.phase = WorkflowPhase.REVISED
     state.artifacts = [
         Artifact(
@@ -182,18 +174,19 @@ def test_revised_gates_on_artifact_hashes_and_advances_to_reviewing(
     code_dir.mkdir(parents=True, exist_ok=True)
     (code_dir / "x.py").write_text("pass\n", encoding=utf8)
 
-    # No profile call should happen - REVISED only gates
-    monkeypatch.setattr(
-        ProfileFactory,
-        "create",
-        classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(AssertionError("ProfileFactory.create called"))),
-    )
+    # Stub the profile for review prompt generation (called on entry to REVIEWING)
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: _StubReviewPromptProfile()))
 
     orch.step(session_id)
 
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.REVIEWING
     assert after.status == WorkflowStatus.IN_PROGRESS
+
+    # Review prompt was generated on entry
+    review_prompt = it_dir / "review-prompt.md"
+    assert review_prompt.is_file()
+    assert review_prompt.read_text(encoding=utf8) == "REVIEW PROMPT FROM REVISED"
 
 
 def test_revised_blocks_when_artifacts_not_hashed(
@@ -203,10 +196,29 @@ def test_revised_blocks_when_artifacts_not_hashed(
 ) -> None:
     """REVISED blocks (no-op) when artifacts exist but are not yet hashed (not approved)."""
     _require_revised_phase()
-    orch, store, session_id, it_dir = _arrange_at_revising(sessions_root, utf8)
+    store = SessionStore(sessions_root=sessions_root)
+    orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
+
+    session_id = orch.initialize_run(
+        profile="jpa-mt",
+        scope="domain",
+        entity="Client",
+        providers={"primary": "gemini"},
+        execution_mode=ExecutionMode.INTERACTIVE,
+        bounded_context="client",
+        table="app.clients",
+        dev="test",
+        task_id="LMS-000",
+        metadata={"test": True},
+    )
+
+    session_dir = sessions_root / session_id
+    it_dir = session_dir / "iteration-2"
+    it_dir.mkdir(parents=True, exist_ok=True)
 
     # Put state into REVISED with artifacts that have sha256=None (not approved)
     state = store.load(session_id)
+    state.current_iteration = 2
     state.phase = WorkflowPhase.REVISED
     state.artifacts = [
         Artifact(
@@ -218,7 +230,7 @@ def test_revised_blocks_when_artifacts_not_hashed(
     ]
     store.save(state)
 
-    # No profile call should happen
+    # No profile call should happen since we don't advance
     monkeypatch.setattr(
         ProfileFactory,
         "create",

@@ -6,8 +6,6 @@
 
 # Domain Layer Review
 
-## Scope
-
 Reviewing **domain layer** artifacts only:
 - Entity class(es)
 - Repository interface(s)
@@ -25,12 +23,14 @@ Reviewing **domain layer** artifacts only:
 - [ ] Relationships match plan (correct Target Entity imports)
 - [ ] Annotations per standards (JPA, validation)
 - [ ] No extra fields not in plan
+- [ ] Base class inheritance correct (if applicable)
 
 ### Repository Review
 
 - [ ] All planned methods present
 - [ ] Method signatures match plan
 - [ ] Follows standards patterns
+- [ ] Tenant scoping correct (if applicable)
 - [ ] No extra methods not in plan
 
 ### Integration
@@ -46,3 +46,9 @@ Reviewing **domain layer** artifacts only:
 Answer: Are all planned artifacts present, implementing the plan exactly, following standards?
 
 Missing artifacts or plan deviations are CRITICAL.
+
+---
+
+## Output Destination
+
+Save your complete review as `review-response.md` to same location as `review-prompt.md`.

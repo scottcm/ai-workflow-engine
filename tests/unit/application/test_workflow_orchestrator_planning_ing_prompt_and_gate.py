@@ -11,18 +11,10 @@ from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 
 
-class _StubPromptProfile:
-    def __init__(self) -> None:
-        self.generate_called = 0
-
-    def generate_planning_prompt(self, context: dict[str, Any]) -> str:
-        self.generate_called += 1
-        return "PLANNING PROMPT"
-
-
-def test_planning_writes_prompt_if_missing_and_stays_in_planning(
-    sessions_root: Path, monkeypatch: pytest.MonkeyPatch
+def test_planning_prompt_generated_on_entry_from_initialized(
+    sessions_root: Path, mock_jpa_mt_profile
 ) -> None:
+    """Prompt generation now happens on entry to PLANNING (in _step_initialized)."""
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
@@ -39,34 +31,25 @@ def test_planning_writes_prompt_if_missing_and_stays_in_planning(
         metadata={"test": True},
     )
 
-    orch.step(session_id)  # INITIALIZED -> PLANNING
-
-    stub = _StubPromptProfile()
-    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
-
     before = store.load(session_id)
-    assert before.phase == WorkflowPhase.PLANNING
-    before_hist_len = len(before.phase_history)
+    assert before.phase == WorkflowPhase.INITIALIZED
 
-    orch.step(session_id)  # PLANNING should write prompt and stay PLANNING
+    orch.step(session_id)  # INITIALIZED -> PLANNING (generates prompt)
 
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.PLANNING
     assert after.status == WorkflowStatus.IN_PROGRESS
-    # prompt issuance does not advance phase
-    assert len(after.phase_history) == before_hist_len
 
     session_dir = sessions_root / session_id
-    # Updated: prompt goes to iteration-1
     prompt_file = session_dir / "iteration-1" / "planning-prompt.md"
     assert prompt_file.is_file()
-    assert prompt_file.read_text(encoding="utf-8") == "PLANNING PROMPT"
-    assert stub.generate_called == 1
+    assert mock_jpa_mt_profile.generate_planning_prompt.called
 
 
-def test_planning_is_noop_when_prompt_exists_and_response_missing(
+def test_planning_is_noop_when_response_missing(
     sessions_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """PLANNING phase is a no-op waiting for response (prompt already exists)."""
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
@@ -82,14 +65,9 @@ def test_planning_is_noop_when_prompt_exists_and_response_missing(
         task_id="LMS-000",
         metadata={"test": True},
     )
-    orch.step(session_id)  # INITIALIZED -> PLANNING
+    orch.step(session_id)  # INITIALIZED -> PLANNING (generates prompt)
 
-    session_dir = sessions_root / session_id
-    iteration_dir = session_dir / "iteration-1"
-    iteration_dir.mkdir(parents=True, exist_ok=True)
-    (iteration_dir / "planning-prompt.md").write_text("X", encoding="utf-8")
-
-    # Guard: profile must not be called in this no-op case
+    # Guard: profile must not be called in PLANNING phase (only checks for response)
     monkeypatch.setattr(
         ProfileFactory,
         "create",
@@ -100,7 +78,7 @@ def test_planning_is_noop_when_prompt_exists_and_response_missing(
     before_updated_at = before.updated_at
     before_hist_len = len(before.phase_history)
 
-    orch.step(session_id)
+    orch.step(session_id)  # PLANNING - no response, stays in PLANNING
 
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.PLANNING
@@ -126,12 +104,11 @@ def test_planning_transitions_to_planned_when_response_exists_without_processing
         task_id="LMS-000",
         metadata={"test": True},
     )
-    orch.step(session_id)  # INITIALIZED -> PLANNING
+    orch.step(session_id)  # INITIALIZED -> PLANNING (generates prompt)
 
     session_dir = sessions_root / session_id
     iteration_dir = session_dir / "iteration-1"
-    iteration_dir.mkdir(parents=True, exist_ok=True)
-    (iteration_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
+    # Prompt already exists from step above
     (iteration_dir / "planning-response.md").write_text("RESPONSE", encoding=utf8)
 
     # Guard: no processing in PLANNING; no profile calls

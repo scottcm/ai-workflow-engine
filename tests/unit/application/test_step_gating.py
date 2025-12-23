@@ -75,6 +75,9 @@ def test_step_planned_blocks_until_plan_approved(tmp_path: Path, monkeypatch: py
         def process_planning_response(self, content: str) -> ProcessingResult:
             return ProcessingResult(status=WorkflowStatus.SUCCESS)
 
+        def generate_generation_prompt(self, context: dict) -> str:
+            return "GENERATION PROMPT"
+
     import aiwf.application.workflow_orchestrator as orch_mod
     monkeypatch.setattr(orch_mod.ProfileFactory, "create", lambda _name: FakeProfile(), raising=True)
 
@@ -128,6 +131,9 @@ def test_step_ed_blocks_until_code_hashes_present(tmp_path: Path, monkeypatch: p
 
         def process_revision_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
             return ProcessingResult(status=WorkflowStatus.SUCCESS)
+
+        def generate_review_prompt(self, context: dict) -> str:
+            return "REVIEW PROMPT"
 
     import aiwf.application.workflow_orchestrator as orch_mod
     monkeypatch.setattr(orch_mod.ProfileFactory, "create", lambda _name: FakeProfile(), raising=True)

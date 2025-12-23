@@ -16,6 +16,10 @@ class _StubPlanningProfile:
     def process_planning_response(self, content: str) -> ProcessingResult:
         return ProcessingResult(status=WorkflowStatus.SUCCESS)
 
+    def generate_generation_prompt(self, context: dict) -> str:
+        """Called on entry to GENERATING."""
+        return "GENERATION PROMPT"
+
 
 class _StubGenerationProfile:
     def __init__(self) -> None:
@@ -29,6 +33,12 @@ class _StubGenerationProfile:
                 WriteOp(path="code/x.py", content="pass\n")
             ])
         )
+
+
+class _StubReviewPromptProfile:
+    def generate_review_prompt(self, context: dict) -> str:
+        """Called on entry to REVIEWING."""
+        return "REVIEW PROMPT"
 
 
 def _arrange_at_generated(
@@ -118,11 +128,12 @@ def test_generated_gates_on_artifact_hashes_and_enters_reviewing(
 
     # Approve GENERATED (hashes artifacts)
     orch.approve(session_id)
-    
+
     state = store.load(session_id)
     assert all(a.sha256 is not None for a in state.artifacts)
 
-    # Now step advances to REVIEWING
+    # Now step advances to REVIEWING (generates review prompt)
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: _StubReviewPromptProfile()))
     orch.step(session_id)
 
     after = store.load(session_id)
