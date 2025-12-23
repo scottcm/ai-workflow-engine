@@ -18,7 +18,7 @@ experience in:
 Your responsibility is to analyze the provided inputs and produce a **clear,
 complete, and unambiguous implementation plan** for the requested scope.
 
-You are planning implementation details — **not generating code**.
+You are planning implementation details – **not generating code**.
 
 ---
 

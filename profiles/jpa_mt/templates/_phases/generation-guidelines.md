@@ -27,6 +27,12 @@ During the generation phase, the AI acts as:
 
 If any required input is missing, the AI MUST treat this as a validation failure (see Section 5).
 
+**Cross-Schema Entity References:**
+
+If the entity references other entities not in this task:
+   - Use the Target Entity FQCN from the approved plan
+   - If entity doesn't exist yet, add a TODO comment with the import
+
 ---
 
 ## 2. Core Responsibilities
@@ -65,16 +71,16 @@ All generation output MUST use a strict **code bundle** format that can be parse
   Example:
   - `<<<FILE: Tier.java>>>`
   - `<<<FILE: TierRepository.java>>>`
-- The file marker line MUST be followed by a newline and then the file’s content, indented by exactly 4 spaces.
+- The file marker line MUST be followed by a newline and then the file's content, indented by exactly 4 spaces.
 - The content of each file:
   - MUST be valid Java code.
   - MUST include a correct `package` declaration.
-  - MUST compile in isolation given the project’s standard dependencies.
+  - MUST compile in isolation given the project's standard dependencies.
 
 Example (illustrative only, not prescriptive):
 
 <<<FILE: Tier.java>>>
-    package com.aiwf.example.catalog.domain;
+    package com.example.global.domain.tier;
 
     import jakarta.persistence.Entity;
     import jakarta.persistence.Table;
@@ -86,7 +92,7 @@ Example (illustrative only, not prescriptive):
     }
 
 <<<FILE: TierRepository.java>>>
-    package com.aiwf.example.catalog.domain;
+    package com.example.global.domain.tier;
 
     import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -107,7 +113,7 @@ The AI MUST NOT:
 When generating repositories:
 
 - The AI MUST implement **only** the repository methods specified in the approved planning document.
-- The AI MUST NOT add “helpful” or “convenience” queries beyond the plan (for example, extra `findAllBy...` methods).
+- The AI MUST NOT add "helpful" or "convenience" queries beyond the plan (for example, extra `findAllBy...` methods).
 - Method signatures MUST:
   - Use types consistent with the planning document and schema DDL.
   - Respect tenant identifier types and patterns defined in the standards.

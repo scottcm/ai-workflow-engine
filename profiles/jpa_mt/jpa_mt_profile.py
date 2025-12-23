@@ -81,8 +81,9 @@ class JpaMtProfile(WorkflowProfile):
     def _fill_placeholders(self, content: str, context: dict[str, Any]) -> str:
         """Replace {{PLACEHOLDER}} with context values.
 
-        Special handling for schema_file: if provided, reads file content
-        and makes it available as {{SCHEMA_DDL}}.
+        Special handling:
+        - schema_file: if provided, reads file content as {{SCHEMA_DDL}}
+        - code_files: if provided, formats as markdown list for {{CODE_FILES}}
         """
         # Read schema file content if path provided
         effective_context = dict(context)
@@ -96,6 +97,13 @@ class JpaMtProfile(WorkflowProfile):
             effective_context["schema_ddl"] = schema_path.read_text(encoding="utf-8")
         else:
             effective_context["schema_ddl"] = ""
+
+        # Format code_files list as markdown
+        code_files = effective_context.get("code_files")
+        if code_files and isinstance(code_files, list):
+            effective_context["code_files"] = "\n".join(f"- `{f}`" for f in code_files)
+        elif code_files is None:
+            effective_context["code_files"] = ""
 
         result = content
         for key, value in effective_context.items():

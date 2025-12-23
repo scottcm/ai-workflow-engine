@@ -20,6 +20,7 @@ from aiwf.domain.models.workflow_state import (
 )
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
+from aiwf.domain.validation.path_validator import normalize_metadata_paths
 
 
 @dataclass
@@ -76,6 +77,8 @@ class WorkflowOrchestrator:
         session_id = uuid.uuid4().hex
         session_dir = self.sessions_root / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
+
+        metadata = normalize_metadata_paths(metadata)
 
         state = _build_initial_state(
             session_id=session_id,

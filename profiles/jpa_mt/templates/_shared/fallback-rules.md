@@ -18,7 +18,7 @@ When reasoning about entities, repositories, and queries:
   - Invent new relationships.
   - Invent new domain types (enums, embeddables, value objects) that are not explicitly defined or requested.
 - If the schema or planning document is ambiguous, the AI MUST:
-  - Surface the ambiguity as a question in the appropriate “Questions for Developer” section (planning), or
+  - Surface the ambiguity as a question in the appropriate "Questions for Developer" section (planning), or
   - Refuse to generate or modify code beyond what is unambiguously defined (generation/revision).
 
 ---
@@ -48,25 +48,12 @@ These rules apply to all generated or reviewed Java artifacts (entities, reposit
 
 ---
 
-## 4. Constructors & Accessors (Global Defaults)
-
-Unless the standards bundle or planning document specifies otherwise:
-
-- Entities MUST provide a JPA-compliant no-argument constructor:
-  - Public or protected, as appropriate.
-- Entities MAY additionally provide:
-  - An all-arguments constructor for convenience.
-- The AI MUST NOT:
-  - Introduce Lombok annotations (e.g., `@Data`, `@Builder`) unless explicitly allowed in the standards.
-  - Introduce builder patterns or fluent APIs that are not requested.
-
-For accessors:
-
-- Standard JavaBean-style getters and setters SHOULD be used for persistent fields, unless the standards define an alternative pattern.
-- The AI MUST NOT:
-  - Generate non-standard accessor patterns (e.g., fluent setters) without explicit instruction.
-
-These defaults are global and apply wherever Java entities are generated or reviewed.
+## 4. Constructors, Accessors & Lombok (Global Defaults)
+   
+   If standards permit Lombok, use it. Otherwise:
+   - Entities MUST provide a no-argument constructor (public or protected)
+   - Use standard JavaBean getters/setters
+   - Do NOT introduce Lombok, builders, or fluent APIs without permission
 
 ---
 

@@ -388,6 +388,19 @@ class PathValidator:
             )
         
     @classmethod
+    def normalize_path_separators(cls, path: str) -> str:
+        """
+        Normalize Windows backslashes to forward slashes for cross-platform consistency.
+
+        Args:
+            path: Path string that may contain backslashes
+
+        Returns:
+            Path with all backslashes replaced by forward slashes
+        """
+        return path.replace("\\", "/")
+
+    @classmethod
     def validate_relative_path_pattern(cls, path: str) -> str:
         """
         Validate a relative path string using pattern-based checks only.
@@ -460,6 +473,18 @@ def validate_target_root(path: str | None) -> Path | None:
     if path is None:
         return None
     return PathValidator.validate_directory(path, must_exist=False)
+
+
+def normalize_metadata_paths(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize path separators in metadata for cross-platform consistency."""
+    if not metadata:
+        return {}
+    result = {}
+    for key, value in metadata.items():
+        if isinstance(value, str) and "\\" in value:
+            value = PathValidator.normalize_path_separators(value)
+        result[key] = value
+    return result
 
 
 def validate_standards_file(

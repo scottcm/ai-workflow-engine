@@ -1,13 +1,8 @@
 # Naming And Api (AI-Optimized)
-<!--
-tags: [naming, api, controller, dto, mapper, exceptions, packaging]
-ai-profile: [domain, vertical, service, api, code-review, unit, integration, schema]
--->
+> Canonical rules for naming, controllers, DTOs, mappers, and exceptions.
 
-> This document is part of the Control Plane Java standards set.  
-> It focuses on naming, controllers, DTOs, mappers, and exceptions.
+### Requirements: Core Naming Conventions
 
-### Requirements
 - **Entities**
     - MUST match the **singular table name** exactly.
     - MUST NOT use suffixes such as `Entity`, `Model`, `Record`, `DO`, etc.
@@ -18,7 +13,16 @@ ai-profile: [domain, vertical, service, api, code-review, unit, integration, sch
 - **Tests**
     - MUST use the `Test` suffix and map 1:1 to the class under test.
 
-### Requirements
+**Examples from this codebase:**
+
+| Table | Entity | Repository | Service |
+|-------|--------|------------|---------|
+| `app.tenants` | `Tenant` | `TenantRepository` | `TenantService` |
+| `app.products` | `Product` | `ProductRepository` | `ProductService` |
+| `global.tiers` | `Tier` | `TierRepository` | `TierService` |
+
+### Requirements: Controller & DTO Naming
+
 - **Controllers**
     - MUST use the `*Controller` suffix.
     - MUST remain thin—validation, parameter extraction, delegation only.
@@ -30,11 +34,42 @@ ai-profile: [domain, vertical, service, api, code-review, unit, integration, sch
     - MAY use `*Dto`.
     - MUST NOT be part of external API surfaces.
 
-### Requirements
+**Examples from this codebase:**
+
+| Entity | Controller | Request DTO | Response DTO |
+|--------|------------|-------------|--------------|
+| `Product` | `ProductController` | `CreateProductRequest` | `ProductResponse` |
+| `Tenant` | `TenantController` | `CreateTenantRequest` | `TenantResponse` |
+| `Tier` | `TierController` | `CreateTierRequest` | `TierResponse` |
+
+**DTO Package Locations:**
+- `com.example.app.api.dto.product.CreateProductRequest`
+- `com.example.app.api.dto.product.ProductResponse`
+- `com.example.app.api.dto.tenant.CreateTenantRequest`
+- `com.example.app.api.dto.tenant.TenantResponse`
+
+### Requirements: Mapper Naming
+
 - All entity↔DTO mapping MUST be performed in `*Mapper` classes.
 - Mappers SHOULD live in a dedicated mapper package.
 - Services & controllers MUST NOT contain inline/ad-hoc mapping logic.
 
-### Requirements
+**Examples from this codebase:**
+
+| Entity | Mapper |
+|--------|--------|
+| `Product` | `ProductMapper` |
+| `Tenant` | `TenantMapper` |
+| `Tier` | `TierMapper` |
+
+**Mapper Package Location:** `com.example.app.mapper`
+
+### Requirements: Exception Naming
+
 - Domain exceptions MUST end with `Exception`.
 - API exceptions SHOULD be translated via a global `@ControllerAdvice`.
+
+**Examples:**
+- `ProductNotFoundException`
+- `TenantNotFoundException`
+- `DuplicateSkuException`

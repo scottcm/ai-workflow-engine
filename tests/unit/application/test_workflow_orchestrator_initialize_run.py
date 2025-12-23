@@ -34,3 +34,22 @@ def test_initialize_run_creates_session_and_persists_state_without_iteration_dir
     session_dir = sessions_root / session_id
     assert session_dir.is_dir()
     assert not any(p.name.startswith("iteration-") for p in session_dir.iterdir())
+
+
+def test_initialize_run_normalizes_windows_backslashes_in_metadata(
+    sessions_root: Path,
+) -> None:
+    """Verify that Windows backslashes in metadata are normalized to forward slashes."""
+    store = SessionStore(sessions_root=sessions_root)
+    orchestrator = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
+
+    session_id = orchestrator.initialize_run(
+        profile="jpa-mt",
+        scope="domain",
+        entity="Client",
+        providers={"primary": "gemini"},
+        metadata={"schema_file": "docs\\samples\\schema.sql"},
+    )
+
+    state = store.load(session_id)
+    assert state.metadata["schema_file"] == "docs/samples/schema.sql"

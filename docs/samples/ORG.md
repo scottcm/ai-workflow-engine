@@ -1,9 +1,4 @@
 # Org (AI-Optimized)
-<!--
-tags: [corporate-base, naming, packages, di, boilerplate, lombok, architecture]
-ai-profile: [vertical, domain, service, api, code-review, unit, integration, schema, unit-review, integration-review, schema-review]
--->
-
 These standards define **mandatory and recommended** practices for all Java code across the organization.  
 They apply to **all repositories** unless an exception is explicitly approved (ADR required).  
 All requirement keywords follow **RFC 2119**.

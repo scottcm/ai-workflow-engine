@@ -6,95 +6,43 @@
 
 # Domain Layer Review
 
-## Scope Definition
+## Scope
 
-You are reviewing **domain layer** artifacts:
-- **Entity class(es)** - Data model implementation
-- **Repository interface(s)** - Data access contracts
+Reviewing **domain layer** artifacts only:
+- Entity class(es)
+- Repository interface(s)
 
-This scope does NOT include:
-- Service layer logic
-- Controller/API layer
-- DTOs or mapping logic
+**Out of scope:** Services, controllers, DTOs, mappers.
 
 ---
 
-## Expected Artifacts
+## Review Checklist
 
-Based on the approved plan, you should find:
+### Entity Review
 
-**Entity Files:**
-- One or more entity class files
-- File names matching entity names from plan
-- Located in code generation output directory
+- [ ] All planned fields present with correct types
+- [ ] Field types match schema DDL
+- [ ] Relationships match plan (correct Target Entity imports)
+- [ ] Annotations per standards (JPA, validation)
+- [ ] No extra fields not in plan
 
-**Repository Files:**
-- One or more repository interface files  
-- Naming pattern: `{Entity}Repository`
-- Located in code generation output directory
+### Repository Review
 
-**If artifacts are missing or don't match the plan, this is CRITICAL.**
+- [ ] All planned methods present
+- [ ] Method signatures match plan
+- [ ] Follows standards patterns
+- [ ] No extra methods not in plan
 
----
+### Integration
 
-## Review Organization
-
-Structure your review by artifact type:
-
-### 1. Entity Review
-
-For each entity class, validate:
-- Implements data model from plan
-- Follows standards bundle requirements for entities
-- All planned fields present with correct types
-- Field types match plan and schema (if provided)
-- No extra fields not in plan
-
-### 2. Repository Review
-
-For each repository interface, validate:
-- Provides data access methods from plan
-- Method signatures match plan specifications
-- Follows standards bundle patterns for repositories
-- No extra methods not in plan
-
-### 3. Integration Review
-
-Cross-cutting validation:
-- Entities and repositories work together correctly
-- Relationships properly defined
-- References between artifacts are valid
-- Implementation matches approved design
+- [ ] Entity/repository references valid
+- [ ] Imports resolve correctly (especially cross-schema)
+- [ ] No scope violations (business logic in entities)
 
 ---
 
-## Domain-Specific Focus
+## Completion
 
-The standards bundle defines requirements for:
-- Entity structure and annotations
-- Repository patterns and method naming
-- Data access security and isolation
-- Field and class naming conventions
+Answer: Are all planned artifacts present, implementing the plan exactly, following standards?
 
-**Apply standards bundle requirements to domain artifacts only.**
-
-**Do NOT review:**
-- Service layer concerns (business logic)
-- API contracts (controller layer)
-- Data transfer or mapping (DTO layer)
-
-These are out of scope for domain layer review.
-
----
-
-## Review Completion
-
-Your review MUST answer these questions:
-
-- [ ] Are all planned domain artifacts present?
-- [ ] Do they implement the approved plan exactly?
-- [ ] Do they follow all standards bundle requirements?
-- [ ] Are there scope violations (e.g., business logic in entities)?
-- [ ] Do artifacts integrate correctly?
-
-Focus exclusively on domain layer. Other layers reviewed separately.
+Missing artifacts or plan deviations are CRITICAL.

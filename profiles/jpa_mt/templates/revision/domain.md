@@ -8,63 +8,42 @@
 
 ## Context
 
-You are in the **Revision** phase for the JPA multi-tenant profile.
-
-- The previous code generation has been reviewed and issues were identified.
-- You must correct the identified issues and regenerate the code.
-
-Your task is to produce corrected versions of:
-
-- The **JPA entity class**, and
-- The **Spring Data repository interface**
-
-following the feedback from the review phase.
+Previous code generation was reviewed and issues identified. Produce corrected versions of:
+- JPA entity class
+- Spring Data repository interface
 
 ---
 
 ## Required Inputs
 
-The following files MUST be available and treated as authoritative:
-
-- **Previous Code** - The code from the last generation iteration
-- **Review Feedback** - The issues identified by the reviewer
-- **Standards Bundle** - Consolidated standards document
-- **Planning Document** - The approved plan for this entity
+- **Previous Code** - Code from last iteration
+- **Review Feedback** - Issues identified by reviewer
+- **Standards Bundle** - `standards-bundle.md`
+- **Planning Document** - Approved `planning-response.md`
 
 ---
 
-## Revision Guidelines
+## Revision Rules
 
-When revising the code:
-
-1. **Address all critical issues first** - These must be fixed
-2. **Address minor issues** - Fix these as well if identified
-3. **Do not introduce new issues** - Follow all standards
-4. **Preserve working code** - Only change what needs to be fixed
+1. Fix all CRITICAL issues first
+2. Fix minor issues if identified
+3. Preserve working code - only change what's broken
+4. Do not introduce new issues
 
 ---
 
 ## Output Format
 
-Your output MUST consist only of corrected code files:
+Use same bundle format as generation. Only include modified files:
 
-```java
-// FILE: {{ENTITY}}.java
-package ...;
+<<<FILE: Product.java>>>
+    package com.example.app.domain.product;
 
-@Entity
-public class {{ENTITY}} {
     // Corrected implementation
-}
-```
+    
+<<<FILE: ProductRepository.java>>>
+    package com.example.app.domain.product;
 
-```java
-// FILE: {{ENTITY}}Repository.java
-package ...;
-
-public interface {{ENTITY}}Repository extends JpaRepository<{{ENTITY}}, Long> {
     // Corrected implementation
-}
-```
 
-Only include files that were changed. Use the same format as the generation phase.
+No prose outside file markers.

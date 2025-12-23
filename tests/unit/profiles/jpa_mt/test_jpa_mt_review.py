@@ -36,6 +36,24 @@ class TestReviewPromptGeneration:
         # Review template should include review-related content
         assert "review" in prompt.lower() or "Review" in prompt
 
+    def test_generate_review_prompt_includes_code_files(self, jpa_mt_profile):
+        """Review prompt should format code_files as markdown list."""
+        context = {
+            "entity": "Product",
+            "scope": "domain",
+            "table": "app.products",
+            "bounded_context": "catalog",
+            "current_iteration": 1,
+            "code_files": [
+                "iteration-1/code/Product.java",
+                "iteration-1/code/ProductRepository.java",
+            ],
+        }
+        prompt = jpa_mt_profile.generate_review_prompt(context)
+
+        assert "- `iteration-1/code/Product.java`" in prompt
+        assert "- `iteration-1/code/ProductRepository.java`" in prompt
+
 
 class TestReviewResponseProcessing:
     """Tests for process_review_response."""
