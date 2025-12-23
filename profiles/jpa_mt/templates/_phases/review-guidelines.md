@@ -72,15 +72,16 @@ You MUST NOT:
 ---
 
 ## 5. Output Format
-```markdown
-# Code Review
 
-## Summary
-
-**Verdict:** PASS | FAIL  
-**Critical Issues:** N  
-**Minor Issues:** N
-
+Your response MUST begin with a metadata block:
+```
+@@@REVIEW_META
+verdict: PASS | FAIL
+issues_total: <number>
+issues_critical: <number>
+missing_inputs: <number>
+@@@
+```
 ---
 
 ## Critical Issues
