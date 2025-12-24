@@ -22,6 +22,17 @@ def _get_json_mode(ctx: click.Context) -> bool:
     return bool(obj.get("json", False))
 
 
+def _format_error(e: Exception) -> str:
+    """Format exception into user-friendly message."""
+    if isinstance(e, FileNotFoundError):
+        return f"File not found: {e.filename}" if e.filename else str(e)
+    if isinstance(e, ValueError):
+        return str(e)
+    if isinstance(e, KeyError):
+        return f"Missing required field: {e.args[0]}"
+    return str(e)
+
+
 def _awaiting_paths_for_state(session_id: str, state) -> tuple[bool, list[str]]:
     """
     Manual-workflow inference (Slice C): prompt exists + response missing => awaiting response.
@@ -360,6 +371,7 @@ def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash
     except click.exceptions.Exit:
         raise
     except Exception as e:
+        error_msg = _format_error(e)
         if _get_json_mode(ctx):
             _json_emit(
                 ApproveOutput(
@@ -368,9 +380,9 @@ def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash
                     phase="",
                     status="",
                     approved=False,
-                    error=str(e),
+                    error=error_msg,
                 )
             )
             raise click.exceptions.Exit(1)
-        click.echo(f"Cannot approve: {e}", err=True)
+        click.echo(f"Cannot approve: {error_msg}", err=True)
         raise click.exceptions.Exit(1)

@@ -270,7 +270,7 @@ class WorkflowOrchestrator:
 
         if result.status == WorkflowStatus.ERROR:
             # Recoverable error - stay in PLANNED, set last_error
-            state.last_error = result.error_message or "Failed to process planning response"
+            state.last_error = result.error_message or "Planning: response is empty"
             self.session_store.save(state)
             return state
 
@@ -329,7 +329,7 @@ class WorkflowOrchestrator:
 
             if result.status == WorkflowStatus.ERROR:
                 # Recoverable error - stay in GENERATING, set last_error
-                state.last_error = result.error_message or "Failed to process generation response"
+                state.last_error = result.error_message or "Generation: response is empty or contains no valid code blocks"
                 self.session_store.save(state)
                 return state
 
@@ -441,7 +441,7 @@ class WorkflowOrchestrator:
 
         # Recoverable error - stay in REVIEWED, set last_error
         if result.status == WorkflowStatus.ERROR:
-            state.last_error = result.error_message or "Failed to process review response"
+            state.last_error = result.error_message or "Review: response is empty or missing @@@REVIEW_META block"
             self.session_store.save(state)
             return state
 
@@ -518,7 +518,7 @@ class WorkflowOrchestrator:
 
         # Recoverable error - stay in REVISING, set last_error
         if result.status == WorkflowStatus.ERROR:
-            state.last_error = result.error_message or "Failed to process revision response"
+            state.last_error = result.error_message or "Revision: response is empty or contains no valid code blocks"
             self.session_store.save(state)
             return state
 
