@@ -171,8 +171,7 @@ Standard JPA entity.
         (session_dir / "iteration-1" / "generation-response.md").write_text('''
 Here is the code:
 
-```java
-// FILE: Product.java
+<<<FILE: Product.java>>>
 package com.example.domain;
 
 import javax.persistence.Entity;
@@ -184,17 +183,14 @@ public class Product {
     private Long id;
     private String name;
 }
-```
 
-```java
-// FILE: ProductRepository.java
+<<<FILE: ProductRepository.java>>>
 package com.example.domain;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 }
-```
 ''')
 
         # GENERATING -> GENERATED (process response, write artifacts)
@@ -274,13 +270,11 @@ Code looks good. All standards followed.
 
         # Write generation response
         (session_dir / "iteration-1" / "generation-response.md").write_text('''
-```java
-// FILE: Product.java
+<<<FILE: Product.java>>>
 package com.example;
 
 @Entity
 public class Product { @Id Long id; }
-```
 ''')
 
         orchestrator.step(session_id)  # -> GENERATED
