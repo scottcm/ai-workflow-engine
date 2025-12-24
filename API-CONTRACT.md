@@ -1,7 +1,7 @@
 # AI Workflow Engine - API Contract
 
-**Version:** 0.9.0  
-**Status:** Pre-release Specification  
+**Version:** 1.0.0  
+**Status:** Stable  
 **Last Updated:** December 24, 2024
 
 ---
@@ -28,9 +28,9 @@ This document defines the CLI interface contract between the AI Workflow Engine 
 | `aiwf step` | Advance workflow one phase | ✅ Implemented |
 | `aiwf approve` | Hash artifacts, call providers | ✅ Implemented |
 | `aiwf status` | Get session details | ✅ Implemented |
-| `aiwf list` | List sessions | 🔮 Planned |
-| `aiwf profiles` | List available profiles | 🔮 Planned |
-| `aiwf providers` | List available AI providers | 🔮 Planned |
+| `aiwf list` | List sessions | ✅ Implemented |
+| `aiwf profiles` | List available profiles | ✅ Implemented |
+| `aiwf providers` | List available AI providers | ✅ Implemented |
 
 ---
 
@@ -339,7 +339,7 @@ session_path=.aiwf/sessions/abc123
 
 ---
 
-## Planned Commands
+## Discovery Commands
 
 ### 5. `aiwf list`
 
@@ -786,7 +786,7 @@ if (result.error === null) { ... }  // Won't work, field is omitted
 
 ## Versioning
 
-**Contract Version:** 0.9.0
+**Contract Version:** 1.0.0
 
 **Compatibility Promise:**
 - Breaking changes increment major version
@@ -796,7 +796,7 @@ if (result.error === null) { ... }  // Won't work, field is omitted
 **Version Check:**
 ```bash
 aiwf --version
-# Output: aiwf 0.9.0 (contract 0.9.0)
+# Output: aiwf 1.0.0 (contract 1.0.0)
 ```
 
 ---
