@@ -12,4 +12,5 @@ class ProcessingResult(BaseModel):
     error_message: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     write_plan: WritePlan | None = None
+    messages: list[str] = Field(default_factory=list)
 

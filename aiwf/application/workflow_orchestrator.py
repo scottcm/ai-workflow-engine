@@ -102,14 +102,25 @@ class WorkflowOrchestrator:
 
     def approve(self, session_id: str, hash_prompts: bool = False) -> WorkflowState:
         state = self.session_store.load(session_id)
+        state.messages = []  # Clear transient messages
         session_dir = self.sessions_root / session_id
 
         try:
+            original_phase = state.phase
             updated = ApprovalHandler().approve(
                 session_dir=session_dir,
                 state=state,
                 hash_prompts=hash_prompts,
             )
+
+            # Add approval message based on phase
+            if original_phase == WorkflowPhase.PLANNED:
+                self._add_message(updated, "Plan approved")
+            elif original_phase in (WorkflowPhase.GENERATED, WorkflowPhase.REVISED):
+                artifact_count = sum(1 for a in updated.artifacts if a.sha256 is not None)
+                self._add_message(updated, f"Artifacts approved ({artifact_count} files)")
+            elif original_phase == WorkflowPhase.REVIEWED:
+                self._add_message(updated, "Review approved")
 
             # Success is recovery: always reset status and clear any prior error.
             updated.status = WorkflowStatus.IN_PROGRESS
@@ -123,6 +134,14 @@ class WorkflowOrchestrator:
             state.last_error = str(e)
             self.session_store.save(state)
             return state
+
+    def _add_message(self, state: WorkflowState, message: str) -> None:
+        """Add a progress message to the state."""
+        state.messages.append(message)
+
+    def _add_phase_message(self, state: WorkflowState) -> None:
+        """Add phase transition message."""
+        self._add_message(state, f"Advancing to {state.phase.name} phase")
 
     def step(self, session_id: str) -> WorkflowState:
         """Advance the workflow by one deterministic unit of work.
@@ -159,6 +178,7 @@ class WorkflowOrchestrator:
             The current workflow state after applying at most one unit of work.
         """
         state = self.session_store.load(session_id)
+        state.messages = []  # Clear transient messages for this step
 
         if state.phase == WorkflowPhase.INITIALIZED:
             return self._step_initialized(session_id=session_id, state=state)
@@ -210,6 +230,7 @@ class WorkflowOrchestrator:
 
         state.phase = WorkflowPhase.PLANNING
         state.status = WorkflowStatus.IN_PROGRESS
+        self._add_phase_message(state)
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
 
@@ -240,6 +261,7 @@ class WorkflowOrchestrator:
         if response_file.exists():
             state.phase = WorkflowPhase.PLANNED
             state.status = WorkflowStatus.IN_PROGRESS
+            self._add_phase_message(state)
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
 
@@ -289,6 +311,7 @@ class WorkflowOrchestrator:
 
             state.phase = WorkflowPhase.GENERATING
             state.status = WorkflowStatus.IN_PROGRESS
+            self._add_phase_message(state)
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
 
@@ -336,9 +359,12 @@ class WorkflowOrchestrator:
             if result.status == WorkflowStatus.SUCCESS:
                 # Clear any previous error on success
                 state.last_error = None
+                # Collect profile messages
+                state.messages.extend(result.messages)
                 write_artifacts(session_dir=session_dir, state=state, result=result)
                 state.phase = WorkflowPhase.GENERATED
                 state.status = WorkflowStatus.IN_PROGRESS
+                self._add_phase_message(state)
                 self._append_phase_history(state, phase=state.phase, status=state.status)
                 self.session_store.save(state)
             return state
@@ -386,6 +412,7 @@ class WorkflowOrchestrator:
         # All present and hashed -> Advance to REVIEWING
         state.phase = WorkflowPhase.REVIEWING
         state.status = WorkflowStatus.IN_PROGRESS
+        self._add_phase_message(state)
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
 
@@ -416,6 +443,7 @@ class WorkflowOrchestrator:
         if response_file.exists():
             state.phase = WorkflowPhase.REVIEWED
             state.status = WorkflowStatus.IN_PROGRESS
+            self._add_phase_message(state)
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
 
@@ -450,9 +478,13 @@ class WorkflowOrchestrator:
         # Clear any previous error on success
         state.last_error = None
 
+        # Collect profile messages (review verdict)
+        state.messages.extend(result.messages)
+
         if result.status == WorkflowStatus.SUCCESS:
             state.phase = WorkflowPhase.COMPLETE
             state.status = WorkflowStatus.SUCCESS
+            self._add_message(state, "Workflow complete")
         elif result.status == WorkflowStatus.FAILED:
             previous_iteration = state.current_iteration
             state.current_iteration += 1
@@ -472,6 +504,8 @@ class WorkflowOrchestrator:
 
             state.phase = WorkflowPhase.REVISING
             state.status = WorkflowStatus.IN_PROGRESS
+            self._add_message(state, f"Starting revision iteration {state.current_iteration}")
+            self._add_phase_message(state)
             entering_revising = True
         elif result.status == WorkflowStatus.CANCELLED:
             state.phase = WorkflowPhase.CANCELLED
@@ -525,6 +559,8 @@ class WorkflowOrchestrator:
         if result.status == WorkflowStatus.SUCCESS:
             # Clear any previous error on success
             state.last_error = None
+            # Collect profile messages
+            state.messages.extend(result.messages)
             if result.write_plan:
                 write_artifacts(session_dir=session_dir, state=state, result=result)
             else:
@@ -547,6 +583,7 @@ class WorkflowOrchestrator:
 
             state.phase = WorkflowPhase.REVISED
             state.status = WorkflowStatus.IN_PROGRESS
+            self._add_phase_message(state)
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
 
@@ -586,6 +623,7 @@ class WorkflowOrchestrator:
         # All present and hashed -> Advance to REVIEWING
         state.phase = WorkflowPhase.REVIEWING
         state.status = WorkflowStatus.IN_PROGRESS
+        self._add_phase_message(state)
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
 

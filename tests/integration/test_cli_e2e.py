@@ -17,6 +17,16 @@ import profiles  # noqa: F401
 from aiwf.interface.cli.cli import cli
 
 
+def make_runner() -> CliRunner:
+    """Create a CliRunner for CLI tests.
+
+    Note: In Click 8.x, result.stdout contains only stdout, result.stderr
+    contains only stderr, and result.output contains both combined.
+    For JSON parsing, use result.stdout to avoid progress messages.
+    """
+    return CliRunner()
+
+
 @pytest.fixture
 def cli_env(tmp_path, monkeypatch):
     """Set up CLI environment with config and standards."""
@@ -71,7 +81,7 @@ class TestCliInitCommand:
 
     def test_init_creates_session_plain_text(self, cli_env):
         """init command creates session and outputs session ID."""
-        runner = CliRunner()
+        runner = make_runner()
 
         result = runner.invoke(
             cli,
@@ -86,7 +96,7 @@ class TestCliInitCommand:
         )
 
         assert result.exit_code == 0
-        session_id = result.output.strip()
+        session_id = result.stdout.strip()
         assert len(session_id) > 0
 
         # Verify session was created
@@ -96,7 +106,7 @@ class TestCliInitCommand:
 
     def test_init_creates_session_json_output(self, cli_env):
         """init command with --json outputs proper JSON."""
-        runner = CliRunner()
+        runner = make_runner()
 
         result = runner.invoke(
             cli,
@@ -112,7 +122,7 @@ class TestCliInitCommand:
         )
 
         assert result.exit_code == 0
-        output = json.loads(result.output)
+        output = json.loads(result.stdout)
         assert output["schema_version"] == 1
         assert output["command"] == "init"
         assert output["exit_code"] == 0
@@ -121,7 +131,7 @@ class TestCliInitCommand:
 
     def test_init_missing_required_arg_fails(self, cli_env):
         """init command without required args fails."""
-        runner = CliRunner()
+        runner = make_runner()
 
         result = runner.invoke(
             cli,
@@ -136,7 +146,7 @@ class TestCliStepCommand:
 
     def test_step_advances_phase_and_generates_prompt(self, cli_env):
         """step command advances workflow phase and generates prompt."""
-        runner = CliRunner()
+        runner = make_runner()
 
         # First, create a session
         init_result = runner.invoke(
@@ -151,20 +161,20 @@ class TestCliStepCommand:
                 "--schema-file", "schema.sql",
             ],
         )
-        session_id = json.loads(init_result.output)["session_id"]
+        session_id = json.loads(init_result.stdout)["session_id"]
 
         # Step to PLANNING - also generates prompt, so awaiting response (exit 2)
         step_result = runner.invoke(cli, ["step", session_id])
 
         # Exit code 2 means awaiting response (prompt generated)
         assert step_result.exit_code == 2
-        assert "phase=PLANNING" in step_result.output
-        assert "status=IN_PROGRESS" in step_result.output
-        assert "noop_awaiting_artifact=true" in step_result.output
+        assert "phase=PLANNING" in step_result.stdout
+        assert "status=IN_PROGRESS" in step_result.stdout
+        assert "noop_awaiting_artifact=true" in step_result.stdout
 
     def test_step_json_output_awaiting(self, cli_env):
         """step command with --json outputs proper JSON when awaiting."""
-        runner = CliRunner()
+        runner = make_runner()
 
         # Create session
         init_result = runner.invoke(
@@ -179,13 +189,13 @@ class TestCliStepCommand:
                 "--schema-file", "schema.sql",
             ],
         )
-        session_id = json.loads(init_result.output)["session_id"]
+        session_id = json.loads(init_result.stdout)["session_id"]
 
         # Step with JSON output - generates prompt, awaiting response
         step_result = runner.invoke(cli, ["--json", "step", session_id])
 
         assert step_result.exit_code == 2  # Awaiting response
-        output = json.loads(step_result.output)
+        output = json.loads(step_result.stdout)
         assert output["schema_version"] == 1
         assert output["command"] == "step"
         assert output["session_id"] == session_id
@@ -196,7 +206,7 @@ class TestCliStepCommand:
 
     def test_step_awaiting_response_exit_2(self, cli_env):
         """step command returns exit code 2 when awaiting response."""
-        runner = CliRunner()
+        runner = make_runner()
         tmp_path = cli_env["tmp_path"]
         sessions_root = cli_env["sessions_root"]
 
@@ -213,7 +223,7 @@ class TestCliStepCommand:
                 "--schema-file", "schema.sql",
             ],
         )
-        session_id = json.loads(init_result.output)["session_id"]
+        session_id = json.loads(init_result.stdout)["session_id"]
 
         # Step to PLANNING
         runner.invoke(cli, ["step", session_id])
@@ -222,7 +232,7 @@ class TestCliStepCommand:
         step_result = runner.invoke(cli, ["--json", "step", session_id])
 
         assert step_result.exit_code == 2
-        output = json.loads(step_result.output)
+        output = json.loads(step_result.stdout)
         assert output["noop_awaiting_artifact"] is True
         assert len(output["awaiting_paths"]) == 2  # prompt and response paths
 
@@ -232,7 +242,7 @@ class TestCliStatusCommand:
 
     def test_status_shows_current_state(self, cli_env):
         """status command shows current workflow state."""
-        runner = CliRunner()
+        runner = make_runner()
 
         # Create session
         init_result = runner.invoke(
@@ -247,19 +257,19 @@ class TestCliStatusCommand:
                 "--schema-file", "schema.sql",
             ],
         )
-        session_id = json.loads(init_result.output)["session_id"]
+        session_id = json.loads(init_result.stdout)["session_id"]
 
         # Check status
         status_result = runner.invoke(cli, ["status", session_id])
 
         assert status_result.exit_code == 0
-        assert "phase=INITIALIZED" in status_result.output
-        assert "status=IN_PROGRESS" in status_result.output
-        assert "iteration=1" in status_result.output
+        assert "phase=INITIALIZED" in status_result.stdout
+        assert "status=IN_PROGRESS" in status_result.stdout
+        assert "iteration=1" in status_result.stdout
 
     def test_status_json_output(self, cli_env):
         """status command with --json outputs proper JSON."""
-        runner = CliRunner()
+        runner = make_runner()
 
         # Create session
         init_result = runner.invoke(
@@ -274,7 +284,7 @@ class TestCliStatusCommand:
                 "--schema-file", "schema.sql",
             ],
         )
-        session_id = json.loads(init_result.output)["session_id"]
+        session_id = json.loads(init_result.stdout)["session_id"]
 
         # Step to change state
         runner.invoke(cli, ["step", session_id])
@@ -283,7 +293,7 @@ class TestCliStatusCommand:
         status_result = runner.invoke(cli, ["--json", "status", session_id])
 
         assert status_result.exit_code == 0
-        output = json.loads(status_result.output)
+        output = json.loads(status_result.stdout)
         assert output["schema_version"] == 1
         assert output["command"] == "status"
         assert output["session_id"] == session_id
@@ -292,12 +302,12 @@ class TestCliStatusCommand:
 
     def test_status_nonexistent_session_fails(self, cli_env):
         """status command with non-existent session fails."""
-        runner = CliRunner()
+        runner = make_runner()
 
         result = runner.invoke(cli, ["--json", "status", "nonexistent-session"])
 
         assert result.exit_code == 1
-        output = json.loads(result.output)
+        output = json.loads(result.stdout)
         assert "error" in output
 
 
@@ -306,7 +316,7 @@ class TestCliApproveCommand:
 
     def test_approve_hashes_artifacts(self, cli_env):
         """approve command hashes code artifacts."""
-        runner = CliRunner()
+        runner = make_runner()
         sessions_root = cli_env["sessions_root"]
 
         # Create session and advance to GENERATED
@@ -322,7 +332,7 @@ class TestCliApproveCommand:
                 "--schema-file", "schema.sql",
             ],
         )
-        session_id = json.loads(init_result.output)["session_id"]
+        session_id = json.loads(init_result.stdout)["session_id"]
         session_dir = sessions_root / session_id
 
         # Step to PLANNING
@@ -360,7 +370,7 @@ class TestCliApproveCommand:
         approve_result = runner.invoke(cli, ["--json", "approve", session_id])
 
         assert approve_result.exit_code == 0
-        output = json.loads(approve_result.output)
+        output = json.loads(approve_result.stdout)
         assert output["command"] == "approve"
         assert output["approved"] is True
         assert "hashes" in output
@@ -372,7 +382,7 @@ class TestCliFullWorkflow:
 
     def test_full_workflow_via_cli(self, cli_env):
         """Complete workflow from init to COMPLETE using only CLI commands."""
-        runner = CliRunner()
+        runner = make_runner()
         sessions_root = cli_env["sessions_root"]
 
         # 1. Init
@@ -389,14 +399,14 @@ class TestCliFullWorkflow:
             ],
         )
         assert init_result.exit_code == 0
-        session_id = json.loads(init_result.output)["session_id"]
+        session_id = json.loads(init_result.stdout)["session_id"]
         session_dir = sessions_root / session_id
 
         # Helper to step and check phase
         def step_and_check(expected_phase: str, expected_exit: int = 0):
             result = runner.invoke(cli, ["--json", "step", session_id])
             assert result.exit_code == expected_exit, f"Expected exit {expected_exit}, got {result.exit_code}: {result.output}"
-            output = json.loads(result.output)
+            output = json.loads(result.stdout)
             assert output["phase"] == expected_phase, f"Expected {expected_phase}, got {output['phase']}"
             return output
 
@@ -471,13 +481,13 @@ Code follows all standards.
         # 14. Step to COMPLETE
         result = runner.invoke(cli, ["--json", "step", session_id])
         assert result.exit_code == 0
-        output = json.loads(result.output)
+        output = json.loads(result.stdout)
         assert output["phase"] == "COMPLETE"
         assert output["status"] == "SUCCESS"
 
         # 15. Verify final status
         status_result = runner.invoke(cli, ["--json", "status", session_id])
         assert status_result.exit_code == 0
-        status_output = json.loads(status_result.output)
+        status_output = json.loads(status_result.stdout)
         assert status_output["phase"] == "COMPLETE"
         assert status_output["status"] == "SUCCESS"

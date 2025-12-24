@@ -33,6 +33,12 @@ def _format_error(e: Exception) -> str:
     return str(e)
 
 
+def _emit_progress(state) -> None:
+    """Emit progress messages to stderr."""
+    for msg in getattr(state, "messages", []):
+        click.echo(msg, err=True)
+
+
 def _awaiting_paths_for_state(session_id: str, state) -> tuple[bool, list[str]]:
     """
     Manual-workflow inference (Slice C): prompt exists + response missing => awaiting response.
@@ -164,6 +170,7 @@ def step_cmd(ctx: click.Context, session_id: str) -> None:
         )
 
         state = orchestrator.step(session_id)
+        _emit_progress(state)
 
         phase = state.phase.name
         status = state.status.name
@@ -316,6 +323,7 @@ def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash
 
         # Call orchestrator.approve
         state = orchestrator.approve(session_id, hash_prompts=effective_hash)
+        _emit_progress(state)
 
         # Collect hashes for output
         hashes: dict[str, str] = {}

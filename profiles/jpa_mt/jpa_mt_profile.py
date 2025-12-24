@@ -17,6 +17,15 @@ _DEFAULT_CONFIG_PATH = Path(__file__).parent / "config.yml"
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
+def _format_file_list(filenames: list[str], max_display: int = 4) -> str:
+    """Format a list of filenames, truncating if over max_display."""
+    if len(filenames) <= max_display:
+        return ", ".join(filenames)
+    shown = filenames[:2]
+    remaining = len(filenames) - 2
+    return f"{', '.join(shown)}, and {remaining} more"
+
+
 class JpaMtProfile(WorkflowProfile):
     def __init__(self, **config):
         # Load default config from config.yml if no config provided
@@ -172,6 +181,7 @@ class JpaMtProfile(WorkflowProfile):
             )
 
         # Build write plan from extracted files
+        filenames = list(code_blocks.keys())
         writes = []
         for filename, code in code_blocks.items():
             writes.append(WriteOp(
@@ -179,9 +189,11 @@ class JpaMtProfile(WorkflowProfile):
                 content=code,
             ))
 
+        file_list = _format_file_list(filenames)
         return ProcessingResult(
             status=WorkflowStatus.SUCCESS,
             write_plan=WritePlan(writes=writes),
+            messages=[f"Extracted {len(filenames)} files: {file_list}"],
         )
 
     def process_review_response(self, content: str) -> ProcessingResult:
@@ -210,9 +222,19 @@ class JpaMtProfile(WorkflowProfile):
             )
 
         if metadata["verdict"] == "PASS":
-            return ProcessingResult(status=WorkflowStatus.SUCCESS)
+            return ProcessingResult(
+                status=WorkflowStatus.SUCCESS,
+                messages=["Review verdict: PASS"],
+            )
         else:  # verdict == "FAIL"
-            return ProcessingResult(status=WorkflowStatus.FAILED)
+            total = metadata.get("issues_total", 0)
+            critical = metadata.get("issues_critical", 0)
+            missing = metadata.get("missing_inputs", 0)
+            details = f"{total} issues, {critical} critical, {missing} missing inputs"
+            return ProcessingResult(
+                status=WorkflowStatus.FAILED,
+                messages=[f"Review verdict: FAIL ({details})"],
+            )
     
     def process_revision_response(
         self, content: str, session_dir: Path, iteration: int
@@ -239,6 +261,7 @@ class JpaMtProfile(WorkflowProfile):
             )
 
         # Build write plan from extracted files
+        filenames = list(code_blocks.keys())
         writes = []
         for filename, code in code_blocks.items():
             writes.append(WriteOp(
@@ -246,9 +269,11 @@ class JpaMtProfile(WorkflowProfile):
                 content=code,
             ))
 
+        file_list = _format_file_list(filenames)
         return ProcessingResult(
             status=WorkflowStatus.SUCCESS,
             write_plan=WritePlan(writes=writes),
+            messages=[f"Extracted {len(filenames)} revised files: {file_list}"],
         )
     
     

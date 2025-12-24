@@ -139,3 +139,6 @@ class WorkflowState(BaseModel):
 
     # Phase history
     phase_history: list[PhaseTransition] = Field(default_factory=list)
+
+    # Transient progress messages (excluded from serialization)
+    messages: list[str] = Field(default_factory=list, exclude=True)
