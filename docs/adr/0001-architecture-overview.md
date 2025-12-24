@@ -22,7 +22,7 @@ This engine is designed to generalize the lessons learned from building real-wor
 3. Clean, testable boundaries between workflow logic, providers, and templates
 4. Ability to support both interactive (manual copy/paste) and automated (CLI-provider) execution
 5. State persistence to allow resumability and crash recovery
-6. Clear contracts for a VS Code extension
+6. Clear contracts for IDE extensions (VS Code, IntelliJ)
 7. Full audit trail with iteration tracking
 8. Security by design (input validation, path safety)
 
@@ -673,8 +673,6 @@ dev: null
 
 ---
 
----
-
 ## Provider Extension Model
 
 Providers are string-in, string-out. The engine owns all file I/O: it writes prompt files, reads prompt content, calls the provider, and writes response files.
@@ -729,7 +727,7 @@ Hashes exist for:
 3. **Maintainable** -> Clear separation of concerns
 4. **Resumable** -> Persistent state enables crash recovery
 5. **Future-proof** -> Architecture supports CLI agents and APIs
-6. **Collaborative** -> Clear contracts for VS Code extension developer
+6. **Collaborative** -> Clear contracts for IDE extension developers
 7. **Language-agnostic** -> Core engine supports any target language through profiles
 8. **Secure by design** -> Shared validation prevents common vulnerabilities
 9. **Auditable** -> Full iteration tracking with all prompts and responses

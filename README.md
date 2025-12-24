@@ -1020,7 +1020,7 @@ The `jpa-mt` profile is the first production profile, designed for Java-focused 
 
 **What it does:** Generates complete, production-ready Java/Spring Data JPA code for multi-tenant database entities. This includes proper tenant isolation, Row-Level Security (RLS) patterns, and Spring Data repositories.
 
-**Why it exists:** Skills Harbor needed reliable AI-assisted generation for their core technology stack without reinventing the wheel for every entity. The profile encapsulates years of architectural decisions and best practices into reusable AI prompts.
+**Why it exists:** The profile encapsulates architectural decisions and best practices for multi-tenant JPA applications into reusable AI prompts, eliminating the need to reinvent patterns for every entity.
 
 ### Target Stack
 

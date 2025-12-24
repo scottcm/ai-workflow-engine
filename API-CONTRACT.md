@@ -351,13 +351,21 @@ aiwf list [options]
 ```
 
 **Optional Arguments:**
-- `--status <status>` - Filter by status (`in_progress`, `complete`, `error`, `all`)
-- `--profile <profile>` - Filter by profile
+- `--status <status>` - Filter by status (`in_progress`, `complete`, `error`, `cancelled`, `all`). Default: `all`
+- `--profile <profile>` - Filter by profile name
+- `--limit <n>` - Maximum sessions to return. Default: 50
 
 **Global Options:**
 - `--json` - Emit machine-readable JSON output
 
-**Output (JSON):**
+**Output (Plain):**
+```
+SESSION_ID                        PROFILE  ENTITY   PHASE       STATUS       UPDATED
+6e73d8cd7da8461189718154b3e99960  jpa-mt   Product  GENERATING  IN_PROGRESS  2024-12-24T10:35:00Z
+a1b2c3d4e5f6789012345678abcdef01  jpa-mt   Order    COMPLETE    SUCCESS      2024-12-24T09:15:00Z
+```
+
+**Output (JSON) - Success:**
 ```json
 {
   "schema_version": 1,
@@ -365,22 +373,34 @@ aiwf list [options]
   "exit_code": 0,
   "sessions": [
     {
-      "session_id": "abc123",
+      "session_id": "6e73d8cd7da8461189718154b3e99960",
       "profile": "jpa-mt",
       "scope": "domain",
       "entity": "Product",
       "phase": "GENERATING",
       "status": "IN_PROGRESS",
       "iteration": 1,
-      "created_at": "2024-12-22T10:30:00Z",
-      "updated_at": "2024-12-22T10:35:00Z"
+      "created_at": "2024-12-24T10:30:00Z",
+      "updated_at": "2024-12-24T10:35:00Z"
     }
-  ]
+  ],
+  "total": 1
+}
+```
+
+**Output (JSON) - No Sessions:**
+```json
+{
+  "schema_version": 1,
+  "command": "list",
+  "exit_code": 0,
+  "sessions": [],
+  "total": 0
 }
 ```
 
 **Exit Codes:**
-- `0` - Success
+- `0` - Success (even if no sessions found)
 
 ---
 
@@ -390,16 +410,31 @@ List available workflow profiles.
 
 **Syntax:**
 ```bash
-aiwf profiles [options]
+aiwf profiles [profile_name]
 ```
 
-**Optional Arguments:**
-- `--profile <n>` - Show details for specific profile
+**Positional Arguments:**
+- `[profile_name]` - Optional. Show details for specific profile.
 
 **Global Options:**
 - `--json` - Emit machine-readable JSON output
 
-**Output (JSON):**
+**Output (Plain) - List All:**
+```
+PROFILE  DESCRIPTION                              SCOPES
+jpa-mt   Multi-tenant JPA domain layer generation domain, vertical
+```
+
+**Output (Plain) - Single Profile:**
+```
+Profile: jpa-mt
+Description: Multi-tenant JPA domain layer generation
+Target Stack: Java 21, Spring Data JPA, PostgreSQL
+Scopes: domain, vertical
+Phases: planning, generation, review, revision
+```
+
+**Output (JSON) - List All:**
 ```json
 {
   "schema_version": 1,
@@ -409,16 +444,41 @@ aiwf profiles [options]
     {
       "name": "jpa-mt",
       "description": "Multi-tenant JPA domain layer generation",
-      "target_stack": "Java 21, Spring Data JPA, PostgreSQL",
-      "scopes": ["domain", "vertical"],
-      "phases": ["planning", "generation", "review", "revision"]
+      "scopes": ["domain", "vertical"]
     }
   ]
 }
 ```
 
+**Output (JSON) - Single Profile:**
+```json
+{
+  "schema_version": 1,
+  "command": "profiles",
+  "exit_code": 0,
+  "profile": {
+    "name": "jpa-mt",
+    "description": "Multi-tenant JPA domain layer generation",
+    "target_stack": "Java 21, Spring Data JPA, PostgreSQL",
+    "scopes": ["domain", "vertical"],
+    "phases": ["planning", "generation", "review", "revision"]
+  }
+}
+```
+
+**Output (JSON) - Profile Not Found:**
+```json
+{
+  "schema_version": 1,
+  "command": "profiles",
+  "exit_code": 1,
+  "error": "Profile 'unknown' not found. Available: jpa-mt"
+}
+```
+
 **Exit Codes:**
 - `0` - Success
+- `1` - Error (profile not found)
 
 ---
 
@@ -428,13 +488,29 @@ List available AI providers.
 
 **Syntax:**
 ```bash
-aiwf providers [options]
+aiwf providers [provider_name]
 ```
+
+**Positional Arguments:**
+- `[provider_name]` - Optional. Show details for specific provider.
 
 **Global Options:**
 - `--json` - Emit machine-readable JSON output
 
-**Output (JSON):**
+**Output (Plain) - List All:**
+```
+PROVIDER  DESCRIPTION                                      CONFIG
+manual    Human-in-the-loop (prompts written to disk)      none
+```
+
+**Output (Plain) - Single Provider:**
+```
+Provider: manual
+Description: Human-in-the-loop (prompts written to disk)
+Requires Config: no
+```
+
+**Output (JSON) - List All:**
 ```json
 {
   "schema_version": 1,
@@ -443,21 +519,41 @@ aiwf providers [options]
   "providers": [
     {
       "name": "manual",
-      "description": "Human-in-the-loop provider (prompts written to disk)",
+      "description": "Human-in-the-loop (prompts written to disk)",
       "requires_config": false
-    },
-    {
-      "name": "claude-cli",
-      "description": "Anthropic Claude via CLI agent",
-      "requires_config": true,
-      "config_keys": ["model"]
     }
   ]
 }
 ```
 
+**Output (JSON) - Single Provider:**
+```json
+{
+  "schema_version": 1,
+  "command": "providers",
+  "exit_code": 0,
+  "provider": {
+    "name": "manual",
+    "description": "Human-in-the-loop (prompts written to disk)",
+    "requires_config": false,
+    "config_keys": []
+  }
+}
+```
+
+**Output (JSON) - Provider Not Found:**
+```json
+{
+  "schema_version": 1,
+  "command": "providers",
+  "exit_code": 1,
+  "error": "Provider 'unknown' not found. Available: manual"
+}
+```
+
 **Exit Codes:**
 - `0` - Success
+- `1` - Error (provider not found)
 
 ---
 
