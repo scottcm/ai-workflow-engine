@@ -1,7 +1,7 @@
 # AI Workflow Engine - API Contract
 
 **Version:** 0.9.0  
-**Status:** Specification  
+**Status:** Pre-release Specification  
 **Last Updated:** December 24, 2024
 
 ---
@@ -24,37 +24,35 @@ This document defines the CLI interface contract between the AI Workflow Engine 
 
 | Command | Purpose | Status |
 |---------|---------|--------|
-| `aiwf init` | Create new session | Implemented |
-| `aiwf step` | Advance workflow one phase | Implemented |
-| `aiwf approve` | Hash artifacts, call providers | Implemented |
-| `aiwf status` | Get session details | Implemented |
-| `aiwf list` | List sessions | Planned |
-| `aiwf profiles` | List available profiles | Planned |
-| `aiwf providers` | List available AI providers | Planned |
+| `aiwf init` | Create new session | ✅ Implemented |
+| `aiwf step` | Advance workflow one phase | ✅ Implemented |
+| `aiwf approve` | Hash artifacts, call providers | ✅ Implemented |
+| `aiwf status` | Get session details | ✅ Implemented |
+| `aiwf list` | List sessions | 🔮 Planned |
+| `aiwf profiles` | List available profiles | 🔮 Planned |
+| `aiwf providers` | List available AI providers | 🔮 Planned |
 
 ---
 
 ## JSON Output Format
 
-All commands support `--json` for machine-readable output. Every JSON response includes:
+All commands support `--json` flag for machine-readable output. Every JSON response includes:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `schema_version` | `int` | Output schema version (currently `1`) |
-| `command` | `string` | Command name (`"init"`, `"step"`, `"status"`, `"approve"`) |
-| `exit_code` | `int` | Exit code (0=success, 1=error, 2=blocked, 3=cancelled) |
-| `error` | `string?` | Command-level error message (null on success) |
+| `schema_version` | int | Always `1` for this contract version |
+| `command` | string | The command that was executed |
+| `exit_code` | int | Exit code (0=success, non-zero=error) |
+| `error` | string | Present only when command fails |
 
-Additional fields vary by command.
+**Error Types:**
 
-### Error Types
-
-Two error fields may appear in responses:
-
-- **`error`** - Command-level exception (invalid arguments, config errors, file not found)
-- **`last_error`** - Workflow state error from previous operation (preserved in session.json)
+- `error`: Command-level exception (invalid arguments, missing files, configuration errors). Present when `exit_code != 0`.
+- `last_error`: Workflow state error from a previous operation, preserved in session.json. Present in `step` and `status` outputs when the workflow encountered a recoverable error.
 
 Both can appear in the same response. `error` indicates the current command failed; `last_error` indicates a prior workflow operation failed.
+
+**Note:** Fields with `null` values are omitted from JSON output. Consumers should check for field presence rather than null equality.
 
 ---
 
@@ -76,9 +74,9 @@ aiwf init --scope <scope> --entity <entity> --table <table> --bounded-context <c
 - `--bounded-context <context>` - Domain context (e.g., `catalog`)
 
 **Optional Arguments:**
-- `--schema-file <path>` - Path to DDL schema file (required for jpa-mt profile)
 - `--dev <n>` - Developer identifier
 - `--task-id <id>` - External task/ticket reference
+- `--schema-file <path>` - Path to DDL schema file (required by jpa-mt profile)
 
 **Global Options:**
 - `--json` - Emit machine-readable JSON output
@@ -94,7 +92,6 @@ a1b2c3d4e5f6...
   "schema_version": 1,
   "command": "init",
   "exit_code": 0,
-  "error": null,
   "session_id": "a1b2c3d4e5f6..."
 }
 ```
@@ -144,33 +141,12 @@ phase=PLANNING status=IN_PROGRESS iteration=1 noop_awaiting_artifact=true
 .aiwf/sessions/abc123/iteration-1/planning-response.md
 ```
 
-**Output (JSON) - Success:**
-```json
-{
-  "schema_version": 1,
-  "command": "step",
-  "exit_code": 0,
-  "error": null,
-  "session_id": "abc123",
-  "phase": "PLANNING",
-  "status": "IN_PROGRESS",
-  "iteration": 1,
-  "noop_awaiting_artifact": true,
-  "awaiting_paths": [
-    ".aiwf/sessions/abc123/iteration-1/planning-prompt.md",
-    ".aiwf/sessions/abc123/iteration-1/planning-response.md"
-  ],
-  "last_error": null
-}
-```
-
-**Output (JSON) - Blocked:**
+**Output (JSON) - Awaiting Artifact:**
 ```json
 {
   "schema_version": 1,
   "command": "step",
   "exit_code": 2,
-  "error": null,
   "session_id": "abc123",
   "phase": "PLANNING",
   "status": "IN_PROGRESS",
@@ -179,12 +155,27 @@ phase=PLANNING status=IN_PROGRESS iteration=1 noop_awaiting_artifact=true
   "awaiting_paths": [
     ".aiwf/sessions/abc123/iteration-1/planning-prompt.md",
     ".aiwf/sessions/abc123/iteration-1/planning-response.md"
-  ],
-  "last_error": null
+  ]
 }
 ```
 
-**Output (JSON) - Error:**
+**Output (JSON) - With Workflow Error:**
+```json
+{
+  "schema_version": 1,
+  "command": "step",
+  "exit_code": 0,
+  "session_id": "abc123",
+  "phase": "GENERATING",
+  "status": "IN_PROGRESS",
+  "iteration": 1,
+  "noop_awaiting_artifact": false,
+  "awaiting_paths": [],
+  "last_error": "Failed to process generation response"
+}
+```
+
+**Output (JSON) - Command Error:**
 ```json
 {
   "schema_version": 1,
@@ -194,10 +185,8 @@ phase=PLANNING status=IN_PROGRESS iteration=1 noop_awaiting_artifact=true
   "session_id": "abc123",
   "phase": "",
   "status": "",
-  "iteration": null,
   "noop_awaiting_artifact": false,
-  "awaiting_paths": [],
-  "last_error": null
+  "awaiting_paths": []
 }
 ```
 
@@ -247,13 +236,12 @@ aiwf approve <session_id> [options]
   "schema_version": 1,
   "command": "approve",
   "exit_code": 0,
-  "error": null,
   "session_id": "abc123",
   "phase": "PLANNED",
   "status": "IN_PROGRESS",
   "approved": true,
   "hashes": {
-    "plan.md": "sha256:abcdef..."
+    "plan.md": "a1b2c3d4e5f6..."
   }
 }
 ```
@@ -264,9 +252,9 @@ aiwf approve <session_id> [options]
   "schema_version": 1,
   "command": "approve",
   "exit_code": 1,
-  "error": "Cannot approve: missing prompt file 'iteration-1/planning-prompt.md'",
+  "error": "Cannot approve: missing planning response",
   "session_id": "abc123",
-  "phase": "PLANNING",
+  "phase": "PLANNED",
   "status": "ERROR",
   "approved": false,
   "hashes": {}
@@ -308,13 +296,11 @@ session_path=.aiwf/sessions/abc123
   "schema_version": 1,
   "command": "status",
   "exit_code": 0,
-  "error": null,
   "session_id": "abc123",
   "phase": "GENERATING",
   "status": "IN_PROGRESS",
   "iteration": 1,
-  "session_path": ".aiwf/sessions/abc123",
-  "last_error": null
+  "session_path": ".aiwf/sessions/abc123"
 }
 ```
 
@@ -324,7 +310,6 @@ session_path=.aiwf/sessions/abc123
   "schema_version": 1,
   "command": "status",
   "exit_code": 0,
-  "error": null,
   "session_id": "abc123",
   "phase": "GENERATING",
   "status": "IN_PROGRESS",
@@ -334,17 +319,16 @@ session_path=.aiwf/sessions/abc123
 }
 ```
 
-**Output (JSON) - Error:**
+**Output (JSON) - Command Error:**
 ```json
 {
   "schema_version": 1,
   "command": "status",
   "exit_code": 1,
-  "error": "Session 'abc123' not found at .aiwf/sessions/abc123/session.json",
+  "error": "Session 'abc123' not found",
   "session_id": "abc123",
   "phase": "",
   "status": "",
-  "iteration": null,
   "session_path": ".aiwf/sessions/abc123"
 }
 ```
@@ -379,7 +363,6 @@ aiwf list [options]
   "schema_version": 1,
   "command": "list",
   "exit_code": 0,
-  "error": null,
   "sessions": [
     {
       "session_id": "abc123",
@@ -422,7 +405,6 @@ aiwf profiles [options]
   "schema_version": 1,
   "command": "profiles",
   "exit_code": 0,
-  "error": null,
   "profiles": [
     {
       "name": "jpa-mt",
@@ -458,7 +440,6 @@ aiwf providers [options]
   "schema_version": 1,
   "command": "providers",
   "exit_code": 0,
-  "error": null,
   "providers": [
     {
       "name": "manual",
@@ -486,23 +467,23 @@ aiwf providers [options]
 
 ```
 INITIALIZED
-     |
-     v
-PLANNING --------> PLANNED
-                     |
-                     v (requires plan_approved)
-                GENERATING --------> GENERATED
-                                        |
-                                        v (requires artifact hashes)
-                                    REVIEWING --------> REVIEWED
-                                                           |
-              +--------------------------------------------+
-              |                                            |
-              v (FAIL)                                     v (PASS)
-         REVISING --------> REVISED                    COMPLETE
-                               |
-                               v (requires artifact hashes)
-                          REVIEWING
+     │
+     ▼
+PLANNING ──────► PLANNED
+     ▲              │
+     │              ▼ (requires plan_approved)
+     │         GENERATING ──────► GENERATED
+     │                                │
+     │                                ▼ (requires artifact hashes)
+     │                           REVIEWING ──────► REVIEWED
+     │                                                 │
+     │              ┌──────────────────────────────────┤
+     │              │                                  │
+     │              ▼ (FAIL)                           ▼ (PASS)
+     │         REVISING ──────► REVISED           COMPLETE
+     │                              │
+     │                              ▼ (requires artifact hashes)
+     └──────────────────────────── REVIEWING
 ```
 
 ### Approval Gates
@@ -589,19 +570,32 @@ dev: null
 
 ---
 
+## Error Handling
+
+All commands return consistent error format in JSON mode. The specific fields vary by command, but all include `schema_version`, `command`, `exit_code`, and `error` (when applicable).
+
+Example error response:
+```json
+{
+  "schema_version": 1,
+  "command": "step",
+  "exit_code": 1,
+  "error": "Session 'abc123' not found",
+  "session_id": "abc123",
+  "phase": "",
+  "status": "",
+  "noop_awaiting_artifact": false,
+  "awaiting_paths": []
+}
+```
+
+---
+
 ## Integration Guidelines for VS Code Extension
 
 ### Command Execution
 
 ```typescript
-interface AiwfResult {
-  schema_version: number;
-  command: string;
-  exit_code: number;
-  error: string | null;
-  [key: string]: unknown;
-}
-
 async function execAiwf(args: string[]): Promise<AiwfResult> {
   const result = await exec('aiwf', [...args, '--json']);
   return JSON.parse(result.stdout);
@@ -614,11 +608,11 @@ const init = await execAiwf([
   '--entity', 'Product',
   '--table', 'app.products',
   '--bounded-context', 'catalog',
-  '--schema-file', 'docs/db/01-schema.sql'
+  '--schema-file', './schema.sql'
 ]);
 
 if (init.exit_code === 0) {
-  const sessionId = init.session_id as string;
+  const sessionId = init.session_id;
   // Continue with step/approve cycle
 }
 ```
@@ -633,10 +627,9 @@ async function runWorkflow(sessionId: string) {
     
     if (step.exit_code === 2) {
       // Awaiting artifact - show user the prompt file
-      const paths = step.awaiting_paths as string[];
-      await showFile(paths[0]);
+      await showFile(step.awaiting_paths[0]);
       // Wait for user to provide response
-      await waitForFile(paths[1]);
+      await waitForFile(step.awaiting_paths[1]);
       continue;
     }
     
@@ -671,18 +664,26 @@ switch (result.exit_code) {
     break;
   case 2:
     // Blocked - show awaiting paths to user
-    showAwaitingArtifact(result.awaiting_paths as string[]);
+    showAwaitingArtifact(result.awaiting_paths);
     break;
   case 3:
     // Cancelled - workflow terminated
     showCancelled();
     break;
 }
+```
 
-// Also check for workflow-level errors
-if (result.last_error) {
-  showWarning(`Previous workflow error: ${result.last_error}`);
-}
+### Handling Null Fields
+
+Fields with null values are omitted from JSON output. Check for field presence:
+
+```typescript
+// Correct - handles omitted fields
+const iteration = result.iteration ?? 1;
+const lastError = result.last_error;  // undefined if not present
+
+// Incorrect - assumes explicit null
+if (result.error === null) { ... }  // Won't work, field is omitted
 ```
 
 ---
@@ -699,7 +700,7 @@ if (result.last_error) {
 **Version Check:**
 ```bash
 aiwf --version
-# Output: aiwf 0.9.0
+# Output: aiwf 0.9.0 (contract 0.9.0)
 ```
 
 ---

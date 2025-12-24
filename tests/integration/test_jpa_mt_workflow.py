@@ -311,3 +311,254 @@ Critical: Missing @TenantId annotation.
 
         # Verify new iteration directory was created
         assert (session_dir / "iteration-2").exists()
+
+    def test_full_revision_cycle_to_complete(self, orchestrator, tmp_path):
+        """Full workflow with FAIL review, revision, and eventual PASS to COMPLETE."""
+        session_id = orchestrator.initialize_run(
+            profile="jpa-mt",
+            scope="domain",
+            entity="Product",
+            providers={
+                "planner": "manual",
+                "generator": "manual",
+                "reviewer": "manual",
+                "reviser": "manual",
+            },
+            metadata={"schema_file": "schema.sql"},
+        )
+        session_dir = tmp_path / session_id
+
+        # === ITERATION 1: Initial generation with failing review ===
+
+        # INITIALIZED -> PLANNING
+        orchestrator.step(session_id)
+        orchestrator.step(session_id)  # Generate prompt
+
+        # Write planning response
+        (session_dir / "iteration-1").mkdir(parents=True, exist_ok=True)
+        (session_dir / "iteration-1" / "planning-response.md").write_text(
+            "# Plan\n\nCreate Product entity with id and name fields."
+        )
+
+        orchestrator.step(session_id)  # -> PLANNED
+
+        # Approve plan
+        state = orchestrator.session_store.load(session_id)
+        state.plan_approved = True
+        orchestrator.session_store.save(state)
+
+        orchestrator.step(session_id)  # -> GENERATING
+        orchestrator.step(session_id)  # Generate prompt
+
+        # Write generation response (missing @TenantId - will fail review)
+        (session_dir / "iteration-1" / "generation-response.md").write_text('''
+<<<FILE: Product.java>>>
+package com.example;
+
+import javax.persistence.Entity;
+import javax.persistence.Id;
+
+@Entity
+public class Product {
+    @Id
+    private Long id;
+    private String name;
+}
+''')
+
+        orchestrator.step(session_id)  # -> GENERATED
+        orchestrator.approve(session_id)  # Hash artifacts
+
+        orchestrator.step(session_id)  # -> REVIEWING
+        orchestrator.step(session_id)  # Generate review prompt
+
+        # Write FAILING review response
+        (session_dir / "iteration-1" / "review-response.md").write_text("""
+@@@REVIEW_META
+verdict: FAIL
+issues_total: 1
+issues_critical: 1
+missing_inputs: 0
+@@@
+
+Critical: Missing @TenantId annotation required for multi-tenant support.
+""")
+
+        orchestrator.step(session_id)  # -> REVIEWED
+
+        # Approve review to proceed to revision
+        state = orchestrator.session_store.load(session_id)
+        state.review_approved = True
+        orchestrator.session_store.save(state)
+
+        state = orchestrator.step(session_id)  # -> REVISING (iteration 2)
+        assert state.phase == WorkflowPhase.REVISING
+        assert state.current_iteration == 2
+
+        # === ITERATION 2: Revision with passing review ===
+
+        # Verify revision prompt was generated
+        orchestrator.step(session_id)  # Generate revision prompt
+        revision_prompt = session_dir / "iteration-2" / "revision-prompt.md"
+        assert revision_prompt.exists()
+
+        # Write revision response (fixed code with @TenantId)
+        (session_dir / "iteration-2" / "revision-response.md").write_text('''
+<<<FILE: Product.java>>>
+package com.example;
+
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import com.example.multitenancy.TenantId;
+
+@Entity
+public class Product {
+    @Id
+    private Long id;
+
+    @TenantId
+    private Long tenantId;
+
+    private String name;
+}
+''')
+
+        state = orchestrator.step(session_id)  # -> REVISED
+        assert state.phase == WorkflowPhase.REVISED
+
+        # Verify revised code was written
+        revised_code = session_dir / "iteration-2" / "code" / "Product.java"
+        assert revised_code.exists()
+        assert "@TenantId" in revised_code.read_text(encoding="utf-8")
+
+        # Approve revised artifacts
+        orchestrator.approve(session_id)
+
+        state = orchestrator.step(session_id)  # -> REVIEWING
+        assert state.phase == WorkflowPhase.REVIEWING
+
+        orchestrator.step(session_id)  # Generate review prompt
+
+        # Write PASSING review response
+        (session_dir / "iteration-2" / "review-response.md").write_text("""
+@@@REVIEW_META
+verdict: PASS
+issues_total: 0
+issues_critical: 0
+missing_inputs: 0
+@@@
+
+All issues resolved. Code now includes @TenantId annotation.
+""")
+
+        state = orchestrator.step(session_id)  # -> REVIEWED
+        assert state.phase == WorkflowPhase.REVIEWED
+
+        # Approve review
+        state = orchestrator.session_store.load(session_id)
+        state.review_approved = True
+        orchestrator.session_store.save(state)
+
+        # Final step -> COMPLETE
+        state = orchestrator.step(session_id)
+        assert state.phase == WorkflowPhase.COMPLETE
+        assert state.status == WorkflowStatus.SUCCESS
+        assert state.current_iteration == 2
+
+    def test_multiple_revision_iterations(self, orchestrator, tmp_path):
+        """Test that multiple failed reviews correctly increment iterations."""
+        session_id = orchestrator.initialize_run(
+            profile="jpa-mt",
+            scope="domain",
+            entity="Widget",
+            providers={
+                "planner": "manual",
+                "generator": "manual",
+                "reviewer": "manual",
+                "reviser": "manual",
+            },
+            metadata={"schema_file": "schema.sql"},
+        )
+        session_dir = tmp_path / session_id
+
+        # Fast-forward to GENERATED in iteration 1
+        orchestrator.step(session_id)  # -> PLANNING
+        orchestrator.step(session_id)  # Generate prompt
+        (session_dir / "iteration-1").mkdir(parents=True, exist_ok=True)
+        (session_dir / "iteration-1" / "planning-response.md").write_text("# Plan")
+        orchestrator.step(session_id)  # -> PLANNED
+
+        state = orchestrator.session_store.load(session_id)
+        state.plan_approved = True
+        orchestrator.session_store.save(state)
+
+        orchestrator.step(session_id)  # -> GENERATING
+        orchestrator.step(session_id)  # Generate prompt
+        (session_dir / "iteration-1" / "generation-response.md").write_text(
+            "<<<FILE: Widget.java>>>\nclass Widget {}"
+        )
+        orchestrator.step(session_id)  # -> GENERATED
+        orchestrator.approve(session_id)
+
+        # Helper to run a failing review cycle
+        def fail_review(iteration: int):
+            orchestrator.step(session_id)  # -> REVIEWING
+            orchestrator.step(session_id)  # Generate prompt
+            (session_dir / f"iteration-{iteration}" / "review-response.md").write_text(f"""
+@@@REVIEW_META
+verdict: FAIL
+issues_total: 1
+issues_critical: 1
+missing_inputs: 0
+@@@
+
+Issue in iteration {iteration}.
+""")
+            orchestrator.step(session_id)  # -> REVIEWED
+            state = orchestrator.session_store.load(session_id)
+            state.review_approved = True
+            orchestrator.session_store.save(state)
+            return orchestrator.step(session_id)  # -> REVISING
+
+        def write_revision(iteration: int):
+            orchestrator.step(session_id)  # Generate revision prompt
+            (session_dir / f"iteration-{iteration}" / "revision-response.md").write_text(
+                f"<<<FILE: Widget.java>>>\nclass Widget {{ /* v{iteration} */ }}"
+            )
+            orchestrator.step(session_id)  # -> REVISED
+            orchestrator.approve(session_id)
+
+        # Iteration 1 -> 2 (first fail)
+        state = fail_review(1)
+        assert state.phase == WorkflowPhase.REVISING
+        assert state.current_iteration == 2
+        write_revision(2)
+
+        # Iteration 2 -> 3 (second fail)
+        state = fail_review(2)
+        assert state.phase == WorkflowPhase.REVISING
+        assert state.current_iteration == 3
+        write_revision(3)
+
+        # Iteration 3 -> PASS
+        orchestrator.step(session_id)  # -> REVIEWING
+        orchestrator.step(session_id)  # Generate prompt
+        (session_dir / "iteration-3" / "review-response.md").write_text("""
+@@@REVIEW_META
+verdict: PASS
+issues_total: 0
+issues_critical: 0
+missing_inputs: 0
+@@@
+
+Finally passing!
+""")
+        orchestrator.step(session_id)  # -> REVIEWED
+        state = orchestrator.session_store.load(session_id)
+        state.review_approved = True
+        orchestrator.session_store.save(state)
+
+        state = orchestrator.step(session_id)  # -> COMPLETE
+        assert state.phase == WorkflowPhase.COMPLETE
+        assert state.status == WorkflowStatus.SUCCESS
+        assert state.current_iteration == 3

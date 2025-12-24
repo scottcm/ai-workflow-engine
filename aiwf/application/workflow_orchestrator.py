@@ -423,10 +423,7 @@ class WorkflowOrchestrator:
 
     def _step_reviewed(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
         """Handle REVIEWED outcomes based on review-response.md."""
-        print(f"[DEBUG] _step_reviewed called")
-        print(f"[DEBUG] state.review_approved: {state.review_approved}")
         if not state.review_approved:
-            print(f"[DEBUG] Early return - review_approved is False")
             return state
 
         session_dir = self.sessions_root / session_id
@@ -434,18 +431,13 @@ class WorkflowOrchestrator:
         spec = ED_APPROVAL_SPECS[WorkflowPhase.REVIEWED]
         response_rel = spec.response_relpath_template.format(N=state.current_iteration)
         response_file = session_dir / response_rel
-        print(f"[DEBUG] response_file: {response_file}")
-        print(f"[DEBUG] response_file.exists(): {response_file.exists()}")
 
         if not response_file.exists():
-            print(f"[DEBUG] Early return - response file does not exist")
             return state
 
         content = response_file.read_text(encoding="utf-8")
-        print(f"[DEBUG] Read content, length: {len(content)}")
         profile_instance = ProfileFactory.create(state.profile)
         result: ProcessingResult = profile_instance.process_review_response(content)
-        print(f"[DEBUG] ProcessingResult.status: {result.status}")
 
         # Recoverable error - stay in REVIEWED, set last_error
         if result.status == WorkflowStatus.ERROR:

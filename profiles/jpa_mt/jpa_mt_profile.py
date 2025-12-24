@@ -195,34 +195,23 @@ class JpaMtProfile(WorkflowProfile):
         """
         from profiles.jpa_mt.review_metadata import parse_review_metadata
 
-        print(f"[DEBUG] process_review_response called")
-        print(f"[DEBUG] content empty? {not content or not content.strip()}")
-        print(f"[DEBUG] content length: {len(content) if content else 0}")
-
         if not content or not content.strip():
-            print(f"[DEBUG] Returning ERROR - content is empty")
             return ProcessingResult(
                 status=WorkflowStatus.ERROR,
                 error_message="Review response is empty. Please provide a valid review response.",
             )
 
-        print(f"[DEBUG] First 500 chars of content:\n{content[:500]}")
-
         metadata = parse_review_metadata(content)
-        print(f"[DEBUG] metadata result: {metadata}")
 
         if metadata is None:
-            print(f"[DEBUG] Returning ERROR - metadata is None")
             return ProcessingResult(
                 status=WorkflowStatus.ERROR,
                 error_message="Could not parse review metadata. Ensure response contains @@@REVIEW_META block with verdict: PASS or verdict: FAIL.",
             )
 
         if metadata["verdict"] == "PASS":
-            print(f"[DEBUG] Returning SUCCESS - verdict is PASS")
             return ProcessingResult(status=WorkflowStatus.SUCCESS)
         else:  # verdict == "FAIL"
-            print(f"[DEBUG] Returning FAILED - verdict is FAIL")
             return ProcessingResult(status=WorkflowStatus.FAILED)
     
     def process_revision_response(
