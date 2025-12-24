@@ -5,6 +5,20 @@ from typing import Any
 class AIProvider(ABC):
     """Abstract interface for AI providers (Strategy pattern)"""
 
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
+        """Return provider metadata for discovery commands.
+
+        Returns:
+            dict with keys: name, description, requires_config, config_keys
+        """
+        return {
+            "name": "unknown",
+            "description": "No description available",
+            "requires_config": False,
+            "config_keys": [],
+        }
+
     @abstractmethod
     async def generate(self, prompt: str, context: dict[str, Any] | None = None) -> str:
         """

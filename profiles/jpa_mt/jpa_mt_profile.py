@@ -27,6 +27,19 @@ def _format_file_list(filenames: list[str], max_display: int = 4) -> str:
 
 
 class JpaMtProfile(WorkflowProfile):
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
+        """Return JPA-MT profile metadata for discovery commands."""
+        return {
+            "name": "jpa-mt",
+            "description": "Multi-tenant JPA domain layer generation",
+            "target_stack": "Java 21, Spring Data JPA, PostgreSQL",
+            "scopes": ["domain", "vertical"],
+            "phases": ["planning", "generation", "review", "revision"],
+            "requires_config": True,
+            "config_keys": ["standards.root", "scopes", "layer_standards"],
+        }
+
     def __init__(self, **config):
         # Load default config from config.yml if no config provided
         if not config and _DEFAULT_CONFIG_PATH.exists():

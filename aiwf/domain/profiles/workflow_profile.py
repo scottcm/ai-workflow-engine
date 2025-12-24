@@ -7,6 +7,24 @@ from aiwf.application.standards_provider import StandardsProvider  # Add import
 
 
 class WorkflowProfile(ABC):
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
+        """Return profile metadata for discovery commands.
+
+        Returns:
+            dict with keys: name, description, target_stack, scopes, phases,
+            requires_config, config_keys
+        """
+        return {
+            "name": "unknown",
+            "description": "No description available",
+            "target_stack": "Unknown",
+            "scopes": [],
+            "phases": ["planning", "generation", "review", "revision"],
+            "requires_config": False,
+            "config_keys": [],
+        }
+
     def validate_metadata(self, metadata: dict[str, Any] | None) -> None:
         """Validate metadata required by this profile.
 

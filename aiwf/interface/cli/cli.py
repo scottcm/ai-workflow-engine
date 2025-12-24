@@ -3,7 +3,20 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
-from aiwf.interface.cli.output_models import ApproveOutput, InitOutput, StatusOutput, StepOutput
+from aiwf.interface.cli.output_models import (
+    ApproveOutput,
+    InitOutput,
+    ListOutput,
+    ProfileDetail,
+    ProfileSummary,
+    ProfilesOutput,
+    ProviderDetail,
+    ProviderSummary,
+    ProvidersOutput,
+    SessionSummary,
+    StatusOutput,
+    StepOutput,
+)
 from aiwf.application.config_loader import load_config
 from aiwf.application.approval_specs import ING_APPROVAL_SPECS
 
@@ -394,3 +407,286 @@ def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash
             raise click.exceptions.Exit(1)
         click.echo(f"Cannot approve: {error_msg}", err=True)
         raise click.exceptions.Exit(1)
+
+
+@cli.command("list")
+@click.option("--status", "filter_status", type=str, default="all", help="Filter by status")
+@click.option("--profile", "filter_profile", type=str, default=None, help="Filter by profile")
+@click.option("--limit", type=int, default=50, help="Maximum sessions to return")
+@click.pass_context
+def list_cmd(
+    ctx: click.Context,
+    filter_status: str,
+    filter_profile: str | None,
+    limit: int,
+) -> None:
+    """List all workflow sessions."""
+    try:
+        from aiwf.domain.persistence.session_store import SessionStore
+
+        session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+        session_ids = session_store.list_sessions()
+
+        sessions: list[SessionSummary] = []
+        for session_id in session_ids:
+            try:
+                state = session_store.load(session_id)
+
+                # Apply filters
+                if filter_status != "all":
+                    if filter_status == "in_progress" and state.status != WorkflowStatus.IN_PROGRESS:
+                        continue
+                    elif filter_status == "complete" and state.phase != WorkflowPhase.COMPLETE:
+                        continue
+                    elif filter_status == "error" and state.status != WorkflowStatus.ERROR:
+                        continue
+                    elif filter_status == "cancelled" and state.status != WorkflowStatus.CANCELLED:
+                        continue
+
+                if filter_profile and state.profile != filter_profile:
+                    continue
+
+                sessions.append(SessionSummary(
+                    session_id=state.session_id,
+                    profile=state.profile,
+                    scope=state.scope,
+                    entity=state.entity,
+                    phase=state.phase.name,
+                    status=state.status.name,
+                    iteration=state.current_iteration,
+                    created_at=state.created_at.isoformat(),
+                    updated_at=state.updated_at.isoformat(),
+                ))
+
+                if len(sessions) >= limit:
+                    break
+            except Exception:
+                # Skip sessions that fail to load
+                continue
+
+        # Sort by updated_at descending
+        sessions.sort(key=lambda s: s.updated_at, reverse=True)
+
+        if _get_json_mode(ctx):
+            _json_emit(
+                ListOutput(
+                    exit_code=0,
+                    sessions=sessions,
+                    total=len(sessions),
+                )
+            )
+            raise click.exceptions.Exit(0)
+
+        # Plain text table output
+        if not sessions:
+            click.echo("No sessions found.")
+        else:
+            # Header
+            click.echo(f"{'SESSION_ID':<34}{'PROFILE':<10}{'ENTITY':<10}{'PHASE':<12}{'STATUS':<12}{'UPDATED'}")
+            for s in sessions:
+                click.echo(f"{s.session_id:<34}{s.profile:<10}{s.entity:<10}{s.phase:<12}{s.status:<12}{s.updated_at}")
+
+    except click.exceptions.Exit:
+        raise
+    except Exception as e:
+        if _get_json_mode(ctx):
+            _json_emit(
+                ListOutput(
+                    exit_code=1,
+                    error=str(e),
+                )
+            )
+            raise click.exceptions.Exit(1)
+        raise click.ClickException(str(e)) from e
+
+
+@cli.command("profiles")
+@click.argument("profile_name", type=str, required=False)
+@click.pass_context
+def profiles_cmd(ctx: click.Context, profile_name: str | None) -> None:
+    """List available workflow profiles or show details for a specific profile."""
+    try:
+        # Import profiles to ensure registration
+        import profiles.jpa_mt  # noqa: F401
+        from aiwf.domain.profiles.profile_factory import ProfileFactory
+
+        if profile_name:
+            # Single profile detail view
+            metadata = ProfileFactory.get_metadata(profile_name)
+            if metadata is None:
+                available = ", ".join(ProfileFactory.list_profiles())
+                error_msg = f"Profile '{profile_name}' not found. Available: {available}"
+                if _get_json_mode(ctx):
+                    _json_emit(
+                        ProfilesOutput(
+                            exit_code=1,
+                            error=error_msg,
+                        )
+                    )
+                    raise click.exceptions.Exit(1)
+                raise click.ClickException(error_msg)
+
+            profile_detail = ProfileDetail(
+                name=metadata["name"],
+                description=metadata["description"],
+                target_stack=metadata.get("target_stack", "Unknown"),
+                scopes=metadata.get("scopes", []),
+                phases=metadata.get("phases", []),
+                requires_config=metadata.get("requires_config", False),
+                config_keys=metadata.get("config_keys", []),
+            )
+
+            if _get_json_mode(ctx):
+                _json_emit(
+                    ProfilesOutput(
+                        exit_code=0,
+                        profile=profile_detail,
+                    )
+                )
+                raise click.exceptions.Exit(0)
+
+            # Plain text single profile
+            click.echo(f"Profile: {profile_detail.name}")
+            click.echo(f"Description: {profile_detail.description}")
+            click.echo(f"Target Stack: {profile_detail.target_stack}")
+            click.echo(f"Scopes: {', '.join(profile_detail.scopes)}")
+            click.echo(f"Phases: {', '.join(profile_detail.phases)}")
+            requires_str = "yes" if profile_detail.requires_config else "no"
+            click.echo(f"Requires Config: {requires_str}")
+            if profile_detail.config_keys:
+                click.echo(f"Config Keys: {', '.join(profile_detail.config_keys)}")
+
+        else:
+            # List all profiles
+            all_metadata = ProfileFactory.get_all_metadata()
+            profiles_list = [
+                ProfileSummary(
+                    name=m["name"],
+                    description=m["description"],
+                    scopes=m.get("scopes", []),
+                    requires_config=m.get("requires_config", False),
+                )
+                for m in all_metadata
+            ]
+
+            if _get_json_mode(ctx):
+                _json_emit(
+                    ProfilesOutput(
+                        exit_code=0,
+                        profiles=profiles_list,
+                    )
+                )
+                raise click.exceptions.Exit(0)
+
+            # Plain text table output
+            if not profiles_list:
+                click.echo("No profiles registered.")
+            else:
+                click.echo(f"{'PROFILE':<10}{'DESCRIPTION':<45}{'SCOPES'}")
+                for p in profiles_list:
+                    scopes_str = ", ".join(p.scopes)
+                    click.echo(f"{p.name:<10}{p.description:<45}{scopes_str}")
+
+    except click.exceptions.Exit:
+        raise
+    except Exception as e:
+        if _get_json_mode(ctx):
+            _json_emit(
+                ProfilesOutput(
+                    exit_code=1,
+                    error=str(e),
+                )
+            )
+            raise click.exceptions.Exit(1)
+        raise click.ClickException(str(e)) from e
+
+
+@cli.command("providers")
+@click.argument("provider_name", type=str, required=False)
+@click.pass_context
+def providers_cmd(ctx: click.Context, provider_name: str | None) -> None:
+    """List available AI providers or show details for a specific provider."""
+    try:
+        # Import providers to ensure registration
+        from aiwf.domain.providers import ProviderFactory  # noqa: F401
+
+        if provider_name:
+            # Single provider detail view
+            metadata = ProviderFactory.get_metadata(provider_name)
+            if metadata is None:
+                available = ", ".join(ProviderFactory.list_providers())
+                error_msg = f"Provider '{provider_name}' not found. Available: {available}"
+                if _get_json_mode(ctx):
+                    _json_emit(
+                        ProvidersOutput(
+                            exit_code=1,
+                            error=error_msg,
+                        )
+                    )
+                    raise click.exceptions.Exit(1)
+                raise click.ClickException(error_msg)
+
+            provider_detail = ProviderDetail(
+                name=metadata["name"],
+                description=metadata["description"],
+                requires_config=metadata.get("requires_config", False),
+                config_keys=metadata.get("config_keys", []),
+            )
+
+            if _get_json_mode(ctx):
+                _json_emit(
+                    ProvidersOutput(
+                        exit_code=0,
+                        provider=provider_detail,
+                    )
+                )
+                raise click.exceptions.Exit(0)
+
+            # Plain text single provider
+            click.echo(f"Provider: {provider_detail.name}")
+            click.echo(f"Description: {provider_detail.description}")
+            requires_str = "yes" if provider_detail.requires_config else "no"
+            click.echo(f"Requires Config: {requires_str}")
+
+        else:
+            # List all providers
+            all_metadata = ProviderFactory.get_all_metadata()
+            providers_list = [
+                ProviderSummary(
+                    name=m["name"],
+                    description=m["description"],
+                    requires_config=m.get("requires_config", False),
+                )
+                for m in all_metadata
+            ]
+
+            if _get_json_mode(ctx):
+                _json_emit(
+                    ProvidersOutput(
+                        exit_code=0,
+                        providers=providers_list,
+                    )
+                )
+                raise click.exceptions.Exit(0)
+
+            # Plain text table output
+            if not providers_list:
+                click.echo("No providers registered.")
+            else:
+                click.echo(f"{'PROVIDER':<10}{'DESCRIPTION':<45}{'CONFIG'}")
+                for p in providers_list:
+                    config_str = "required" if p.requires_config else "none"
+                    click.echo(f"{p.name:<10}{p.description:<45}{config_str}")
+
+    except click.exceptions.Exit:
+        raise
+    except Exception as e:
+        if _get_json_mode(ctx):
+            _json_emit(
+                ProvidersOutput(
+                    exit_code=1,
+                    error=str(e),
+                )
+            )
+            raise click.exceptions.Exit(1)
+        raise click.ClickException(str(e)) from e

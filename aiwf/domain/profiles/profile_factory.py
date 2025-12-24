@@ -47,8 +47,36 @@ class ProfileFactory:
     def list_profiles(cls) -> list[str]:
         """
         Get list of registered profile keys.
-        
+
         Returns:
             List of registered profile identifiers
         """
         return list(cls._registry.keys())
+
+    @classmethod
+    def get_all_metadata(cls) -> list[dict[str, Any]]:
+        """
+        Get metadata for all registered profiles.
+
+        Returns:
+            List of metadata dicts from each registered profile
+        """
+        return [
+            profile_class.get_metadata()
+            for profile_class in cls._registry.values()
+        ]
+
+    @classmethod
+    def get_metadata(cls, profile_key: str) -> dict[str, Any] | None:
+        """
+        Get metadata for a specific profile.
+
+        Args:
+            profile_key: Registered profile identifier
+
+        Returns:
+            Metadata dict if found, None otherwise
+        """
+        if profile_key not in cls._registry:
+            return None
+        return cls._registry[profile_key].get_metadata()

@@ -47,8 +47,36 @@ class ProviderFactory:
     def list_providers(cls) -> list[str]:
         """
         Get list of registered provider keys.
-        
+
         Returns:
             List of registered provider identifiers
         """
         return list(cls._registry.keys())
+
+    @classmethod
+    def get_all_metadata(cls) -> list[dict[str, Any]]:
+        """
+        Get metadata for all registered providers.
+
+        Returns:
+            List of metadata dicts from each registered provider
+        """
+        return [
+            provider_class.get_metadata()
+            for provider_class in cls._registry.values()
+        ]
+
+    @classmethod
+    def get_metadata(cls, provider_key: str) -> dict[str, Any] | None:
+        """
+        Get metadata for a specific provider.
+
+        Args:
+            provider_key: Registered provider identifier
+
+        Returns:
+            Metadata dict if found, None otherwise
+        """
+        if provider_key not in cls._registry:
+            return None
+        return cls._registry[provider_key].get_metadata()
