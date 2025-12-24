@@ -160,3 +160,104 @@ def test_reviewed_cancelled_terminal_cancelled(
     after = store.load(session_id)
     assert after.phase == WorkflowPhase.CANCELLED
     assert after.status == WorkflowStatus.CANCELLED
+
+
+def test_reviewed_failed_copies_code_files_to_next_iteration(
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When review returns FAILED, code files from previous iteration are copied to new iteration."""
+    _require_reviewed_phase()
+    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8)
+
+    # Create code files in iteration-1 with subdirectory
+    code_dir = it_dir / "code"
+    code_dir.mkdir(parents=True, exist_ok=True)
+    (code_dir / "Foo.java").write_text("class Foo {}\n", encoding=utf8)
+    (code_dir / "Bar.java").write_text("class Bar {}\n", encoding=utf8)
+    (code_dir / "subdir").mkdir(parents=True, exist_ok=True)
+    (code_dir / "subdir" / "Baz.java").write_text("class Baz {}\n", encoding=utf8)
+
+    stub = _StubReviewProfile(WorkflowStatus.FAILED)
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
+
+    orch.approve(session_id)
+    orch.step(session_id)
+
+    # Verify state transition
+    after = store.load(session_id)
+    assert after.phase == WorkflowPhase.REVISING
+    assert after.current_iteration == 2
+
+    # Verify all code files were copied to new iteration
+    session_dir = sessions_root / session_id
+    new_code_dir = session_dir / "iteration-2" / "code"
+    assert new_code_dir.is_dir()
+    assert (new_code_dir / "Foo.java").exists()
+    assert (new_code_dir / "Bar.java").exists()
+    assert (new_code_dir / "subdir" / "Baz.java").exists()
+
+    # Verify file contents are identical
+    assert (new_code_dir / "Foo.java").read_text(encoding=utf8) == "class Foo {}\n"
+    assert (new_code_dir / "Bar.java").read_text(encoding=utf8) == "class Bar {}\n"
+    assert (new_code_dir / "subdir" / "Baz.java").read_text(encoding=utf8) == "class Baz {}\n"
+
+
+def test_reviewed_failed_without_code_dir_still_transitions(
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When review returns FAILED but no code dir exists, transition still succeeds."""
+    _require_reviewed_phase()
+    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8)
+
+    # Ensure no code directory exists in iteration-1
+    code_dir = it_dir / "code"
+    assert not code_dir.exists()
+
+    stub = _StubReviewProfile(WorkflowStatus.FAILED)
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
+
+    orch.approve(session_id)
+    orch.step(session_id)
+
+    # Verify state transition still happens
+    after = store.load(session_id)
+    assert after.phase == WorkflowPhase.REVISING
+    assert after.current_iteration == 2
+
+    # Verify new iteration dir exists but no code dir copied
+    session_dir = sessions_root / session_id
+    assert (session_dir / "iteration-2").is_dir()
+    assert not (session_dir / "iteration-2" / "code").exists()
+
+
+def test_reviewed_failed_copies_only_missing_files(
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When destination has existing files, only missing files are copied."""
+    _require_reviewed_phase()
+    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8)
+
+    session_dir = sessions_root / session_id
+
+    # Create code files in iteration-1
+    code_dir = it_dir / "code"
+    code_dir.mkdir(parents=True, exist_ok=True)
+    (code_dir / "Foo.java").write_text("class Foo { /* original */ }\n", encoding=utf8)
+    (code_dir / "Bar.java").write_text("class Bar { /* original */ }\n", encoding=utf8)
+
+    # Pre-create iteration-2/code with a modified Foo.java
+    new_code_dir = session_dir / "iteration-2" / "code"
+    new_code_dir.mkdir(parents=True, exist_ok=True)
+    (new_code_dir / "Foo.java").write_text("class Foo { /* revised */ }\n", encoding=utf8)
+
+    stub = _StubReviewProfile(WorkflowStatus.FAILED)
+    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
+
+    orch.approve(session_id)
+    orch.step(session_id)
+
+    # Verify existing file was NOT overwritten
+    assert (new_code_dir / "Foo.java").read_text(encoding=utf8) == "class Foo { /* revised */ }\n"
+
+    # Verify missing file WAS copied
+    assert (new_code_dir / "Bar.java").read_text(encoding=utf8) == "class Bar { /* original */ }\n"

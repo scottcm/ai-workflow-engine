@@ -1,5 +1,6 @@
 import importlib
 import uuid
+import shutil
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -30,16 +31,6 @@ class WorkflowOrchestrator:
     This orchestrator owns deterministic phase transitions and persistence of
     `WorkflowState`. Profiles remain responsible for generating prompts and
     processing LLM responses; the orchestrator decides what happens next.
-
-    Current implementation covers M5 Slice A–E:
-    - initialize_run(): create and persist the initial WorkflowState (INITIALIZED)
-    - step(): advance by exactly one unit of work for:
-      - INITIALIZED -> PLANNING
-      - PLANNING -> PLANNED when a planning response exists and processing succeeds
-      - PLANNED -> GENERATING when generation begins (creates iteration-1/)
-      - GENERATING -> GENERATED when a generation response exists and processing succeeds
-      - GENERATED -> REVIEWING
-      - REVIEWING -> COMPLETE / REVISING / ERROR / CANCELLED based on review outcome
     """
 
     session_store: SessionStore
@@ -471,9 +462,22 @@ class WorkflowOrchestrator:
             state.phase = WorkflowPhase.COMPLETE
             state.status = WorkflowStatus.SUCCESS
         elif result.status == WorkflowStatus.FAILED:
+            previous_iteration = state.current_iteration
             state.current_iteration += 1
             new_iteration_dir = session_dir / f"iteration-{state.current_iteration}"
             new_iteration_dir.mkdir(parents=True, exist_ok=True)
+
+            # Copy code files from previous iteration to new iteration
+            previous_code_dir = session_dir / f"iteration-{previous_iteration}" / "code"
+            new_code_dir = new_iteration_dir / "code"
+            if previous_code_dir.exists():
+                def copy_if_missing(src, dst):
+                    if not Path(dst).exists():
+                        shutil.copy2(src, dst)
+
+                shutil.copytree(previous_code_dir, new_code_dir,
+                                dirs_exist_ok=True, copy_function=copy_if_missing)
+
             state.phase = WorkflowPhase.REVISING
             state.status = WorkflowStatus.IN_PROGRESS
             entering_revising = True
