@@ -35,8 +35,8 @@ If any required input is missing, emit: `VALIDATION FAILED: <reason>` and STOP.
 
 You MUST:
 
-- Address all CRITICAL issues from review
-- Address MINOR issues where identified
+- Address all valid CRITICAL issues from review
+- Address valid MINOR issues where identified
 - Change only what is necessary to fix identified issues
 - Maintain compliance with standards bundle and approved plan
 - Preserve working code that was not flagged
@@ -50,16 +50,47 @@ You MUST NOT:
 
 ---
 
-## 4. Revision Process
+## 4. Review Validation
 
-1. **Analyze feedback** - Understand each issue identified
-2. **Plan corrections** - Determine the minimal changes needed
-3. **Apply fixes** - Make the corrections
-4. **Verify** - Ensure fixes don't break other requirements
+Before making changes, assess each issue from the review.
+
+**For each issue, determine:**
+1. Is this actually a violation of the approved plan?
+2. Is this actually a violation of the standards bundle?
+3. Does the review contradict explicit user input in the prompt metadata (e.g., bounded-context)?
+
+User input in prompt metadata takes precedence over standards bundle mappings when there is a direct conflict.
+
+**If a review issue is invalid:**
+- Note it as "DISPUTED" with your reasoning
+- Do NOT make changes for disputed issues
+- List disputed issues at the start of your response before the code bundle
+
+**Format for disputed issues:**
+```
+DISPUTED ISSUES:
+
+1. [Issue description from review]
+   REASON: [Why this is not valid]
+
+---
+```
+
+If all issues are valid, proceed directly to the code bundle with no preamble.
 
 ---
 
-## 5. Output Format: Code Bundle
+## 5. Revision Process
+
+1. **Validate review** - Assess each issue per section 4
+2. **Analyze feedback** - Understand each valid issue
+3. **Plan corrections** - Determine the minimal changes needed
+4. **Apply fixes** - Make the corrections
+5. **Verify** - Ensure fixes don't break other requirements
+
+---
+
+## 6. Output Format: Code Bundle
 
 Use the same bundle format as generation phase:
 
@@ -68,13 +99,13 @@ Use the same bundle format as generation phase:
 - Only include files that were modified
 - Content MUST be valid, compilable Java code
 
-The AI MUST NOT emit prose, commentary, or explanations outside of the code bundle.
+The AI MUST NOT emit prose, commentary, or explanations outside of the code bundle (except for DISPUTED ISSUES block if needed).
 
 **Output your revision ONCE. Do not revise it.**
 
 ---
 
-## 6. Validation Failures
+## 7. Validation Failures
 
 If revision cannot proceed due to missing inputs:
 
