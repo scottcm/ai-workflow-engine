@@ -61,36 +61,19 @@ class TestRevisionResponseProcessing:
 
     def test_process_revision_response_extracts_files(self, jpa_mt_profile, tmp_path):
         """Revision response with code blocks should extract files."""
-        response = '''
-Here is the corrected implementation:
+        response = '''<<<FILE: Product.java>>>
+    package com.example;
 
-```java
-// FILE: Product.java
-package com.example.catalog.domain;
+    public class Product {
+        private Long id;
+        private Long tenantId;
+    }
 
-import javax.persistence.Entity;
-import javax.persistence.Id;
+<<<FILE: ProductRepository.java>>>
+    package com.example;
 
-@Entity
-@TenantId
-public class Product {
-    @Id
-    private Long id;
-    private String name;
-    private Long tenantId;
-}
-```
-
-```java
-// FILE: ProductRepository.java
-package com.example.catalog.domain;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-
-public interface ProductRepository extends JpaRepository<Product, Long> {
-    List<Product> findByTenantId(Long tenantId);
-}
-```
+    public interface ProductRepository {
+    }
 '''
         result = jpa_mt_profile.process_revision_response(response, tmp_path, iteration=2)
 

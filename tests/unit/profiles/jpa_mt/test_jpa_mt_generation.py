@@ -41,33 +41,18 @@ class TestGenerationResponseProcessing:
 
     def test_process_generation_response_extracts_files(self, jpa_mt_profile, tmp_path):
         """Generation response with code blocks should extract files."""
-        response = '''
-Here is the implementation:
+        response = '''<<<FILE: Product.java>>>
+    package com.example;
 
-```java
-// FILE: Product.java
-package com.example.catalog.domain;
+    public class Product {
+        private Long id;
+    }
 
-import javax.persistence.Entity;
-import javax.persistence.Id;
+<<<FILE: ProductRepository.java>>>
+    package com.example;
 
-@Entity
-public class Product {
-    @Id
-    private Long id;
-    private String name;
-}
-```
-
-```java
-// FILE: ProductRepository.java
-package com.example.catalog.domain;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-
-public interface ProductRepository extends JpaRepository<Product, Long> {
-}
-```
+    public interface ProductRepository {
+    }
 '''
         result = jpa_mt_profile.process_generation_response(response, tmp_path, iteration=1)
 

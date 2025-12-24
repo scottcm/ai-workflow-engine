@@ -10,6 +10,7 @@ from aiwf.domain.models.workflow_state import WorkflowStatus
 from aiwf.application.standards_provider import StandardsProvider
 from profiles.jpa_mt.jpa_mt_standards_provider import JpaMtStandardsProvider
 from profiles.jpa_mt.jpa_mt_config import JpaMtConfig
+from profiles.jpa_mt.bundle_extractor import extract_files
 
 # Path to default config.yml relative to this file
 _DEFAULT_CONFIG_PATH = Path(__file__).parent / "config.yml"
@@ -161,12 +162,13 @@ class JpaMtProfile(WorkflowProfile):
                 error_message="Generation response is empty. Please provide a valid generation response.",
             )
 
-        # Extract code blocks from markdown
-        code_blocks = self._extract_code_blocks(content)
-        if not code_blocks:
+        # Extract code blocks using <<<FILE: >>> markers
+        try:
+            code_blocks = extract_files(content)
+        except ValueError as e:
             return ProcessingResult(
                 status=WorkflowStatus.ERROR,
-                error_message="No code blocks found in generation response. Ensure response contains ```java code blocks with // FILE: filename.java comments.",
+                error_message=f"No code blocks found in generation response. {e}",
             )
 
         # Build write plan from extracted files
@@ -182,27 +184,6 @@ class JpaMtProfile(WorkflowProfile):
             write_plan=WritePlan(writes=writes),
         )
 
-    def _extract_code_blocks(self, content: str) -> dict[str, str]:
-        """Extract code files from markdown code blocks with // FILE: comments."""
-        files = {}
-        # Match markdown code blocks with java language
-        code_block_pattern = re.compile(
-            r"```(?:java)?\s*\n(.*?)```",
-            re.DOTALL
-        )
-
-        for match in code_block_pattern.finditer(content):
-            block_content = match.group(1)
-            # Look for // FILE: filename at the start
-            file_match = re.match(r"//\s*FILE:\s*(\S+\.java)\s*\n", block_content)
-            if file_match:
-                filename = file_match.group(1)
-                # Extract code after the FILE comment
-                code = block_content[file_match.end():]
-                files[filename] = code.strip()
-
-        return files
-    
     def process_review_response(self, content: str) -> ProcessingResult:
         """Process review response - parse metadata and determine pass/fail.
 
@@ -259,12 +240,13 @@ class JpaMtProfile(WorkflowProfile):
                 error_message="Revision response is empty. Please provide a valid revision response.",
             )
 
-        # Extract code blocks from markdown (same as generation)
-        code_blocks = self._extract_code_blocks(content)
-        if not code_blocks:
+        # Extract code blocks using <<<FILE: >>> markers (same as generation)
+        try:
+            code_blocks = extract_files(content)
+        except ValueError as e:
             return ProcessingResult(
                 status=WorkflowStatus.ERROR,
-                error_message="No code blocks found in revision response. Ensure response contains ```java code blocks with // FILE: filename.java comments.",
+                error_message=f"No code blocks found in revision response. {e}",
             )
 
         # Build write plan from extracted files
