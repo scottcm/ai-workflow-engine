@@ -18,7 +18,7 @@ When generating code for multiple related database tables (e.g., 20+ tables in a
 
 **Result:** Inconsistent naming, missed relationships, duplicated patterns, loss of architectural coherence across the bounded context.
 
-**Real-world example:** Generating vertical stacks for Skills Harbor control plane (23 tables). Currently, generating `Order` entity has no knowledge that `Client` and `Product` entities already exist, leading to inconsistent relationship modeling.
+**Real-world example:** Generating vertical stacks for a control plane bounded context (20+ tables). Currently, generating `Order` entity has no knowledge that `Client` and `Product` entities already exist, leading to inconsistent relationship modeling.
 
 ---
 
@@ -265,6 +265,13 @@ This feature enables:
 ### Domain Layer
 ```
 aiwf/domain/memory/
+```
+
+With:
+```markdown
+### Domain Layer
+```
+aiwf/domain/models/
 ├── project_memory.py        # ProjectMemory model (Pydantic)
 ├── memory_manager.py        # Load/save/update operations
 └── __init__.py

@@ -1,8 +1,8 @@
 # AI Workflow Engine - API Contract
 
-**Version:** 2.0.0  
+**Version:** 0.9.0  
 **Status:** Specification  
-**Last Updated:** December 22, 2024
+**Last Updated:** December 24, 2024
 
 ---
 
@@ -24,13 +24,37 @@ This document defines the CLI interface contract between the AI Workflow Engine 
 
 | Command | Purpose | Status |
 |---------|---------|--------|
-| `aiwf init` | Create new session | ✅ Implemented |
-| `aiwf step` | Advance workflow one phase | ✅ Implemented |
-| `aiwf approve` | Hash artifacts, call providers | ✅ Implemented |
-| `aiwf status` | Get session details | ✅ Implemented |
-| `aiwf list` | List sessions | 🔮 Planned |
-| `aiwf profiles` | List available profiles | 🔮 Planned |
-| `aiwf providers` | List available AI providers | 🔮 Planned |
+| `aiwf init` | Create new session | Implemented |
+| `aiwf step` | Advance workflow one phase | Implemented |
+| `aiwf approve` | Hash artifacts, call providers | Implemented |
+| `aiwf status` | Get session details | Implemented |
+| `aiwf list` | List sessions | Planned |
+| `aiwf profiles` | List available profiles | Planned |
+| `aiwf providers` | List available AI providers | Planned |
+
+---
+
+## JSON Output Format
+
+All commands support `--json` for machine-readable output. Every JSON response includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schema_version` | `int` | Output schema version (currently `1`) |
+| `command` | `string` | Command name (`"init"`, `"step"`, `"status"`, `"approve"`) |
+| `exit_code` | `int` | Exit code (0=success, 1=error, 2=blocked, 3=cancelled) |
+| `error` | `string?` | Command-level error message (null on success) |
+
+Additional fields vary by command.
+
+### Error Types
+
+Two error fields may appear in responses:
+
+- **`error`** - Command-level exception (invalid arguments, config errors, file not found)
+- **`last_error`** - Workflow state error from previous operation (preserved in session.json)
+
+Both can appear in the same response. `error` indicates the current command failed; `last_error` indicates a prior workflow operation failed.
 
 ---
 
@@ -46,42 +70,48 @@ aiwf init --scope <scope> --entity <entity> --table <table> --bounded-context <c
 ```
 
 **Required Arguments:**
-- `--scope <scope>` – Generation scope (e.g., `domain`, `vertical`)
-- `--entity <entity>` – Entity name in PascalCase (e.g., `Product`)
-- `--table <table>` – Database table name (e.g., `app.products`)
-- `--bounded-context <context>` – Domain context (e.g., `catalog`)
+- `--scope <scope>` - Generation scope (e.g., `domain`, `vertical`)
+- `--entity <entity>` - Entity name in PascalCase (e.g., `Product`)
+- `--table <table>` - Database table name (e.g., `app.products`)
+- `--bounded-context <context>` - Domain context (e.g., `catalog`)
 
 **Optional Arguments:**
-- `--dev <n>` – Developer identifier
-- `--task-id <id>` – External task/ticket reference
+- `--schema-file <path>` - Path to DDL schema file (required for jpa-mt profile)
+- `--dev <n>` - Developer identifier
+- `--task-id <id>` - External task/ticket reference
 
 **Global Options:**
-- `--json` – Emit machine-readable JSON output
+- `--json` - Emit machine-readable JSON output
 
 **Output (Plain):**
 ```
 a1b2c3d4e5f6...
 ```
 
-**Output (JSON):**
+**Output (JSON) - Success:**
 ```json
 {
+  "schema_version": 1,
+  "command": "init",
   "exit_code": 0,
+  "error": null,
   "session_id": "a1b2c3d4e5f6..."
 }
 ```
 
-**Error Output (JSON):**
+**Output (JSON) - Error:**
 ```json
 {
+  "schema_version": 1,
+  "command": "init",
   "exit_code": 1,
-  "error": "Error message describing what went wrong"
+  "error": "jpa-mt profile requires --schema-file argument"
 }
 ```
 
 **Exit Codes:**
-- `0` – Success
-- `1` – Error (invalid arguments, configuration error, etc.)
+- `0` - Success
+- `1` - Error (invalid arguments, configuration error, etc.)
 
 ---
 
@@ -95,10 +125,10 @@ aiwf step <session_id> [options]
 ```
 
 **Required Arguments:**
-- `<session_id>` – Session identifier from `init`
+- `<session_id>` - Session identifier from `init`
 
 **Global Options:**
-- `--json` – Emit machine-readable JSON output
+- `--json` - Emit machine-readable JSON output
 
 **Behavior:**
 
@@ -114,10 +144,13 @@ phase=PLANNING status=IN_PROGRESS iteration=1 noop_awaiting_artifact=true
 .aiwf/sessions/abc123/iteration-1/planning-response.md
 ```
 
-**Output (JSON):**
+**Output (JSON) - Success:**
 ```json
 {
+  "schema_version": 1,
+  "command": "step",
   "exit_code": 0,
+  "error": null,
   "session_id": "abc123",
   "phase": "PLANNING",
   "status": "IN_PROGRESS",
@@ -126,15 +159,53 @@ phase=PLANNING status=IN_PROGRESS iteration=1 noop_awaiting_artifact=true
   "awaiting_paths": [
     ".aiwf/sessions/abc123/iteration-1/planning-prompt.md",
     ".aiwf/sessions/abc123/iteration-1/planning-response.md"
-  ]
+  ],
+  "last_error": null
+}
+```
+
+**Output (JSON) - Blocked:**
+```json
+{
+  "schema_version": 1,
+  "command": "step",
+  "exit_code": 2,
+  "error": null,
+  "session_id": "abc123",
+  "phase": "PLANNING",
+  "status": "IN_PROGRESS",
+  "iteration": 1,
+  "noop_awaiting_artifact": true,
+  "awaiting_paths": [
+    ".aiwf/sessions/abc123/iteration-1/planning-prompt.md",
+    ".aiwf/sessions/abc123/iteration-1/planning-response.md"
+  ],
+  "last_error": null
+}
+```
+
+**Output (JSON) - Error:**
+```json
+{
+  "schema_version": 1,
+  "command": "step",
+  "exit_code": 1,
+  "error": "Session 'abc123' not found",
+  "session_id": "abc123",
+  "phase": "",
+  "status": "",
+  "iteration": null,
+  "noop_awaiting_artifact": false,
+  "awaiting_paths": [],
+  "last_error": null
 }
 ```
 
 **Exit Codes:**
-- `0` – Success (phase advanced or already complete)
-- `1` – Error
-- `2` – Blocked awaiting artifact (prompt exists, response missing)
-- `3` – Cancelled
+- `0` - Success (phase advanced or already complete)
+- `1` - Error
+- `2` - Blocked awaiting artifact (prompt exists, response missing)
+- `3` - Cancelled
 
 ---
 
@@ -148,14 +219,14 @@ aiwf approve <session_id> [options]
 ```
 
 **Required Arguments:**
-- `<session_id>` – Session identifier
+- `<session_id>` - Session identifier
 
 **Optional Arguments:**
-- `--hash-prompts` – Hash prompt files (overrides config)
-- `--no-hash-prompts` – Skip prompt hashing (overrides config)
+- `--hash-prompts` - Hash prompt files (overrides config)
+- `--no-hash-prompts` - Skip prompt hashing (overrides config)
 
 **Global Options:**
-- `--json` – Emit machine-readable JSON output
+- `--json` - Emit machine-readable JSON output
 
 **Behavior by Phase:**
 
@@ -170,10 +241,13 @@ aiwf approve <session_id> [options]
 | REVISING | Hash prompt (if enabled), call provider, write response |
 | REVISED | Hash all `code/*` files, set artifact `sha256` values |
 
-**Output (JSON):**
+**Output (JSON) - Success:**
 ```json
 {
+  "schema_version": 1,
+  "command": "approve",
   "exit_code": 0,
+  "error": null,
   "session_id": "abc123",
   "phase": "PLANNED",
   "status": "IN_PROGRESS",
@@ -184,9 +258,24 @@ aiwf approve <session_id> [options]
 }
 ```
 
+**Output (JSON) - Error:**
+```json
+{
+  "schema_version": 1,
+  "command": "approve",
+  "exit_code": 1,
+  "error": "Cannot approve: missing prompt file 'iteration-1/planning-prompt.md'",
+  "session_id": "abc123",
+  "phase": "PLANNING",
+  "status": "ERROR",
+  "approved": false,
+  "hashes": {}
+}
+```
+
 **Exit Codes:**
-- `0` – Success
-- `1` – Error (missing files, invalid state, provider error)
+- `0` - Success
+- `1` - Error (missing files, invalid state, provider error)
 
 ---
 
@@ -200,10 +289,10 @@ aiwf status <session_id> [options]
 ```
 
 **Required Arguments:**
-- `<session_id>` – Session identifier
+- `<session_id>` - Session identifier
 
 **Global Options:**
-- `--json` – Emit machine-readable JSON output
+- `--json` - Emit machine-readable JSON output
 
 **Output (Plain):**
 ```
@@ -213,21 +302,56 @@ iteration=1
 session_path=.aiwf/sessions/abc123
 ```
 
-**Output (JSON):**
+**Output (JSON) - Success:**
 ```json
 {
+  "schema_version": 1,
+  "command": "status",
   "exit_code": 0,
+  "error": null,
   "session_id": "abc123",
   "phase": "GENERATING",
   "status": "IN_PROGRESS",
   "iteration": 1,
+  "session_path": ".aiwf/sessions/abc123",
+  "last_error": null
+}
+```
+
+**Output (JSON) - With Workflow Error:**
+```json
+{
+  "schema_version": 1,
+  "command": "status",
+  "exit_code": 0,
+  "error": null,
+  "session_id": "abc123",
+  "phase": "GENERATING",
+  "status": "IN_PROGRESS",
+  "iteration": 1,
+  "session_path": ".aiwf/sessions/abc123",
+  "last_error": "Failed to process generation response"
+}
+```
+
+**Output (JSON) - Error:**
+```json
+{
+  "schema_version": 1,
+  "command": "status",
+  "exit_code": 1,
+  "error": "Session 'abc123' not found at .aiwf/sessions/abc123/session.json",
+  "session_id": "abc123",
+  "phase": "",
+  "status": "",
+  "iteration": null,
   "session_path": ".aiwf/sessions/abc123"
 }
 ```
 
 **Exit Codes:**
-- `0` – Success
-- `1` – Error (session not found, corrupted state)
+- `0` - Success
+- `1` - Error (session not found, corrupted state)
 
 ---
 
@@ -243,16 +367,19 @@ aiwf list [options]
 ```
 
 **Optional Arguments:**
-- `--status <status>` – Filter by status (`in_progress`, `complete`, `error`, `all`)
-- `--profile <profile>` – Filter by profile
+- `--status <status>` - Filter by status (`in_progress`, `complete`, `error`, `all`)
+- `--profile <profile>` - Filter by profile
 
 **Global Options:**
-- `--json` – Emit machine-readable JSON output
+- `--json` - Emit machine-readable JSON output
 
 **Output (JSON):**
 ```json
 {
+  "schema_version": 1,
+  "command": "list",
   "exit_code": 0,
+  "error": null,
   "sessions": [
     {
       "session_id": "abc123",
@@ -270,7 +397,7 @@ aiwf list [options]
 ```
 
 **Exit Codes:**
-- `0` – Success
+- `0` - Success
 
 ---
 
@@ -284,15 +411,18 @@ aiwf profiles [options]
 ```
 
 **Optional Arguments:**
-- `--profile <n>` – Show details for specific profile
+- `--profile <n>` - Show details for specific profile
 
 **Global Options:**
-- `--json` – Emit machine-readable JSON output
+- `--json` - Emit machine-readable JSON output
 
 **Output (JSON):**
 ```json
 {
+  "schema_version": 1,
+  "command": "profiles",
   "exit_code": 0,
+  "error": null,
   "profiles": [
     {
       "name": "jpa-mt",
@@ -306,7 +436,7 @@ aiwf profiles [options]
 ```
 
 **Exit Codes:**
-- `0` – Success
+- `0` - Success
 
 ---
 
@@ -320,12 +450,15 @@ aiwf providers [options]
 ```
 
 **Global Options:**
-- `--json` – Emit machine-readable JSON output
+- `--json` - Emit machine-readable JSON output
 
 **Output (JSON):**
 ```json
 {
+  "schema_version": 1,
+  "command": "providers",
   "exit_code": 0,
+  "error": null,
   "providers": [
     {
       "name": "manual",
@@ -343,7 +476,7 @@ aiwf providers [options]
 ```
 
 **Exit Codes:**
-- `0` – Success
+- `0` - Success
 
 ---
 
@@ -353,23 +486,23 @@ aiwf providers [options]
 
 ```
 INITIALIZED
-     │
-     ▼
-PLANNING ──────► PLANNED
-     ▲              │
-     │              ▼ (requires plan_approved)
-     │         GENERATING ──────► GENERATED
-     │                                │
-     │                                ▼ (requires artifact hashes)
-     │                           REVIEWING ──────► REVIEWED
-     │                                                 │
-     │              ┌──────────────────────────────────┤
-     │              │                                  │
-     │              ▼ (FAIL)                           ▼ (PASS)
-     │         REVISING ──────► REVISED           COMPLETE
-     │                              │
-     │                              ▼ (requires artifact hashes)
-     └──────────────────────── REVIEWING
+     |
+     v
+PLANNING --------> PLANNED
+                     |
+                     v (requires plan_approved)
+                GENERATING --------> GENERATED
+                                        |
+                                        v (requires artifact hashes)
+                                    REVIEWING --------> REVIEWED
+                                                           |
+              +--------------------------------------------+
+              |                                            |
+              v (FAIL)                                     v (PASS)
+         REVISING --------> REVISED                    COMPLETE
+                               |
+                               v (requires artifact hashes)
+                          REVIEWING
 ```
 
 ### Approval Gates
@@ -385,11 +518,11 @@ Every output must be editable before it becomes input to the next step. Approval
 
 ### Statuses
 
-- `IN_PROGRESS` – Workflow is active
-- `SUCCESS` – Workflow completed successfully
-- `FAILED` – Review failed (triggers revision)
-- `ERROR` – Unrecoverable error
-- `CANCELLED` – User cancelled workflow
+- `IN_PROGRESS` - Workflow is active
+- `SUCCESS` - Workflow completed successfully
+- `FAILED` - Review failed (triggers revision)
+- `ERROR` - Unrecoverable error
+- `CANCELLED` - User cancelled workflow
 
 ---
 
@@ -456,27 +589,19 @@ dev: null
 
 ---
 
-## Error Handling
-
-All commands return consistent error format in JSON mode:
-
-```json
-{
-  "exit_code": 1,
-  "session_id": "abc123",
-  "phase": "",
-  "status": "",
-  "error": "Human-readable error message"
-}
-```
-
----
-
 ## Integration Guidelines for VS Code Extension
 
 ### Command Execution
 
 ```typescript
+interface AiwfResult {
+  schema_version: number;
+  command: string;
+  exit_code: number;
+  error: string | null;
+  [key: string]: unknown;
+}
+
 async function execAiwf(args: string[]): Promise<AiwfResult> {
   const result = await exec('aiwf', [...args, '--json']);
   return JSON.parse(result.stdout);
@@ -488,11 +613,12 @@ const init = await execAiwf([
   '--scope', 'domain',
   '--entity', 'Product',
   '--table', 'app.products',
-  '--bounded-context', 'catalog'
+  '--bounded-context', 'catalog',
+  '--schema-file', 'docs/db/01-schema.sql'
 ]);
 
 if (init.exit_code === 0) {
-  const sessionId = init.session_id;
+  const sessionId = init.session_id as string;
   // Continue with step/approve cycle
 }
 ```
@@ -507,9 +633,10 @@ async function runWorkflow(sessionId: string) {
     
     if (step.exit_code === 2) {
       // Awaiting artifact - show user the prompt file
-      await showFile(step.awaiting_paths[0]);
+      const paths = step.awaiting_paths as string[];
+      await showFile(paths[0]);
       // Wait for user to provide response
-      await waitForFile(step.awaiting_paths[1]);
+      await waitForFile(paths[1]);
       continue;
     }
     
@@ -544,12 +671,17 @@ switch (result.exit_code) {
     break;
   case 2:
     // Blocked - show awaiting paths to user
-    showAwaitingArtifact(result.awaiting_paths);
+    showAwaitingArtifact(result.awaiting_paths as string[]);
     break;
   case 3:
     // Cancelled - workflow terminated
     showCancelled();
     break;
+}
+
+// Also check for workflow-level errors
+if (result.last_error) {
+  showWarning(`Previous workflow error: ${result.last_error}`);
 }
 ```
 
@@ -557,7 +689,7 @@ switch (result.exit_code) {
 
 ## Versioning
 
-**Contract Version:** 2.0.0
+**Contract Version:** 0.9.0
 
 **Compatibility Promise:**
 - Breaking changes increment major version
@@ -567,7 +699,7 @@ switch (result.exit_code) {
 **Version Check:**
 ```bash
 aiwf --version
-# Output: aiwf 1.0.0 (contract 2.0.0)
+# Output: aiwf 0.9.0
 ```
 
 ---

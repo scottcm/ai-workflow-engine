@@ -17,10 +17,7 @@ multi-step, AI-assisted generation workflows. This state enables:
 - ensuring immutability of completed steps,
 - and protecting against corrupted or malformed state.
 
-As the system evolved toward automated orchestration (Milestone M5+),
-the correctness of this state became increasingly critical. Errors in the
-workflow state can lead to invalid generation steps, lost work, or undefined
-behavior that is difficult to diagnose.
+As the system evolved toward automated orchestration, the correctness of this state became increasingly critical.
 
 ## Decision
 

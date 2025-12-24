@@ -220,6 +220,9 @@ profiles/*/artifacts/
 *.key
 api_keys.json
 
+# AI
+.claude/
+
 # Generated prompts and bundles during development
 /scratch/
 /temp/

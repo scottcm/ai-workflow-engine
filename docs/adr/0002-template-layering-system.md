@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** December 9, 2024  
-**Last Updated:** December 9, 2024  
+**Last Updated:** December 24, 2024
 **Deciders:** Scott
 
 ---
@@ -264,11 +264,9 @@ The JPA-MT profile resolves include directives:
 ### Code Locations
 
 - **Include resolution:**  
-  `profiles/jpa_mt/jpa_mt_profile.py::_resolve_template_includes()`  
-- **Template rendering:**  
-  `profiles/jpa_mt/template_renderer.py::TemplateRenderer`  
-- **Tests:**  
-  `tests/unit/profiles/jpa_mt/test_template_renderer.py`  
+  `profiles/jpa_mt/jpa_mt_profile.py::_resolve_includes()`  
+- **Generic template utilities:**  
+  `aiwf/domain/template_renderer.py` — `render_template()`, `resolve_includes()`, `fill_placeholders()`
 
 ---
 
@@ -321,5 +319,4 @@ Future ADRs may refine this approach if additional template logic becomes necess
 
 ## Status
 
-**Accepted** – Implemented for the JPA-MT profile in Phase 2.
-
+**Accepted** — Implemented for the JPA-MT profile.
