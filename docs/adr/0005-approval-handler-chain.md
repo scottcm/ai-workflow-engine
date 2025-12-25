@@ -1,6 +1,6 @@
 # ADR-0005: Chain of Responsibility for Approval Handling
 
-**Status:** Proposed  
+**Status:** Accepted  
 **Date:** December 24, 2024  
 **Deciders:** Scott
 
