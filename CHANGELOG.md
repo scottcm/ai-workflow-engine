@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0] - 2024-12-24
+
+### Summary
+
+First stable release with complete CLI interface. Adds session management commands, profile/provider discovery, and progress messaging for improved developer experience.
+
+---
+
+### Added
+
+#### CLI Commands
+
+**Session Management**
+- `aiwf list` - List all workflow sessions with filtering
+  - `--status` filter (in_progress, complete, error, cancelled, all)
+  - `--profile` filter by profile name
+  - `--limit` to cap results (default: 50)
+  - Plain text table and JSON output formats
+
+**Discovery Commands**
+- `aiwf profiles` - List available workflow profiles
+  - Optional `[profile_name]` for detailed view
+  - Shows description, target stack, scopes, phases
+- `aiwf providers` - List available AI providers
+  - Optional `[provider_name]` for detailed view
+  - Shows description, config requirements
+
+#### Progress Messaging
+- Human-readable progress messages emitted to stderr
+- Profile messages: file extraction counts, review verdicts
+- Engine messages: phase transitions, approvals, iteration starts
+- Truncated file lists for readability (>4 files shows "and N more")
+- stdout remains clean for JSON output and scripting
+
+#### Architecture
+
+**Profile/Provider Metadata**
+- `WorkflowProfile.get_metadata()` class method for profile discovery
+- `AIProvider.get_metadata()` class method for provider discovery
+- `ProfileFactory.get_all_metadata()` and `get_metadata(key)` methods
+- `ProviderFactory.get_all_metadata()` and `get_metadata(key)` methods
+
+**New Output Models**
+- `ListOutput` - Session listing response
+- `ProfilesOutput` - Profile listing/detail response
+- `ProvidersOutput` - Provider listing/detail response
+
+---
+
+### Changed
+
+- Enhanced error messages throughout workflow orchestrator
+- API-CONTRACT.md updated to version 1.0.0
+
+---
+
+### Documentation
+
+- ADR-0005: Chain of Responsibility for Approval Handling (proposed)
+- ADR-0006: Observer Pattern for Workflow Events (proposed)
+- Updated ADR-0001 to include IntelliJ alongside VS Code
+- API-CONTRACT.md: Full specifications for new commands
+
 ## [0.9.0] - 2024-12-24
 
 ### Summary
@@ -273,15 +336,9 @@ MIT License - See LICENSE file for details
 
 ## [Unreleased]
 
-### Planned for 1.0.0
-- `aiwf list` - Session listing with filtering
-- `aiwf profiles` - Profile discovery
-- `aiwf providers` - Provider listing
-- Enhanced error messages
-- Additional CLI polish
-
 ### Under Consideration
-- VS Code extension integration
-- Automated AI provider support
+- IDE extension integration (VS Code, IntelliJ)
+- Automated AI provider support (Claude CLI, Gemini CLI)
 - Additional generation profiles
-- Advanced validation features
+- Chain of Responsibility refactor for approval handling (ADR-0005)
+- Observer pattern for workflow events (ADR-0006)
