@@ -12,7 +12,7 @@ import sys
 
 import pytest
 
-from aiwf.application.approval_handler import ApprovalHandler, _extract_and_write_code_files
+from aiwf.application.approval_handler import IngPhaseApprovalHandler, _extract_and_write_code_files
 from aiwf.application.approval_specs import ING_APPROVAL_SPECS
 from aiwf.domain.models.workflow_state import (
     ExecutionMode,
@@ -71,10 +71,10 @@ def test_approve_ing_provider_role_missing_raises_valueerror(
         providers={},  # Missing 'generator' role
     )
 
-    handler = ApprovalHandler()
+    handler = IngPhaseApprovalHandler()
 
     with pytest.raises(ValueError) as exc_info:
-        handler.approve(session_dir=session_dir, state=state, hash_prompts=False)
+        handler.handle(session_dir=session_dir, state=state, hash_prompts=False)
 
     # Verify error message mentions the missing role
     assert "generator" in str(exc_info.value).lower()
@@ -106,10 +106,10 @@ def test_approve_ing_provider_role_wrong_role_raises_valueerror(
         providers={"generator": "fake-llm"},  # Missing 'reviewer' role
     )
 
-    handler = ApprovalHandler()
+    handler = IngPhaseApprovalHandler()
 
     with pytest.raises(ValueError) as exc_info:
-        handler.approve(session_dir=session_dir, state=state, hash_prompts=False)
+        handler.handle(session_dir=session_dir, state=state, hash_prompts=False)
 
     assert "reviewer" in str(exc_info.value).lower()
 

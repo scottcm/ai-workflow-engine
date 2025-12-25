@@ -1,9 +1,43 @@
 import hashlib
 import importlib
+from abc import ABC, abstractmethod
 from pathlib import Path
 
 from aiwf.application.approval_specs import ED_APPROVAL_SPECS, ING_APPROVAL_SPECS
 from aiwf.domain.models.workflow_state import Artifact, WorkflowPhase, WorkflowState, WorkflowStatus
+
+
+class ApprovalHandlerBase(ABC):
+    """Base class for approval handlers in the Chain of Responsibility."""
+
+    def __init__(self, successor: "ApprovalHandlerBase | None" = None) -> None:
+        self._successor = successor
+
+    @abstractmethod
+    def can_handle(self, state: WorkflowState) -> bool:
+        """Return True if this handler can process the given state."""
+        ...
+
+    @abstractmethod
+    def handle(
+        self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool
+    ) -> WorkflowState:
+        """Process approval for the given state."""
+        ...
+
+    def approve(
+        self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool
+    ) -> WorkflowState:
+        """Chain method: handle if possible, otherwise delegate to successor."""
+        if self.can_handle(state):
+            return self.handle(
+                session_dir=session_dir, state=state, hash_prompts=hash_prompts
+            )
+        if self._successor:
+            return self._successor.approve(
+                session_dir=session_dir, state=state, hash_prompts=hash_prompts
+            )
+        raise ValueError(f"No handler found for phase: {state.phase}")
 
 
 def _compute_file_hash(path: Path) -> str:
@@ -95,8 +129,19 @@ def _extract_and_write_code_files(
         ))
 
 
-class ApprovalHandler:
-    def approve(self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool) -> WorkflowState:
+class IngPhaseApprovalHandler(ApprovalHandlerBase):
+    """Handles ING phases: PLANNING, GENERATING, REVIEWING, REVISING.
+
+    Responsibility: Read prompt, call provider, write response.
+    Special case: GENERATING with existing response extracts code and advances to GENERATED.
+    """
+
+    def can_handle(self, state: WorkflowState) -> bool:
+        return state.phase in ING_APPROVAL_SPECS
+
+    def handle(
+        self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool
+    ) -> WorkflowState:
         # Special handling for GENERATING phase when response already exists
         if state.phase == WorkflowPhase.GENERATING:
             spec = ING_APPROVAL_SPECS[state.phase]
@@ -120,76 +165,128 @@ class ApprovalHandler:
 
             # Response doesn't exist - fall through to standard ING phase handling
 
-        # ING Phases (Planning, Generating, Reviewing, Revising)
-        if state.phase in ING_APPROVAL_SPECS:
-            spec = ING_APPROVAL_SPECS[state.phase]
-            provider_role = spec.provider_role
+        # Standard ING phase handling
+        spec = ING_APPROVAL_SPECS[state.phase]
+        provider_role = spec.provider_role
 
-            if provider_role not in state.providers:
-                raise ValueError(f"Provider not configured for role '{provider_role}'")
+        if provider_role not in state.providers:
+            raise ValueError(f"Provider not configured for role '{provider_role}'")
 
-            provider_key = state.providers[provider_role]
+        provider_key = state.providers[provider_role]
 
-            prompt_relpath = spec.prompt_relpath_template.format(N=state.current_iteration)
-            prompt_path = session_dir / prompt_relpath
+        prompt_relpath = spec.prompt_relpath_template.format(N=state.current_iteration)
+        prompt_path = session_dir / prompt_relpath
 
-            _require_file_exists(prompt_path, "prompt file", prompt_relpath)
-            _hash_prompt_if_enabled(state, prompt_path, prompt_relpath, hash_prompts)
+        _require_file_exists(prompt_path, "prompt file", prompt_relpath)
+        _hash_prompt_if_enabled(state, prompt_path, prompt_relpath, hash_prompts)
 
-            prompt_content = prompt_path.read_text(encoding="utf-8")
-            response = run_provider(provider_key, prompt_content)
+        prompt_content = prompt_path.read_text(encoding="utf-8")
+        response = run_provider(provider_key, prompt_content)
 
-            if response is not None:
-                response_relpath = spec.response_relpath_template.format(N=state.current_iteration)
-                response_path = session_dir / response_relpath
-                response_path.parent.mkdir(parents=True, exist_ok=True)
-                response_path.write_text(response, encoding="utf-8")
+        if response is not None:
+            response_relpath = spec.response_relpath_template.format(N=state.current_iteration)
+            response_path = session_dir / response_relpath
+            response_path.parent.mkdir(parents=True, exist_ok=True)
+            response_path.write_text(response, encoding="utf-8")
 
-            return state
-
-        # ED Phases (Planned, Generated, Revised, Reviewed)
-        elif state.phase == WorkflowPhase.PLANNED:
-            ed_spec = ED_APPROVAL_SPECS.get(state.phase)
-            ing_spec = ING_APPROVAL_SPECS.get(WorkflowPhase.PLANNING)
-            if ed_spec and ed_spec.plan_relpath and ing_spec:
-                # Read planning-response.md from iteration directory
-                response_relpath = ing_spec.response_relpath_template.format(N=state.current_iteration)
-                response_path = session_dir / response_relpath
-                _require_file_exists(response_path, "planning response", response_relpath)
-
-                # Write to plan.md in session root
-                plan_relpath = ed_spec.plan_relpath
-                plan_path = session_dir / plan_relpath
-                plan_content = response_path.read_bytes()
-                plan_path.write_bytes(plan_content)
-
-                state.plan_approved = True
-                state.plan_hash = hashlib.sha256(plan_content).hexdigest()
-
-        elif state.phase == WorkflowPhase.REVIEWED:
-            spec = ED_APPROVAL_SPECS[WorkflowPhase.REVIEWED]
-            # Assumes spec.response_relpath_template is set per constraints
-            relpath = spec.response_relpath_template.format(N=state.current_iteration)
-            response_path = session_dir / relpath
-
-            _require_file_exists(response_path, "review response", relpath)
-
-            state.review_hash = _compute_file_hash(response_path)
-            state.review_approved = True
-
-        elif state.phase in {WorkflowPhase.GENERATED, WorkflowPhase.REVISED}:
-            spec = ED_APPROVAL_SPECS.get(state.phase)
-            if spec and spec.code_dir_relpath_template:
-                code_dir_relpath = spec.code_dir_relpath_template.format(N=state.current_iteration)
-                code_dir = session_dir / code_dir_relpath
-
-                _require_file_exists(code_dir, "code directory", code_dir_relpath)
-
-                # Recursively enumerate all files and update/create artifacts
-                for file_path in code_dir.rglob('*'):
-                    if file_path.is_file():
-                        _update_or_create_artifact(
-                            state, file_path, session_dir, state.phase, state.current_iteration
-                        )
-        
         return state
+
+
+class PlannedApprovalHandler(ApprovalHandlerBase):
+    """Handles PLANNED phase.
+
+    Responsibility: Copy planning-response.md to plan.md, set plan_approved flag.
+    """
+
+    def can_handle(self, state: WorkflowState) -> bool:
+        return state.phase == WorkflowPhase.PLANNED
+
+    def handle(
+        self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool
+    ) -> WorkflowState:
+        ed_spec = ED_APPROVAL_SPECS.get(state.phase)
+        ing_spec = ING_APPROVAL_SPECS.get(WorkflowPhase.PLANNING)
+
+        if ed_spec and ed_spec.plan_relpath and ing_spec:
+            # Read planning-response.md from iteration directory
+            response_relpath = ing_spec.response_relpath_template.format(N=state.current_iteration)
+            response_path = session_dir / response_relpath
+            _require_file_exists(response_path, "planning response", response_relpath)
+
+            # Write to plan.md in session root
+            plan_relpath = ed_spec.plan_relpath
+            plan_path = session_dir / plan_relpath
+            plan_content = response_path.read_bytes()
+            plan_path.write_bytes(plan_content)
+
+            state.plan_approved = True
+            state.plan_hash = hashlib.sha256(plan_content).hexdigest()
+
+        return state
+
+
+class CodeArtifactApprovalHandler(ApprovalHandlerBase):
+    """Handles GENERATED and REVISED phases.
+
+    Responsibility: Hash code files, create/update Artifact records.
+    """
+
+    def can_handle(self, state: WorkflowState) -> bool:
+        return state.phase in {WorkflowPhase.GENERATED, WorkflowPhase.REVISED}
+
+    def handle(
+        self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool
+    ) -> WorkflowState:
+        spec = ED_APPROVAL_SPECS.get(state.phase)
+
+        if spec and spec.code_dir_relpath_template:
+            code_dir_relpath = spec.code_dir_relpath_template.format(N=state.current_iteration)
+            code_dir = session_dir / code_dir_relpath
+
+            _require_file_exists(code_dir, "code directory", code_dir_relpath)
+
+            # Recursively enumerate all files and update/create artifacts
+            for file_path in code_dir.rglob("*"):
+                if file_path.is_file():
+                    _update_or_create_artifact(
+                        state, file_path, session_dir, state.phase, state.current_iteration
+                    )
+
+        return state
+
+
+class ReviewedApprovalHandler(ApprovalHandlerBase):
+    """Handles REVIEWED phase.
+
+    Responsibility: Hash review response, set review_approved flag.
+    """
+
+    def can_handle(self, state: WorkflowState) -> bool:
+        return state.phase == WorkflowPhase.REVIEWED
+
+    def handle(
+        self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool
+    ) -> WorkflowState:
+        spec = ED_APPROVAL_SPECS[WorkflowPhase.REVIEWED]
+        # Assumes spec.response_relpath_template is set per constraints
+        relpath = spec.response_relpath_template.format(N=state.current_iteration)
+        response_path = session_dir / relpath
+
+        _require_file_exists(response_path, "review response", relpath)
+
+        state.review_hash = _compute_file_hash(response_path)
+        state.review_approved = True
+
+        return state
+
+
+def build_approval_chain() -> ApprovalHandlerBase:
+    """Build the standard approval handler chain.
+
+    Chain order: ING phases first (most common), then ED phases.
+    """
+    reviewed = ReviewedApprovalHandler()
+    code_artifact = CodeArtifactApprovalHandler(successor=reviewed)
+    planned = PlannedApprovalHandler(successor=code_artifact)
+    ing = IngPhaseApprovalHandler(successor=planned)
+    return ing

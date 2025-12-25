@@ -8,7 +8,7 @@ from typing import Any
 
 from aiwf.application.approval_specs import ED_APPROVAL_SPECS, ING_APPROVAL_SPECS
 from aiwf.application.artifact_writer import write_artifacts
-from aiwf.application.approval_handler import ApprovalHandler
+from aiwf.application.approval_handler import build_approval_chain
 from aiwf.application.standards_materializer import materialize_standards
 
 from aiwf.domain.models.processing_result import ProcessingResult
@@ -35,6 +35,9 @@ class WorkflowOrchestrator:
 
     session_store: SessionStore
     sessions_root: Path
+
+    def __post_init__(self) -> None:
+        self._approval_chain = build_approval_chain()
 
     def initialize_run(
         self,
@@ -107,7 +110,7 @@ class WorkflowOrchestrator:
 
         try:
             original_phase = state.phase
-            updated = ApprovalHandler().approve(
+            updated = self._approval_chain.approve(
                 session_dir=session_dir,
                 state=state,
                 hash_prompts=hash_prompts,
