@@ -6,6 +6,54 @@ from aiwf.application.approval_specs import ED_APPROVAL_SPECS, ING_APPROVAL_SPEC
 from aiwf.domain.models.workflow_state import Artifact, WorkflowPhase, WorkflowState, WorkflowStatus
 
 
+def _compute_file_hash(path: Path) -> str:
+    """Compute SHA256 hash of a file's contents."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _require_file_exists(path: Path, description: str, relpath: str) -> None:
+    """Raise FileNotFoundError with standard message if path doesn't exist."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Cannot approve: missing {description} '{relpath}' (expected at {path})"
+        )
+
+
+def _hash_prompt_if_enabled(
+    state: WorkflowState,
+    prompt_path: Path,
+    prompt_relpath: str,
+    hash_prompts: bool,
+) -> None:
+    """Compute and store prompt hash if hashing is enabled and file exists."""
+    if hash_prompts and prompt_path.exists():
+        state.prompt_hashes[prompt_relpath] = _compute_file_hash(prompt_path)
+
+
+def _update_or_create_artifact(
+    state: WorkflowState,
+    file_path: Path,
+    session_dir: Path,
+    phase: WorkflowPhase,
+    iteration: int,
+) -> None:
+    """Update existing artifact's hash or create new artifact if not found."""
+    relpath = file_path.relative_to(session_dir).as_posix()
+    sha256 = _compute_file_hash(file_path)
+
+    for artifact in state.artifacts:
+        if artifact.path == relpath:
+            artifact.sha256 = sha256
+            return
+
+    state.artifacts.append(Artifact(
+        path=relpath,
+        phase=phase,
+        iteration=iteration,
+        sha256=sha256,
+    ))
+
+
 # monkeypatch seam for provider invocation
 def run_provider(provider_key: str, prompt: str) -> str | None:
     raise NotImplementedError("Provider execution is not implemented in scaffolding")
@@ -37,7 +85,7 @@ def _extract_and_write_code_files(
         file_path.write_text(file_content, encoding="utf-8")
 
         relpath = file_path.relative_to(session_dir).as_posix()
-        sha256 = hashlib.sha256(file_path.read_bytes()).hexdigest()
+        sha256 = _compute_file_hash(file_path)
 
         state.artifacts.append(Artifact(
             path=relpath,
@@ -58,10 +106,8 @@ class ApprovalHandler:
             if response_path.exists():
                 # Response exists - extract code, write files, create artifacts, advance to GENERATED
                 prompt_relpath = spec.prompt_relpath_template.format(N=state.current_iteration)
-                if hash_prompts:
-                    prompt_path = session_dir / prompt_relpath
-                    if prompt_path.exists():
-                        state.prompt_hashes[prompt_relpath] = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
+                prompt_path = session_dir / prompt_relpath
+                _hash_prompt_if_enabled(state, prompt_path, prompt_relpath, hash_prompts)
 
                 response_content = response_path.read_text(encoding="utf-8")
                 _extract_and_write_code_files(
@@ -87,11 +133,8 @@ class ApprovalHandler:
             prompt_relpath = spec.prompt_relpath_template.format(N=state.current_iteration)
             prompt_path = session_dir / prompt_relpath
 
-            if not prompt_path.exists():
-                raise FileNotFoundError(f"Cannot approve: missing prompt file '{prompt_relpath}' (expected at {prompt_path})")
-
-            if hash_prompts:
-                state.prompt_hashes[prompt_relpath] = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
+            _require_file_exists(prompt_path, "prompt file", prompt_relpath)
+            _hash_prompt_if_enabled(state, prompt_path, prompt_relpath, hash_prompts)
 
             prompt_content = prompt_path.read_text(encoding="utf-8")
             response = run_provider(provider_key, prompt_content)
@@ -112,8 +155,7 @@ class ApprovalHandler:
                 # Read planning-response.md from iteration directory
                 response_relpath = ing_spec.response_relpath_template.format(N=state.current_iteration)
                 response_path = session_dir / response_relpath
-                if not response_path.exists():
-                    raise FileNotFoundError(f"Cannot approve: missing planning response '{response_relpath}' (expected at {response_path})")
+                _require_file_exists(response_path, "planning response", response_relpath)
 
                 # Write to plan.md in session root
                 plan_relpath = ed_spec.plan_relpath
@@ -128,14 +170,11 @@ class ApprovalHandler:
             spec = ED_APPROVAL_SPECS[WorkflowPhase.REVIEWED]
             # Assumes spec.response_relpath_template is set per constraints
             relpath = spec.response_relpath_template.format(N=state.current_iteration)
-            expected_path = session_dir / relpath
+            response_path = session_dir / relpath
 
-            if not expected_path.exists():
-                raise FileNotFoundError(
-                    f"Cannot approve: missing review response '{relpath}' (expected at {expected_path})"
-                )
+            _require_file_exists(response_path, "review response", relpath)
 
-            state.review_hash = hashlib.sha256(expected_path.read_bytes()).hexdigest()
+            state.review_hash = _compute_file_hash(response_path)
             state.review_approved = True
 
         elif state.phase in {WorkflowPhase.GENERATED, WorkflowPhase.REVISED}:
@@ -143,30 +182,14 @@ class ApprovalHandler:
             if spec and spec.code_dir_relpath_template:
                 code_dir_relpath = spec.code_dir_relpath_template.format(N=state.current_iteration)
                 code_dir = session_dir / code_dir_relpath
-                
-                if not code_dir.exists():
-                    raise FileNotFoundError(f"Cannot approve: missing code directory '{code_dir_relpath}' (expected at {code_dir})")
 
-                # Recursively enumerate all files
+                _require_file_exists(code_dir, "code directory", code_dir_relpath)
+
+                # Recursively enumerate all files and update/create artifacts
                 for file_path in code_dir.rglob('*'):
-                        if file_path.is_file():
-                            relpath = file_path.relative_to(session_dir).as_posix()
-                            sha256 = hashlib.sha256(file_path.read_bytes()).hexdigest()
-                            
-                            # Check if artifact exists
-                            found = False
-                            for artifact in state.artifacts:
-                                if artifact.path == relpath:
-                                    artifact.sha256 = sha256
-                                    found = True
-                                    break
-                            
-                            if not found:
-                                state.artifacts.append(Artifact(
-                                    path=relpath,
-                                    phase=state.phase,
-                                    iteration=state.current_iteration,
-                                    sha256=sha256
-                                ))
+                    if file_path.is_file():
+                        _update_or_create_artifact(
+                            state, file_path, session_dir, state.phase, state.current_iteration
+                        )
         
         return state
