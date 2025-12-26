@@ -1,10 +1,10 @@
 import importlib
 import uuid
 import shutil
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aiwf.application.approval_specs import ED_APPROVAL_SPECS, ING_APPROVAL_SPECS
 from aiwf.application.artifact_writer import write_artifacts
@@ -23,6 +23,10 @@ from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 from aiwf.domain.validation.path_validator import normalize_metadata_paths
 
+if TYPE_CHECKING:
+    from aiwf.domain.events.emitter import WorkflowEventEmitter
+    from aiwf.domain.events.event_types import WorkflowEventType
+
 
 @dataclass
 class WorkflowOrchestrator:
@@ -35,9 +39,14 @@ class WorkflowOrchestrator:
 
     session_store: SessionStore
     sessions_root: Path
+    event_emitter: "WorkflowEventEmitter | None" = None
 
     def __post_init__(self) -> None:
         self._approval_chain = build_approval_chain()
+        if self.event_emitter is None:
+            from aiwf.domain.events.emitter import WorkflowEventEmitter
+
+            self.event_emitter = WorkflowEventEmitter()
 
     def initialize_run(
         self,
@@ -104,6 +113,8 @@ class WorkflowOrchestrator:
         return session_id
 
     def approve(self, session_id: str, hash_prompts: bool = False) -> WorkflowState:
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         state = self.session_store.load(session_id)
         state.messages = []  # Clear transient messages
         session_dir = self.sessions_root / session_id
@@ -122,6 +133,14 @@ class WorkflowOrchestrator:
             elif original_phase in (WorkflowPhase.GENERATED, WorkflowPhase.REVISED):
                 artifact_count = sum(1 for a in updated.artifacts if a.sha256 is not None)
                 self._add_message(updated, f"Artifacts approved ({artifact_count} files)")
+                # Emit ARTIFACT_APPROVED for each approved artifact
+                for artifact in updated.artifacts:
+                    if artifact.sha256 is not None:
+                        self._emit(
+                            WorkflowEventType.ARTIFACT_APPROVED,
+                            updated,
+                            artifact_path=artifact.path,
+                        )
             elif original_phase == WorkflowPhase.REVIEWED:
                 self._add_message(updated, "Review approved")
 
@@ -130,12 +149,14 @@ class WorkflowOrchestrator:
             updated.last_error = None
 
             self.session_store.save(updated)
+            self._emit(WorkflowEventType.APPROVAL_GRANTED, updated)
             return updated
 
         except (FileNotFoundError, ValueError) as e:
             state.status = WorkflowStatus.ERROR
             state.last_error = str(e)
             self.session_store.save(state)
+            self._emit(WorkflowEventType.WORKFLOW_FAILED, state)
             return state
 
     def _add_message(self, state: WorkflowState, message: str) -> None:
@@ -145,6 +166,27 @@ class WorkflowOrchestrator:
     def _add_phase_message(self, state: WorkflowState) -> None:
         """Add phase transition message."""
         self._add_message(state, f"Advancing to {state.phase.name} phase")
+
+    def _emit(
+        self,
+        event_type: "WorkflowEventType",
+        state: WorkflowState,
+        **kwargs: Any,
+    ) -> None:
+        """Emit a workflow event with common fields."""
+        from aiwf.domain.events.event import WorkflowEvent
+        from aiwf.domain.events.event_types import WorkflowEventType
+
+        self.event_emitter.emit(
+            WorkflowEvent(
+                event_type=event_type,
+                session_id=state.session_id,
+                timestamp=datetime.now(timezone.utc),
+                phase=state.phase,
+                iteration=state.current_iteration,
+                **kwargs,
+            )
+        )
 
     def step(self, session_id: str) -> WorkflowState:
         """Advance the workflow by one deterministic unit of work.
@@ -229,6 +271,8 @@ class WorkflowOrchestrator:
 
         Transitions to PLANNING and immediately generates planning-prompt.md.
         """
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         session_dir = self.sessions_root / session_id
 
         state.phase = WorkflowPhase.PLANNING
@@ -236,6 +280,7 @@ class WorkflowOrchestrator:
         self._add_phase_message(state)
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
+        self._emit(WorkflowEventType.PHASE_ENTERED, state)
 
         # Generate planning prompt immediately on entry
         spec = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING]
@@ -255,6 +300,8 @@ class WorkflowOrchestrator:
         Prompt was generated on entry to PLANNING.
         Check if response exists and transition to PLANNED.
         """
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         session_dir = self.sessions_root / session_id
 
         spec = ING_APPROVAL_SPECS[WorkflowPhase.PLANNING]
@@ -267,6 +314,7 @@ class WorkflowOrchestrator:
             self._add_phase_message(state)
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
+            self._emit(WorkflowEventType.PHASE_ENTERED, state)
 
         return state
 
@@ -276,7 +324,10 @@ class WorkflowOrchestrator:
         - Process planning-response.md.
         - If successful, write plan.md and create iteration-1/.
         """
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         if not state.plan_approved:
+            self._emit(WorkflowEventType.APPROVAL_REQUIRED, state)
             return state
 
         session_dir = self.sessions_root / session_id
@@ -317,6 +368,7 @@ class WorkflowOrchestrator:
             self._add_phase_message(state)
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
+            self._emit(WorkflowEventType.PHASE_ENTERED, state)
 
             # Generate generation prompt immediately on entry
             gen_spec = ING_APPROVAL_SPECS[WorkflowPhase.GENERATING]
@@ -335,6 +387,8 @@ class WorkflowOrchestrator:
         Prompt was generated on entry to GENERATING.
         Check if response exists and transition to GENERATED.
         """
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         session_dir = self.sessions_root / session_id
 
         spec = ING_APPROVAL_SPECS[WorkflowPhase.GENERATING]
@@ -365,11 +419,23 @@ class WorkflowOrchestrator:
                 # Collect profile messages
                 state.messages.extend(result.messages)
                 write_artifacts(session_dir=session_dir, state=state, result=result)
+
+                # Emit ARTIFACT_CREATED for each artifact in the write plan
+                if result.write_plan:
+                    for write_op in result.write_plan.writes:
+                        artifact_path = f"iteration-{state.current_iteration}/code/{write_op.path}"
+                        self._emit(
+                            WorkflowEventType.ARTIFACT_CREATED,
+                            state,
+                            artifact_path=artifact_path,
+                        )
+
                 state.phase = WorkflowPhase.GENERATED
                 state.status = WorkflowStatus.IN_PROGRESS
                 self._add_phase_message(state)
                 self._append_phase_history(state, phase=state.phase, status=state.status)
                 self.session_store.save(state)
+                self._emit(WorkflowEventType.PHASE_ENTERED, state)
             return state
 
         # Auto-approval bypass (for profiles that auto-approve generation)
@@ -382,6 +448,7 @@ class WorkflowOrchestrator:
                     state.status = WorkflowStatus.IN_PROGRESS
                     self._append_phase_history(state, phase=state.phase, status=state.status)
                     self.session_store.save(state)
+                    self._emit(WorkflowEventType.PHASE_ENTERED, state)
             except Exception:
                 pass
 
@@ -394,6 +461,8 @@ class WorkflowOrchestrator:
         - If no relevant artifacts exist, or any are unhashed, block.
         - If all relevant artifacts are hashed, transition to REVIEWING and generate review-prompt.md.
         """
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         session_dir = self.sessions_root / session_id
 
         spec = ED_APPROVAL_SPECS[WorkflowPhase.GENERATED]
@@ -406,10 +475,12 @@ class WorkflowOrchestrator:
 
         # If there are NO relevant code artifacts, block.
         if not relevant_artifacts:
+            self._emit(WorkflowEventType.APPROVAL_REQUIRED, state)
             return state
 
         # If any relevant code artifact is unhashed, block.
         if any(a.sha256 is None for a in relevant_artifacts):
+            self._emit(WorkflowEventType.APPROVAL_REQUIRED, state)
             return state
 
         # All present and hashed -> Advance to REVIEWING
@@ -418,6 +489,7 @@ class WorkflowOrchestrator:
         self._add_phase_message(state)
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
+        self._emit(WorkflowEventType.PHASE_ENTERED, state)
 
         # Generate review prompt immediately on entry
         review_spec = ING_APPROVAL_SPECS[WorkflowPhase.REVIEWING]
@@ -437,6 +509,8 @@ class WorkflowOrchestrator:
         Prompt was generated on entry to REVIEWING.
         Check if response exists and transition to REVIEWED.
         """
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         session_dir = self.sessions_root / session_id
 
         spec = ING_APPROVAL_SPECS[WorkflowPhase.REVIEWING]
@@ -449,12 +523,16 @@ class WorkflowOrchestrator:
             self._add_phase_message(state)
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
+            self._emit(WorkflowEventType.PHASE_ENTERED, state)
 
         return state
 
     def _step_reviewed(self, *, session_id: str, state: WorkflowState) -> WorkflowState:
         """Handle REVIEWED outcomes based on review-response.md."""
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         if not state.review_approved:
+            self._emit(WorkflowEventType.APPROVAL_REQUIRED, state)
             return state
 
         session_dir = self.sessions_root / session_id
@@ -519,6 +597,16 @@ class WorkflowOrchestrator:
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
 
+        # Emit appropriate events based on outcome
+        if result.status == WorkflowStatus.SUCCESS:
+            self._emit(WorkflowEventType.PHASE_ENTERED, state)
+            self._emit(WorkflowEventType.WORKFLOW_COMPLETED, state)
+        elif result.status == WorkflowStatus.CANCELLED:
+            self._emit(WorkflowEventType.PHASE_ENTERED, state)
+        elif entering_revising:
+            self._emit(WorkflowEventType.ITERATION_STARTED, state)
+            self._emit(WorkflowEventType.PHASE_ENTERED, state)
+
         # Generate revision prompt immediately on entry to REVISING
         if entering_revising:
             rev_spec = ING_APPROVAL_SPECS[WorkflowPhase.REVISING]
@@ -537,6 +625,8 @@ class WorkflowOrchestrator:
         Prompt was generated on entry to REVISING.
         Check if response exists, process it, and transition to REVISED.
         """
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         session_dir = self.sessions_root / session_id
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
 
@@ -566,6 +656,15 @@ class WorkflowOrchestrator:
             state.messages.extend(result.messages)
             if result.write_plan:
                 write_artifacts(session_dir=session_dir, state=state, result=result)
+
+                # Emit ARTIFACT_CREATED for each artifact in the write plan
+                for write_op in result.write_plan.writes:
+                    artifact_path = f"iteration-{state.current_iteration}/code/{write_op.path}"
+                    self._emit(
+                        WorkflowEventType.ARTIFACT_CREATED,
+                        state,
+                        artifact_path=artifact_path,
+                    )
             else:
                 # Fallback: Extract and write artifacts using legacy bundle_extractor
                 try:
@@ -577,11 +676,19 @@ class WorkflowOrchestrator:
                         code_dir.mkdir(parents=True, exist_ok=True)
                         for filename, file_content in files.items():
                             (code_dir / filename).write_text(file_content, encoding="utf-8")
+                            # Emit ARTIFACT_CREATED for each file extracted
+                            artifact_path = f"iteration-{state.current_iteration}/code/{filename}"
+                            self._emit(
+                                WorkflowEventType.ARTIFACT_CREATED,
+                                state,
+                                artifact_path=artifact_path,
+                            )
                 except ImportError:
                     state.phase = WorkflowPhase.ERROR
                     state.status = WorkflowStatus.ERROR
                     self._append_phase_history(state, phase=state.phase, status=state.status)
                     self.session_store.save(state)
+                    self._emit(WorkflowEventType.WORKFLOW_FAILED, state)
                     return state
 
             state.phase = WorkflowPhase.REVISED
@@ -589,12 +696,14 @@ class WorkflowOrchestrator:
             self._add_phase_message(state)
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
+            self._emit(WorkflowEventType.PHASE_ENTERED, state)
 
         elif result.status == WorkflowStatus.CANCELLED:
             state.phase = WorkflowPhase.CANCELLED
             state.status = WorkflowStatus.CANCELLED
             self._append_phase_history(state, phase=state.phase, status=state.status)
             self.session_store.save(state)
+            self._emit(WorkflowEventType.PHASE_ENTERED, state)
 
         return state
 
@@ -605,6 +714,8 @@ class WorkflowOrchestrator:
         - If no relevant artifacts exist, or any are unhashed, block.
         - If all relevant artifacts are hashed, transition to REVIEWING and generate review-prompt.md.
         """
+        from aiwf.domain.events.event_types import WorkflowEventType
+
         session_dir = self.sessions_root / session_id
 
         spec = ED_APPROVAL_SPECS[WorkflowPhase.REVISED]
@@ -617,10 +728,12 @@ class WorkflowOrchestrator:
 
         # If there are NO relevant code artifacts, block.
         if not relevant_artifacts:
+            self._emit(WorkflowEventType.APPROVAL_REQUIRED, state)
             return state
 
         # If any relevant code artifact is unhashed, block.
         if any(a.sha256 is None for a in relevant_artifacts):
+            self._emit(WorkflowEventType.APPROVAL_REQUIRED, state)
             return state
 
         # All present and hashed -> Advance to REVIEWING
@@ -629,6 +742,7 @@ class WorkflowOrchestrator:
         self._add_phase_message(state)
         self._append_phase_history(state, phase=state.phase, status=state.status)
         self.session_store.save(state)
+        self._emit(WorkflowEventType.PHASE_ENTERED, state)
 
         # Generate review prompt immediately on entry
         review_spec = ING_APPROVAL_SPECS[WorkflowPhase.REVIEWING]

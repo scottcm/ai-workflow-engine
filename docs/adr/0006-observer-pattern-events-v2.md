@@ -1,7 +1,7 @@
 # ADR-0006: Observer Pattern for Workflow Events
 
-**Status:** Proposed  
-**Date:** December 24, 2024  
+**Status:** Accepted
+**Date:** December 24, 2024 (Updated: December 25, 2024)
 **Deciders:** Scott
 
 ---
@@ -108,45 +108,54 @@ For CLI consumers, emit events as structured lines to stderr (compatible with pr
 
 ### Event Types
 
+**Implementation Note:** The final implementation emits events only **after** transitions complete, not before. This simplifies the event model and avoids confusion about partial state.
+
 ```python
 class WorkflowEventType(str, Enum):
     """Typed workflow events."""
-    
-    # Phase lifecycle
-    PHASE_ENTERING = "phase_entering"      # About to enter phase
+
+    # Phase lifecycle (emit after transition completes)
     PHASE_ENTERED = "phase_entered"        # Entered phase
-    
+
     # Artifacts
     ARTIFACT_CREATED = "artifact_created"  # File written to session
     ARTIFACT_APPROVED = "artifact_approved"  # Hash computed, artifact finalized
-    
+
     # Approval gates
     APPROVAL_REQUIRED = "approval_required"  # Workflow blocked pending approval
     APPROVAL_GRANTED = "approval_granted"    # User approved, workflow can continue
-    
+
     # Workflow lifecycle
-    WORKFLOW_STARTED = "workflow_started"
     WORKFLOW_COMPLETED = "workflow_completed"
     WORKFLOW_FAILED = "workflow_failed"
-    
+
     # Iteration
     ITERATION_STARTED = "iteration_started"  # New revision iteration began
 ```
 
+**Omitted Events:**
+- `PHASE_ENTERING` — Removed. Emit only after transition completes.
+- `WORKFLOW_STARTED` — Removed. Initialization is synchronous; no observer context yet.
+
 ### Event Payload
 
+**Implementation Note:** Uses Pydantic `BaseModel` for consistency with the rest of the codebase (not `@dataclass`).
+
 ```python
-@dataclass(frozen=True)
-class WorkflowEvent:
+from pydantic import BaseModel, Field
+
+class WorkflowEvent(BaseModel):
     """Immutable event payload."""
-    
+
+    model_config = {"frozen": True}
+
     event_type: WorkflowEventType
     session_id: str
     timestamp: datetime
     phase: WorkflowPhase | None = None
     iteration: int | None = None
     artifact_path: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 ```
 
 ### Observer Interface
@@ -250,14 +259,16 @@ class WorkflowOrchestrator:
 
 ## CLI Integration
 
-For out-of-process consumers (IDE extensions via CLI), events are emitted as structured stderr lines:
+For out-of-process consumers (IDE extensions via CLI), events are emitted as structured stderr lines **when the `--events` flag is provided**:
 
 ```bash
-$ aiwf step abc123
+$ aiwf step abc123 --events
 [EVENT] phase_entered phase=GENERATING iteration=1
 [EVENT] artifact_created path=iteration-1/code/Entity.java
 {"exit_code":0,"session_id":"abc123",...}
 ```
+
+**Implementation Note:** The `--events` flag is opt-in to keep stderr clean for manual users. IDEs should always include this flag.
 
 The extension can parse stderr for `[EVENT]` lines while reading JSON from stdout.
 
@@ -266,16 +277,38 @@ The extension can parse stderr for `[EVENT]` lines while reading JSON from stdou
 ```python
 class StderrEventObserver:
     """Emits events as structured lines to stderr."""
-    
+
     def on_event(self, event: WorkflowEvent) -> None:
         parts = [f"[EVENT] {event.event_type.value}"]
         if event.phase:
             parts.append(f"phase={event.phase.name}")
-        if event.iteration:
+        if event.iteration is not None:  # Include 0
             parts.append(f"iteration={event.iteration}")
         if event.artifact_path:
             parts.append(f"path={event.artifact_path}")
         click.echo(" ".join(parts), err=True)
+```
+
+### CLI Command Changes
+
+Both `step` and `approve` commands accept `--events`:
+
+```bash
+$ aiwf step --help
+Usage: aiwf step [OPTIONS] SESSION_ID
+
+Options:
+  --events  Emit workflow events to stderr.
+  --help    Show this message and exit.
+
+$ aiwf approve --help
+Usage: aiwf approve [OPTIONS] SESSION_ID
+
+Options:
+  --hash-prompts     Hash prompts.
+  --no-hash-prompts  Do not hash prompts.
+  --events           Emit workflow events to stderr.
+  --help             Show this message and exit.
 ```
 
 ---
@@ -312,13 +345,20 @@ proc.stderr.on('data', (data) => {
 
 | File | Changes |
 |------|---------|
-| `aiwf/domain/events/event_types.py` | New: WorkflowEventType enum |
-| `aiwf/domain/events/event.py` | New: WorkflowEvent dataclass |
+| `aiwf/domain/events/__init__.py` | New: Package exports |
+| `aiwf/domain/events/event_types.py` | New: WorkflowEventType enum (8 event types) |
+| `aiwf/domain/events/event.py` | New: WorkflowEvent Pydantic model |
 | `aiwf/domain/events/emitter.py` | New: WorkflowEventEmitter |
 | `aiwf/domain/events/observer.py` | New: WorkflowObserver protocol |
-| `aiwf/application/workflow_orchestrator.py` | Inject emitter, emit events |
-| `aiwf/interface/cli/cli.py` | Register StderrEventObserver |
-| `tests/unit/domain/events/` | New: event system tests |
+| `aiwf/domain/events/stderr_observer.py` | New: StderrEventObserver for CLI |
+| `aiwf/application/workflow_orchestrator.py` | Add event_emitter parameter, _emit() helper, emit at transitions |
+| `aiwf/interface/cli/cli.py` | Add --events flag to step and approve commands |
+| `tests/unit/domain/events/test_event_types.py` | New: Event type tests |
+| `tests/unit/domain/events/test_event.py` | New: Event model tests |
+| `tests/unit/domain/events/test_observer.py` | New: Observer protocol tests |
+| `tests/unit/domain/events/test_emitter.py` | New: Emitter tests |
+| `tests/unit/domain/events/test_stderr_observer.py` | New: Stderr observer tests |
+| `tests/unit/application/test_workflow_orchestrator_events.py` | New: Orchestrator event emission tests |
 
 ---
 

@@ -170,16 +170,24 @@ def init_cmd(
 
 @cli.command("step")
 @click.argument("session_id", type=str)
+@click.option("--events", is_flag=True, help="Emit workflow events to stderr.")
 @click.pass_context
-def step_cmd(ctx: click.Context, session_id: str) -> None:
+def step_cmd(ctx: click.Context, session_id: str, events: bool) -> None:
     try:
         from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
         from aiwf.domain.persistence.session_store import SessionStore
+        from aiwf.domain.events.emitter import WorkflowEventEmitter
+
+        event_emitter = WorkflowEventEmitter()
+        if events:
+            from aiwf.domain.events.stderr_observer import StderrEventObserver
+            event_emitter.subscribe(StderrEventObserver())
 
         session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
             sessions_root=DEFAULT_SESSIONS_ROOT,
+            event_emitter=event_emitter,
         )
 
         state = orchestrator.step(session_id)
@@ -313,11 +321,13 @@ def status_cmd(ctx: click.Context, session_id: str) -> None:
 @click.argument("session_id", type=str)
 @click.option("--hash-prompts", is_flag=True, help="Hash prompts.")
 @click.option("--no-hash-prompts", is_flag=True, help="Do not hash prompts.")
+@click.option("--events", is_flag=True, help="Emit workflow events to stderr.")
 @click.pass_context
-def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash_prompts: bool) -> None:
+def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash_prompts: bool, events: bool) -> None:
     try:
         from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
         from aiwf.domain.persistence.session_store import SessionStore
+        from aiwf.domain.events.emitter import WorkflowEventEmitter
 
         cfg = load_config(project_root=Path.cwd(), user_home=Path.home())
 
@@ -328,10 +338,16 @@ def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash
         elif no_hash_prompts:
             effective_hash = False
 
+        event_emitter = WorkflowEventEmitter()
+        if events:
+            from aiwf.domain.events.stderr_observer import StderrEventObserver
+            event_emitter.subscribe(StderrEventObserver())
+
         session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
             sessions_root=DEFAULT_SESSIONS_ROOT,
+            event_emitter=event_emitter,
         )
 
         # Call orchestrator.approve
