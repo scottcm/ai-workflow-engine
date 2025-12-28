@@ -329,18 +329,25 @@ def get_metadata(cls) -> dict[str, Any]:
 
 ### Error Handling
 
-Providers raise `ProviderError` on failure. Engine handles errors consistently:
+Providers raise `ProviderError` on failure. The orchestrator catches these errors and handles state/event emission:
 
 ```python
-# In run_provider()
+# In WorkflowOrchestrator.approve()
 try:
-    response = provider.generate(prompt, timeout=timeout)
+    # Handler chain invokes run_provider() which calls provider.generate()
+    updated = self._approval_chain.approve(...)
 except ProviderError as e:
     state.status = WorkflowStatus.ERROR
-    state.last_error = f"Provider '{provider_key}' failed: {e}"
-    emit(WorkflowEventType.WORKFLOW_FAILED, state)
+    state.last_error = str(e)
+    self.session_store.save(state)
+    self._emit(WorkflowEventType.WORKFLOW_FAILED, state)
     return state
 ```
+
+**Design rationale:** Error handling is centralized in the orchestrator rather than in `run_provider()` because:
+- `run_provider()` is a pure function that invokes providers - it has no access to workflow state or event emitter
+- Centralizing error handling in the orchestrator maintains separation of concerns
+- All provider errors flow through a single code path for consistent handling
 
 ### Provider Contract
 
@@ -647,9 +654,11 @@ User Request
 ### Risk 5: Provider Timeout Tuning
 
 **Risk:** Default timeouts too short for complex generations or too long for failures.
-**Mitigation:** Sensible defaults based on provider type, allow override via config.
+**Mitigation:** Sensible defaults based on provider type via metadata.
 **Severity:** Low
-**Contingency:** Make timeouts configurable per-session.
+**Contingency:** Add per-session or per-call timeout overrides in a future ADR if use cases emerge.
+
+**Scope note:** This ADR covers timeout defaults in provider metadata only. Per-session and per-call timeout overrides are explicitly out of scope and would require a separate design if needed.
 
 ### Risk 6: Network Failures During Workflow
 

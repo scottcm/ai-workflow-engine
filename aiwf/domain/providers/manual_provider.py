@@ -14,13 +14,24 @@ class ManualProvider(AIProvider):
             "description": "Human-in-the-loop (prompts written to disk)",
             "requires_config": False,
             "config_keys": [],
+            "default_connection_timeout": None,  # No timeout for manual
+            "default_response_timeout": None,
         }
 
-    async def generate(self, prompt: str, context: dict[str, Any] | None = None) -> str:
+    def validate(self) -> None:
+        """Manual provider has no external dependencies to validate."""
+        pass
+
+    def generate(
+        self,
+        prompt: str,
+        context: dict[str, Any] | None = None,
+        connection_timeout: int | None = None,
+        response_timeout: int | None = None,
+    ) -> str | None:
         """Manual provider does not generate responses automatically.
 
-        Returns None/empty to signal that the response file should be
+        Returns None to signal that the response file should be
         created by the human operator.
         """
-        # Return empty string - manual workflow expects user to write response file
-        return ""
+        return None

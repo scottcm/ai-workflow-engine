@@ -20,7 +20,9 @@ from aiwf.domain.models.workflow_state import (
     WorkflowStatus,
 )
 from aiwf.domain.persistence.session_store import SessionStore
+from aiwf.domain.errors import ProviderError
 from aiwf.domain.profiles.profile_factory import ProfileFactory
+from aiwf.domain.providers.provider_factory import ProviderFactory
 from aiwf.domain.validation.path_validator import normalize_metadata_paths
 
 if TYPE_CHECKING:
@@ -97,15 +99,25 @@ class WorkflowOrchestrator:
             metadata=metadata,
         )
 
+        # Validate all configured AI providers before continuing setup
+        # Clean up session directory if validation fails
+        try:
+            for role, provider_key in providers.items():
+                ai_provider = ProviderFactory.create(provider_key)
+                ai_provider.validate()  # Raises ProviderError if misconfigured
+        except (KeyError, ProviderError):
+            shutil.rmtree(session_dir, ignore_errors=True)
+            raise
+
         profile_instance = ProfileFactory.create(profile)
         profile_instance.validate_metadata(metadata)
-        provider = profile_instance.get_standards_provider()
+        standards_provider = profile_instance.get_standards_provider()
 
         context = self._build_context(state)
         bundle_hash = materialize_standards(
             session_dir=session_dir,
             context=context,
-            provider=provider
+            provider=standards_provider
         )
         state.standards_hash = bundle_hash
         self.session_store.save(state)
@@ -152,7 +164,7 @@ class WorkflowOrchestrator:
             self._emit(WorkflowEventType.APPROVAL_GRANTED, updated)
             return updated
 
-        except (FileNotFoundError, ValueError) as e:
+        except (FileNotFoundError, ValueError, ProviderError) as e:
             state.status = WorkflowStatus.ERROR
             state.last_error = str(e)
             self.session_store.save(state)

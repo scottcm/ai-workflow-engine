@@ -88,9 +88,32 @@ def _update_or_create_artifact(
     ))
 
 
-# monkeypatch seam for provider invocation
 def run_provider(provider_key: str, prompt: str) -> str | None:
-    raise NotImplementedError("Provider execution is not implemented in scaffolding")
+    """Invoke an AI provider to generate a response.
+
+    Args:
+        provider_key: Registered provider key (e.g., "manual", "claude")
+        prompt: The prompt text to send
+
+    Returns:
+        Response string, or None if provider signals manual mode
+
+    Raises:
+        ProviderError: If provider fails (network, auth, timeout, etc.)
+        KeyError: If provider_key is not registered
+    """
+    from aiwf.domain.providers.provider_factory import ProviderFactory
+
+    provider = ProviderFactory.create(provider_key)
+    metadata = provider.get_metadata()
+    connection_timeout = metadata.get("default_connection_timeout")
+    response_timeout = metadata.get("default_response_timeout")
+
+    return provider.generate(
+        prompt,
+        connection_timeout=connection_timeout,
+        response_timeout=response_timeout,
+    )
 
 
 def _extract_and_write_code_files(

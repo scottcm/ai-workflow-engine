@@ -1,9 +1,12 @@
 from pathlib import Path
+from typing import Any
 import pytest
 
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import WorkflowStatus
+from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.provider_factory import ProviderFactory
 
 
 @pytest.fixture(scope="session")
@@ -58,3 +61,54 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.delenv("STANDARDS_DIR", raising=False)
     monkeypatch.delenv("AIWF_SESSIONS_ROOT", raising=False)
+
+
+class FakeProvider(AIProvider):
+    """Fake provider for testing - validates successfully and returns None."""
+
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
+        return {
+            "name": "fake",
+            "description": "Fake provider for testing",
+            "requires_config": False,
+            "config_keys": [],
+            "default_connection_timeout": None,
+            "default_response_timeout": None,
+        }
+
+    def validate(self) -> None:
+        pass  # Always valid
+
+    def generate(
+        self,
+        prompt: str,
+        context: dict[str, Any] | None = None,
+        connection_timeout: int | None = None,
+        response_timeout: int | None = None,
+    ) -> str | None:
+        return None  # Like manual provider
+
+
+@pytest.fixture(autouse=True)
+def _register_test_providers():
+    """Register fake providers used in tests with proper cleanup.
+
+    Tests often use provider keys like 'gemini', 'planner', 'reviewer' without
+    actually needing real provider implementations. This fixture registers
+    fake providers so validation passes, and restores the registry afterward
+    to prevent test pollution.
+    """
+    # Snapshot registry state before test
+    original_registry = dict(ProviderFactory._registry)
+
+    # Register common test provider keys
+    for key in ["gemini", "planner", "reviewer", "generator"]:
+        if key not in ProviderFactory._registry:
+            ProviderFactory.register(key, FakeProvider)
+
+    yield
+
+    # Restore original registry state after test
+    ProviderFactory._registry.clear()
+    ProviderFactory._registry.update(original_registry)
