@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class BaseOutput(BaseModel):
     schema_version: int = 1
-    command: Literal["init", "step", "status", "approve", "list", "profiles", "providers"]
+    command: Literal["init", "step", "status", "approve", "list", "profiles", "providers", "validate"]
     exit_code: int
     error: str | None = None
 
@@ -108,3 +108,20 @@ class ProvidersOutput(BaseOutput):
     command: Literal["providers"] = "providers"
     providers: list[ProviderSummary] | None = None
     provider: ProviderDetail | None = None
+
+
+class ValidationResult(BaseModel):
+    """Result of validating a single provider."""
+
+    provider_type: str  # "ai" or "standards"
+    provider_key: str
+    passed: bool
+    error: str | None = None
+
+
+class ValidateOutput(BaseOutput):
+    """Output for validate command."""
+
+    command: Literal["validate"] = "validate"
+    results: list[ValidationResult] = Field(default_factory=list)
+    all_passed: bool = True

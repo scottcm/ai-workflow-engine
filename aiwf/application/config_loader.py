@@ -21,7 +21,7 @@ class ConfigLoadError(Exception):
 
 def _defaults() -> dict[str, Any]:
     return {
-        "profile": "default",
+        "profile": None,  # No default profile - must be specified via CLI or config
         "providers": {
             "planner": "manual",
             "generator": "manual",
@@ -30,6 +30,7 @@ def _defaults() -> dict[str, Any]:
         },
         "hash_prompts": False,
         "dev": None,
+        "default_standards_provider": "scoped-layer-fs",
     }
 
 

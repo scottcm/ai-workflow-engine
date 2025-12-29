@@ -54,6 +54,19 @@ class ProfileFactory:
         return list(cls._registry.keys())
 
     @classmethod
+    def is_registered(cls, profile_key: str) -> bool:
+        """
+        Check if a profile is registered.
+
+        Args:
+            profile_key: Profile identifier to check
+
+        Returns:
+            True if profile is registered, False otherwise
+        """
+        return profile_key in cls._registry
+
+    @classmethod
     def get_all_metadata(cls) -> list[dict[str, Any]]:
         """
         Get metadata for all registered profiles.

@@ -1,7 +1,8 @@
-from pathlib import Path
-from typing import Protocol, Any
+"""Standards provider protocol.
 
+Re-exported from domain.standards for backward compatibility.
+"""
 
-class StandardsProvider(Protocol):
-    def create_bundle(self, context: dict[str, Any]) -> str:
-        ...
+from aiwf.domain.standards.standards_provider_factory import StandardsProvider
+
+__all__ = ["StandardsProvider"]

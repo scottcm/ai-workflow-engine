@@ -9,11 +9,12 @@ from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, Work
 from aiwf.domain.models.write_plan import WriteOp, WritePlan
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
+from aiwf.domain.standards import StandardsProviderFactory
 
 
-# --------------------------- 
+# ---------------------------
 # Local overrides / utilities
-# --------------------------- 
+# ---------------------------
 
 @pytest.fixture(autouse=True)
 def mock_jpa_mt_profile():
@@ -24,6 +25,48 @@ def mock_jpa_mt_profile():
     must inject non-empty write plans.
     """
     yield
+
+
+@pytest.fixture(autouse=True)
+def register_fake_standards_provider():
+    """Register fake standards provider for this test module."""
+    # Import is needed but provider class is defined below - we'll register after
+    original_registry = dict(StandardsProviderFactory._registry)
+    yield
+    StandardsProviderFactory._registry.clear()
+    StandardsProviderFactory._registry.update(original_registry)
+
+
+# Register the fake provider at module level
+def _register_fake_provider():
+    """Register FakeStandardsProvider with factory."""
+    class _FakeStandardsProvider:
+        def __init__(self, config=None):
+            self.config = config or {}
+
+        @classmethod
+        def get_metadata(cls):
+            return {
+                "name": "fake-standards",
+                "description": "Fake standards provider for testing",
+                "requires_config": False,
+                "config_keys": [],
+                "default_connection_timeout": 5,
+                "default_response_timeout": 30,
+            }
+
+        def validate(self):
+            pass
+
+        def create_bundle(self, context, connection_timeout=None, response_timeout=None):
+            return "STANDARDS\n"
+
+    if "fake-standards" not in StandardsProviderFactory._registry:
+        StandardsProviderFactory.register("fake-standards", _FakeStandardsProvider)
+
+
+_register_fake_provider()
+
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -43,7 +86,24 @@ def _assert_safe_rel_path(p: str) -> None:
 # --------------------------- 
 
 class FakeStandardsProvider:
-    def create_bundle(self, context) -> str:
+    def __init__(self, config=None):
+        self.config = config or {}
+
+    @classmethod
+    def get_metadata(cls):
+        return {
+            "name": "fake-standards",
+            "description": "Fake standards provider for testing",
+            "requires_config": False,
+            "config_keys": [],
+            "default_connection_timeout": 5,
+            "default_response_timeout": 30,
+        }
+
+    def validate(self):
+        pass  # Always valid
+
+    def create_bundle(self, context, connection_timeout=None, response_timeout=None) -> str:
         # Deterministic, minimal bundle
         return "STANDARDS\n"
 
@@ -72,8 +132,11 @@ class FakeProfile:
     def validate_metadata(self, metadata):
         pass  # No validation needed for tests
 
-    def get_standards_provider(self) -> FakeStandardsProvider:
-        return FakeStandardsProvider()
+    def get_default_standards_provider_key(self) -> str:
+        return "fake-standards"
+
+    def get_standards_config(self) -> dict:
+        return {}
 
     # Prompts (content irrelevant for these tests)
     def generate_planning_prompt(self, context):

@@ -207,3 +207,124 @@ class TestLoadConfig:
         assert result["profile"] == "project-profile"
         # User value preserved for 'dev' (not in project)
         assert result["dev"] == "user-dev"
+
+    def test_load_config_default_standards_provider_is_scoped_layer_fs(
+        self, tmp_path: Path
+    ) -> None:
+        """Default standards provider is scoped-layer-fs."""
+        # Empty home and project dirs - should get defaults
+        result = load_config(
+            project_root=tmp_path / "project",
+            user_home=tmp_path / "home",
+        )
+
+        assert result["default_standards_provider"] == "scoped-layer-fs"
+
+    def test_load_config_default_standards_provider_can_be_overridden_by_user(
+        self, tmp_path: Path
+    ) -> None:
+        """User config can override default_standards_provider."""
+        user_home = tmp_path / "home"
+        user_config_dir = user_home / ".aiwf"
+        user_config_dir.mkdir(parents=True, exist_ok=True)
+        (user_config_dir / "config.yml").write_text(
+            "default_standards_provider: custom-provider",
+            encoding="utf-8",
+        )
+
+        result = load_config(
+            project_root=tmp_path / "project",
+            user_home=user_home,
+        )
+
+        assert result["default_standards_provider"] == "custom-provider"
+
+    def test_load_config_default_standards_provider_can_be_overridden_by_project(
+        self, tmp_path: Path
+    ) -> None:
+        """Project config can override default_standards_provider."""
+        project_root = tmp_path / "project"
+        project_config_dir = project_root / ".aiwf"
+        project_config_dir.mkdir(parents=True, exist_ok=True)
+        (project_config_dir / "config.yml").write_text(
+            "default_standards_provider: project-provider",
+            encoding="utf-8",
+        )
+
+        result = load_config(
+            project_root=project_root,
+            user_home=tmp_path / "home",
+        )
+
+        assert result["default_standards_provider"] == "project-provider"
+
+    def test_load_config_project_overrides_user_for_standards_provider(
+        self, tmp_path: Path
+    ) -> None:
+        """Project config overrides user config for default_standards_provider."""
+        # User config
+        user_home = tmp_path / "home"
+        user_config_dir = user_home / ".aiwf"
+        user_config_dir.mkdir(parents=True, exist_ok=True)
+        (user_config_dir / "config.yml").write_text(
+            "default_standards_provider: user-provider",
+            encoding="utf-8",
+        )
+
+        # Project config
+        project_root = tmp_path / "project"
+        project_config_dir = project_root / ".aiwf"
+        project_config_dir.mkdir(parents=True, exist_ok=True)
+        (project_config_dir / "config.yml").write_text(
+            "default_standards_provider: project-provider",
+            encoding="utf-8",
+        )
+
+        result = load_config(
+            project_root=project_root,
+            user_home=user_home,
+        )
+
+        # Project wins
+        assert result["default_standards_provider"] == "project-provider"
+
+    def test_load_config_empty_string_standards_provider_overrides_default(
+        self, tmp_path: Path
+    ) -> None:
+        """Empty string in config is preserved (not treated as falsy for config merge)."""
+        project_root = tmp_path / "project"
+        project_config_dir = project_root / ".aiwf"
+        project_config_dir.mkdir(parents=True, exist_ok=True)
+        (project_config_dir / "config.yml").write_text(
+            'default_standards_provider: ""',
+            encoding="utf-8",
+        )
+
+        result = load_config(
+            project_root=project_root,
+            user_home=tmp_path / "home",
+        )
+
+        # Empty string should be stored (config merge preserves it)
+        assert result["default_standards_provider"] == ""
+
+    def test_load_config_null_standards_provider_uses_default(
+        self, tmp_path: Path
+    ) -> None:
+        """Null/None in config falls back to built-in default."""
+        project_root = tmp_path / "project"
+        project_config_dir = project_root / ".aiwf"
+        project_config_dir.mkdir(parents=True, exist_ok=True)
+        # YAML null is represented as ~ or null
+        (project_config_dir / "config.yml").write_text(
+            "default_standards_provider: ~",
+            encoding="utf-8",
+        )
+
+        result = load_config(
+            project_root=project_root,
+            user_home=tmp_path / "home",
+        )
+
+        # Null overwrites the default, so result is None
+        assert result["default_standards_provider"] is None

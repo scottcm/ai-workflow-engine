@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any
 
 from aiwf.domain.models.processing_result import ProcessingResult
-from aiwf.application.standards_provider import StandardsProvider  # Add import
 
 
 class WorkflowProfile(ABC):
@@ -39,16 +38,33 @@ class WorkflowProfile(ABC):
         """
         pass  # Default: no validation
 
-    @abstractmethod
-    def get_standards_provider(self) -> StandardsProvider:
-        """
-        Return the standards provider for this profile.
-        
+    def get_default_standards_provider_key(self) -> str:
+        """Return the default standards provider key for this profile.
+
+        Used when no --standards-provider CLI option is specified.
+        Profiles should override to specify their default provider.
+
         Returns:
-            StandardsProvider instance configured for this profile
+            Registered standards provider key (e.g., "scoped-layer-fs")
+
+        Raises:
+            NotImplementedError: If profile does not override this method
         """
-        ...
-    
+        raise NotImplementedError(
+            "Profile must implement get_default_standards_provider_key()"
+        )
+
+    def get_standards_config(self) -> dict[str, Any]:
+        """Return configuration dict for standards provider.
+
+        This config is passed to StandardsProviderFactory.create().
+        Profiles should override to return provider-specific settings.
+
+        Returns:
+            Configuration dict with provider-specific settings
+        """
+        return {}
+
     @abstractmethod
     def generate_planning_prompt(self, context: dict) -> str:
         ...

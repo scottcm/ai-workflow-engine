@@ -309,11 +309,22 @@ Different provider types need different timeouts:
 
 | Provider Type | Default Connection Timeout | Default Response Timeout |
 |---------------|---------------------------|-------------------------|
-| FileBasedStandardsProvider | 5 seconds | 5 seconds |
+| ScopedLayerFsProvider | None (N/A) | 30 seconds |
 | RAGStandardsProvider | 10 seconds | 30 seconds |
 | APIStandardsProvider | 10 seconds | 30 seconds |
 | ClaudeProvider / AI Providers | 10 seconds | 5 minutes |
 | ManualProvider | N/A | N/A (returns None immediately) |
+
+**Timeout semantics:**
+- `connection_timeout`: Time allowed to establish connection (network providers) or access the resource path. For providers where this concept doesn't apply (e.g., local filesystem), set to `None`.
+- `response_timeout`: Time allowed to receive/read the complete response after connection is established.
+- `None` or `0` means "no timeout" - the operation can take unlimited time.
+
+**Provider-specific timeout handling:**
+Providers MUST document their timeout behavior in both `get_metadata()` and class docstring when:
+- A timeout parameter is not applicable (e.g., `connection_timeout` for local filesystem)
+- The provider combines or ignores certain timeout values
+- Special handling is needed for the provider's access pattern
 
 Timeouts are defined in provider metadata:
 
@@ -322,7 +333,7 @@ Timeouts are defined in provider metadata:
 def get_metadata(cls) -> dict[str, Any]:
     return {
         "name": "claude",
-        "default_connection_timeout": 10,
+        "default_connection_timeout": 10,  # None if not applicable
         "default_response_timeout": 300,
     }
 ```
@@ -746,6 +757,19 @@ class AIProvider(ABC):
 
 ```python
 class StandardsProvider(Protocol):
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
+        """Return provider metadata including default timeouts.
+
+        Returns:
+            dict with keys: name, description, requires_config, config_keys,
+                           default_connection_timeout, default_response_timeout
+
+        Note: default_connection_timeout should be None for providers where
+        the concept doesn't apply (e.g., local filesystem access).
+        """
+        ...
+
     def validate(self) -> None:
         """Verify provider is accessible. Raises ProviderError if not."""
         ...
@@ -753,13 +777,23 @@ class StandardsProvider(Protocol):
     def create_bundle(
         self,
         context: dict[str, Any],
-        timeout: int | None = None,
+        connection_timeout: int | None = None,
+        response_timeout: int | None = None,
     ) -> str:
         """
         Create standards bundle.
 
+        Args:
+            context: Workflow context (scope, entity, etc.)
+            connection_timeout: Time to establish connection/access path.
+                               None = use default. 0 = no timeout.
+                               May be ignored by providers where N/A.
+            response_timeout: Time to read/receive complete data.
+                             None = use default. 0 = no timeout.
+
         Raises:
-            ProviderError: On failure
+            ProviderError: On failure or timeout
+            ValueError: If context is invalid (e.g., unknown scope)
         """
         ...
 ```

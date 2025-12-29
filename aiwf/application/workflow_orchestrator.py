@@ -63,6 +63,7 @@ class WorkflowOrchestrator:
         dev: str | None = None,
         task_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        standards_provider: str | None = None,
     ) -> str:
         """Initialize a new workflow session and persist the initial state.
 
@@ -75,6 +76,19 @@ class WorkflowOrchestrator:
         This method MUST NOT create any `iteration-*` directories. Session
         directory creation may be performed by the configured `SessionStore`
         implementation as part of persistence.
+
+        Args:
+            profile: Profile identifier (e.g., "jpa-mt")
+            scope: Workflow scope (e.g., "domain", "vertical")
+            entity: Entity name for code generation
+            providers: Role to provider mapping (e.g., {"planner": "manual"})
+            execution_mode: Interactive or automated execution
+            bounded_context: Optional bounded context name
+            table: Optional database table name
+            dev: Optional developer identifier
+            task_id: Optional task/ticket identifier
+            metadata: Optional additional metadata
+            standards_provider: Optional standards provider key override
 
         Returns:
             The generated session_id for the new workflow session.
@@ -111,13 +125,33 @@ class WorkflowOrchestrator:
 
         profile_instance = ProfileFactory.create(profile)
         profile_instance.validate_metadata(metadata)
-        standards_provider = profile_instance.get_standards_provider()
+
+        # Resolve standards provider: CLI > profile default
+        resolved_standards_provider = standards_provider
+        if not resolved_standards_provider:
+            resolved_standards_provider = (
+                profile_instance.get_default_standards_provider_key()
+            )
+
+        # Create and validate standards provider
+        try:
+            from aiwf.domain.standards import StandardsProviderFactory
+
+            standards_config = profile_instance.get_standards_config()
+            sp = StandardsProviderFactory.create(
+                resolved_standards_provider, standards_config
+            )
+            sp.validate()
+            state.standards_provider = resolved_standards_provider
+        except (KeyError, ProviderError):
+            shutil.rmtree(session_dir, ignore_errors=True)
+            raise
 
         context = self._build_context(state)
         bundle_hash = materialize_standards(
             session_dir=session_dir,
             context=context,
-            provider=standards_provider
+            provider=sp,
         )
         state.standards_hash = bundle_hash
         self.session_store.save(state)

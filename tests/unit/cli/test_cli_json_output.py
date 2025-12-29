@@ -29,6 +29,16 @@ def test_init_emits_json_only(monkeypatch):
     def fake_initialize_run(self, **kwargs):
         return "sess_123"
 
+    # Mock load_config to return a valid profile so we reach initialize_run
+    def mock_load_config(**kwargs):
+        return {
+            "profile": "jpa-mt",
+            "providers": {"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
+            "dev": None,
+            "default_standards_provider": "scoped-layer-fs",
+        }
+
+    monkeypatch.setattr(cli_mod, "load_config", mock_load_config)
     monkeypatch.setattr(wo.WorkflowOrchestrator, "initialize_run", fake_initialize_run, raising=True)
 
     runner = CliRunner()

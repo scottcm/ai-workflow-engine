@@ -2,22 +2,65 @@
 """Fixtures for application layer tests."""
 
 import pytest
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import WorkflowStatus
 from aiwf.domain.models.write_plan import WriteOp, WritePlan
+from aiwf.domain.standards import StandardsProviderFactory
+
+
+class MockStandardsProvider:
+    """Mock standards provider for testing."""
+
+    def __init__(self, config):
+        self.config = config
+
+    @classmethod
+    def get_metadata(cls):
+        return {
+            "name": "mock-standards",
+            "description": "Mock standards provider for testing",
+            "requires_config": False,
+            "config_keys": [],
+            "default_connection_timeout": 5,
+            "default_response_timeout": 30,
+        }
+
+    def validate(self):
+        pass  # Always valid in tests
+
+    def create_bundle(self, context, connection_timeout=None, response_timeout=None):
+        return "# Mock Standards Bundle\n"
 
 
 @pytest.fixture(autouse=True)
-def mock_jpa_mt_profile(monkeypatch):
+def register_mock_standards_provider():
+    """Register mock standards provider for tests.
+
+    Only adds mock-standards, preserves existing registrations like scoped-layer-fs.
+    """
+    StandardsProviderFactory.register("mock-standards", MockStandardsProvider)
+
+    yield
+
+    # Only remove what we added
+    if "mock-standards" in StandardsProviderFactory._registry:
+        del StandardsProviderFactory._registry["mock-standards"]
+
+
+@pytest.fixture(autouse=True)
+def mock_jpa_mt_profile(monkeypatch, register_mock_standards_provider):
     """Mock jpa-mt profile for orchestrator tests."""
 
     mock_profile = MagicMock()
-    mock_profile.get_standards_provider.return_value = MagicMock(
-        create_bundle=MagicMock(return_value="# Mock Standards Bundle\n")
-    )
+
+    # Standards provider methods - Phase 2 ADR-0007
+    mock_profile.get_default_standards_provider_key.return_value = "mock-standards"
+    mock_profile.get_standards_config.return_value = {}
+
     # Prompt generation methods must return strings
     mock_profile.generate_planning_prompt.return_value = "# Mock Planning Prompt\n"
     mock_profile.generate_generation_prompt.return_value = "# Mock Generation Prompt\n"

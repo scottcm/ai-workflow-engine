@@ -120,6 +120,9 @@ class WorkflowState(BaseModel):
     # Multi-provider strategy
     providers: dict[str, str]  # role -> provider_key
 
+    # Standards provider key used for this session (empty = profile default)
+    standards_provider: str = ""
+
     # Extensibility (profile/engine-specific data)
     metadata: dict[str, Any] = Field(default_factory=dict)
 

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from profiles.jpa_mt.jpa_mt_profile import JpaMtProfile
+from aiwf.domain.standards import StandardsProviderFactory
 
 
 def _write(root: Path, name: str, content: str) -> None:
@@ -31,7 +32,9 @@ def test_jpa_mt_profile_provider_is_scope_aware_and_filters(tmp_path: Path) -> N
     }
 
     profile = JpaMtProfile(**config)
-    provider = profile.get_standards_provider()
+    provider_key = profile.get_default_standards_provider_key()
+    standards_config = profile.get_standards_config()
+    provider = StandardsProviderFactory.create(provider_key, standards_config)
 
     bundle = provider.create_bundle({"scope": "domain"})
 

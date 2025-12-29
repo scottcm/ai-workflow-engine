@@ -16,6 +16,8 @@ from aiwf.interface.cli.output_models import (
     SessionSummary,
     StatusOutput,
     StepOutput,
+    ValidateOutput,
+    ValidationResult,
 )
 from aiwf.application.config_loader import load_config
 from aiwf.application.approval_specs import ING_APPROVAL_SPECS
@@ -97,6 +99,13 @@ def cli(ctx: click.Context, json_output: bool) -> None:
 @click.option("--dev", required=False, type=str)
 @click.option("--task-id", "task_id", required=False, type=str)
 @click.option("--schema-file", "schema_file", required=False, type=str)
+@click.option(
+    "--standards-provider",
+    "standards_provider",
+    required=False,
+    type=str,
+    help="Standards provider key (overrides profile default)",
+)
 @click.pass_context
 def init_cmd(
     ctx: click.Context,
@@ -107,6 +116,7 @@ def init_cmd(
     dev: str | None,
     task_id: str | None,
     schema_file: str | None,
+    standards_provider: str | None,
 ) -> None:
 
     try:
@@ -115,8 +125,14 @@ def init_cmd(
 
         cfg = load_config(project_root=Path.cwd(), user_home=Path.home())
 
-        profile = cfg["profile"]
+        profile = cfg.get("profile")
         providers = cfg["providers"]
+
+        # Fail fast if profile is not configured
+        if not profile:
+            raise click.ClickException(
+                "Profile is required. Specify 'profile' in .aiwf/config.yml or use a project with a configured profile."
+            )
 
         # CLI --dev overrides config; config overrides default
         dev = dev if dev is not None else cfg["dev"]
@@ -132,6 +148,9 @@ def init_cmd(
             sessions_root=DEFAULT_SESSIONS_ROOT,
         )
 
+        # CLI --standards-provider overrides config default
+        effective_standards_provider = standards_provider or cfg.get("default_standards_provider")
+
         session_id = orchestrator.initialize_run(
             profile=profile,
             providers=providers,
@@ -142,6 +161,7 @@ def init_cmd(
             dev=dev,
             task_id=task_id,
             metadata=metadata,
+            standards_provider=effective_standards_provider,
         )
 
         if _get_json_mode(ctx):
@@ -700,6 +720,209 @@ def providers_cmd(ctx: click.Context, provider_name: str | None) -> None:
         if _get_json_mode(ctx):
             _json_emit(
                 ProvidersOutput(
+                    exit_code=1,
+                    error=str(e),
+                )
+            )
+            raise click.exceptions.Exit(1)
+        raise click.ClickException(str(e)) from e
+
+
+def _validate_ai_provider(key: str) -> list[ValidationResult]:
+    """Validate a single AI provider."""
+    from aiwf.domain.providers.provider_factory import ProviderFactory
+    from aiwf.domain.errors import ProviderError
+
+    try:
+        provider = ProviderFactory.create(key)
+        provider.validate()
+        return [ValidationResult(provider_type="ai", provider_key=key, passed=True)]
+    except ProviderError as e:
+        return [
+            ValidationResult(
+                provider_type="ai", provider_key=key, passed=False, error=str(e)
+            )
+        ]
+    except KeyError:
+        return [
+            ValidationResult(
+                provider_type="ai", provider_key=key, passed=False, error="Not registered"
+            )
+        ]
+
+
+def _validate_standards_provider(
+    key: str, profile_key: str | None
+) -> list[ValidationResult]:
+    """Validate a single standards provider.
+
+    Standards providers require config from a profile. If no profile is specified,
+    uses the project's configured profile from load_config().
+
+    Errors:
+        - Profile is required but not specified
+        - Profile specified but not registered
+        - Profile fails to load
+        - Standards provider not registered
+        - Standards provider validation fails
+    """
+    from aiwf.domain.standards import StandardsProviderFactory
+    from aiwf.domain.profiles.profile_factory import ProfileFactory
+    from aiwf.domain.errors import ProviderError
+
+    try:
+        # Determine which profile to use
+        cfg = load_config(project_root=Path.cwd(), user_home=Path.home())
+        profile_to_use = profile_key or cfg.get("profile")
+
+        # Profile is required
+        if not profile_to_use:
+            return [
+                ValidationResult(
+                    provider_type="standards",
+                    provider_key=key,
+                    passed=False,
+                    error="Profile is required. Specify --profile or set 'profile' in config.",
+                )
+            ]
+
+        # Check if profile is registered
+        if not ProfileFactory.is_registered(profile_to_use):
+            return [
+                ValidationResult(
+                    provider_type="standards",
+                    provider_key=key,
+                    passed=False,
+                    error=f"Profile not registered: {profile_to_use}",
+                )
+            ]
+
+        # Try to create the profile
+        try:
+            profile_instance = ProfileFactory.create(profile_to_use)
+        except Exception as e:
+            return [
+                ValidationResult(
+                    provider_type="standards",
+                    provider_key=key,
+                    passed=False,
+                    error=f"Failed to load profile '{profile_to_use}': {e}",
+                )
+            ]
+
+        standards_config = profile_instance.get_standards_config()
+
+        provider = StandardsProviderFactory.create(key, standards_config)
+        provider.validate()
+        return [
+            ValidationResult(provider_type="standards", provider_key=key, passed=True)
+        ]
+    except ProviderError as e:
+        return [
+            ValidationResult(
+                provider_type="standards", provider_key=key, passed=False, error=str(e)
+            )
+        ]
+    except KeyError as e:
+        return [
+            ValidationResult(
+                provider_type="standards",
+                provider_key=key,
+                passed=False,
+                error=f"Standards provider not registered: {e}",
+            )
+        ]
+    except Exception as e:
+        return [
+            ValidationResult(
+                provider_type="standards", provider_key=key, passed=False, error=str(e)
+            )
+        ]
+
+
+@cli.command("validate")
+@click.argument("provider_type", type=click.Choice(["ai", "standards", "all"]))
+@click.argument("provider_key", required=False)
+@click.option(
+    "--profile",
+    "profile_key",
+    required=False,
+    type=str,
+    help="Profile to use for standards provider config (defaults to project config)",
+)
+@click.pass_context
+def validate_cmd(
+    ctx: click.Context,
+    provider_type: str,
+    provider_key: str | None,
+    profile_key: str | None,
+) -> None:
+    """Validate provider configuration.
+
+    Examples:
+        aiwf validate ai manual
+        aiwf validate standards scoped-layer-fs
+        aiwf validate ai  # validates all AI providers
+        aiwf validate all  # validates everything
+    """
+    try:
+        # Import to ensure registration
+        from aiwf.domain.providers import ProviderFactory
+        from aiwf.domain.standards import StandardsProviderFactory
+        import profiles.jpa_mt  # noqa: F401
+
+        results: list[ValidationResult] = []
+
+        if provider_type in ("ai", "all"):
+            if provider_key and provider_type == "ai":
+                # Validate specific AI provider
+                results.extend(_validate_ai_provider(provider_key))
+            else:
+                # Validate all AI providers
+                for key in ProviderFactory.list_providers():
+                    results.extend(_validate_ai_provider(key))
+
+        if provider_type in ("standards", "all"):
+            if provider_key and provider_type == "standards":
+                # Validate specific standards provider
+                results.extend(_validate_standards_provider(provider_key, profile_key))
+            else:
+                # Validate all standards providers
+                for key in StandardsProviderFactory.list_providers():
+                    results.extend(_validate_standards_provider(key, profile_key))
+
+        all_passed = all(r.passed for r in results)
+        exit_code = 0 if all_passed else 1
+
+        if _get_json_mode(ctx):
+            _json_emit(
+                ValidateOutput(
+                    exit_code=exit_code,
+                    results=results,
+                    all_passed=all_passed,
+                )
+            )
+            raise click.exceptions.Exit(exit_code)
+
+        # Plain text output
+        for r in results:
+            status = "OK" if r.passed else "FAILED"
+            click.echo(f"  {r.provider_type}:{r.provider_key}: {status}")
+            if r.error:
+                click.echo(f"    {r.error}")
+
+        passed = sum(1 for r in results if r.passed)
+        click.echo(f"\n{passed} of {len(results)} providers ready.")
+
+        if not all_passed:
+            raise click.exceptions.Exit(1)
+
+    except click.exceptions.Exit:
+        raise
+    except Exception as e:
+        if _get_json_mode(ctx):
+            _json_emit(
+                ValidateOutput(
                     exit_code=1,
                     error=str(e),
                 )

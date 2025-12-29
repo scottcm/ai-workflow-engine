@@ -7,8 +7,6 @@ import yaml
 from aiwf.domain.profiles.workflow_profile import WorkflowProfile
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import WorkflowStatus
-from aiwf.application.standards_provider import StandardsProvider
-from profiles.jpa_mt.jpa_mt_standards_provider import JpaMtStandardsProvider
 from profiles.jpa_mt.jpa_mt_config import JpaMtConfig
 from profiles.jpa_mt.bundle_extractor import extract_files
 
@@ -54,9 +52,13 @@ class JpaMtProfile(WorkflowProfile):
         if not metadata or "schema_file" not in metadata:
             raise ValueError("jpa-mt profile requires --schema-file argument")
 
-    def get_standards_provider(self) -> StandardsProvider:
-        """Return JPA-MT specific standards provider."""
-        return JpaMtStandardsProvider(self.config)
+    def get_default_standards_provider_key(self) -> str:
+        """Return the default standards provider key for JPA-MT profile."""
+        return "scoped-layer-fs"
+
+    def get_standards_config(self) -> dict[str, Any]:
+        """Return configuration dict for standards provider."""
+        return self.config
 
     def _load_template(self, phase: str, scope: str) -> tuple[str, Path]:
         """Load a template file for the given phase and scope.
