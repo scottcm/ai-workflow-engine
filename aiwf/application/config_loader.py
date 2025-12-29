@@ -75,6 +75,34 @@ def _load_yaml_mapping(path: Path) -> dict[str, Any]:
     return data
 
 
+def _expand_default_provider(providers: dict[str, str]) -> dict[str, str]:
+    """
+    Expand 'default' key to all provider roles.
+
+    If providers contains a 'default' key, its value is applied to any
+    role that isn't explicitly set. The 'default' key is then removed.
+
+    Example:
+        Input:  {"default": "claude", "reviewer": "manual"}
+        Output: {"planner": "claude", "generator": "claude",
+                 "reviewer": "manual", "reviser": "claude"}
+    """
+    if "default" not in providers:
+        return providers
+
+    default_value = providers["default"]
+    roles = ["planner", "generator", "reviewer", "reviser"]
+
+    expanded = {}
+    for role in roles:
+        if role in providers:
+            expanded[role] = providers[role]
+        else:
+            expanded[role] = default_value
+
+    return expanded
+
+
 def load_config(*, project_root: Path | None = None, user_home: Path | None = None) -> dict[str, Any]:
     """
     Load and merge config with precedence (highest wins):
@@ -83,16 +111,29 @@ def load_config(*, project_root: Path | None = None, user_home: Path | None = No
     Files:
       - user:    user_home/.aiwf/config.yml
       - project: project_root/.aiwf/config.yml
+
+    Special handling:
+      - providers.default: Expands to all roles not explicitly set.
+        Expansion happens per-layer before merge so that 'default: claude'
+        correctly overrides built-in defaults.
     """
     project_root = project_root or Path.cwd()
     user_home = user_home or Path.home()
 
     cfg: dict[str, Any] = _defaults()
 
+    # Load and expand user config before merge
     user_path = user_home / ".aiwf" / "config.yml"
-    cfg = _deep_merge(cfg, _load_yaml_mapping(user_path))
+    user_cfg = _load_yaml_mapping(user_path)
+    if "providers" in user_cfg and isinstance(user_cfg["providers"], dict):
+        user_cfg["providers"] = _expand_default_provider(user_cfg["providers"])
+    cfg = _deep_merge(cfg, user_cfg)
 
+    # Load and expand project config before merge
     project_path = project_root / ".aiwf" / "config.yml"
-    cfg = _deep_merge(cfg, _load_yaml_mapping(project_path))
+    project_cfg = _load_yaml_mapping(project_path)
+    if "providers" in project_cfg and isinstance(project_cfg["providers"], dict):
+        project_cfg["providers"] = _expand_default_provider(project_cfg["providers"])
+    cfg = _deep_merge(cfg, project_cfg)
 
     return cfg

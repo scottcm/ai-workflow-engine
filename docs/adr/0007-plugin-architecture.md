@@ -1,7 +1,8 @@
 # ADR-0007: Plugin Architecture for Extensible Workflow Components
 
-**Status:** Draft
+**Status:** Accepted
 **Date:** December 25, 2024
+**Completed:** December 29, 2024
 **Deciders:** Scott
 
 ---

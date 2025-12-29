@@ -1,10 +1,12 @@
-"""Tests for config_loader error paths.
+"""Tests for config_loader error paths and default provider expansion.
 
 Covers:
 - ConfigLoadError.__init__ and __str__ (lines 10-13, 16-18)
 - Malformed YAML raises ConfigLoadError (lines 65-66)
 - Non-mapping YAML root raises ConfigLoadError (line 72)
 - Empty YAML returns empty dict (line 69)
+- _expand_default_provider function
+- load_config integration with default provider expansion
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from aiwf.application.config_loader import (
     ConfigLoadError,
     load_config,
     _load_yaml_mapping,
+    _expand_default_provider,
 )
 
 
@@ -328,3 +331,163 @@ class TestLoadConfig:
 
         # Null overwrites the default, so result is None
         assert result["default_standards_provider"] is None
+
+
+class TestExpandDefaultProvider:
+    """Tests for _expand_default_provider function."""
+
+    def test_no_default_key_returns_input_unchanged(self) -> None:
+        """When no 'default' key, returns input unchanged."""
+        providers = {"planner": "claude", "generator": "manual"}
+
+        result = _expand_default_provider(providers)
+
+        assert result == {"planner": "claude", "generator": "manual"}
+
+    def test_default_expands_to_all_roles(self) -> None:
+        """Default key expands to all four roles."""
+        providers = {"default": "claude"}
+
+        result = _expand_default_provider(providers)
+
+        assert result == {
+            "planner": "claude",
+            "generator": "claude",
+            "reviewer": "claude",
+            "reviser": "claude",
+        }
+
+    def test_explicit_roles_override_default(self) -> None:
+        """Explicit role values override the default."""
+        providers = {"default": "claude", "reviewer": "manual"}
+
+        result = _expand_default_provider(providers)
+
+        assert result == {
+            "planner": "claude",
+            "generator": "claude",
+            "reviewer": "manual",  # explicit override preserved
+            "reviser": "claude",
+        }
+
+    def test_all_roles_explicit_ignores_default(self) -> None:
+        """When all roles are explicit, default is ignored."""
+        providers = {
+            "default": "claude",
+            "planner": "gpt",
+            "generator": "gemini",
+            "reviewer": "manual",
+            "reviser": "ollama",
+        }
+
+        result = _expand_default_provider(providers)
+
+        assert result == {
+            "planner": "gpt",
+            "generator": "gemini",
+            "reviewer": "manual",
+            "reviser": "ollama",
+        }
+
+    def test_default_key_removed_from_output(self) -> None:
+        """The 'default' key is not present in output."""
+        providers = {"default": "claude"}
+
+        result = _expand_default_provider(providers)
+
+        assert "default" not in result
+
+    def test_empty_dict_returns_empty(self) -> None:
+        """Empty input returns empty output."""
+        result = _expand_default_provider({})
+
+        assert result == {}
+
+
+class TestLoadConfigDefaultProviderIntegration:
+    """Tests for load_config integration with default provider expansion."""
+
+    def test_load_config_expands_default_provider(self, tmp_path: Path) -> None:
+        """load_config expands providers.default to all roles."""
+        project_root = tmp_path / "project"
+        project_config_dir = project_root / ".aiwf"
+        project_config_dir.mkdir(parents=True, exist_ok=True)
+        (project_config_dir / "config.yml").write_text(
+            "providers:\n  default: claude\n",
+            encoding="utf-8",
+        )
+
+        result = load_config(
+            project_root=project_root,
+            user_home=tmp_path / "home",
+        )
+
+        assert result["providers"] == {
+            "planner": "claude",
+            "generator": "claude",
+            "reviewer": "claude",
+            "reviser": "claude",
+        }
+
+    def test_load_config_default_with_override(self, tmp_path: Path) -> None:
+        """load_config preserves explicit role overrides with default."""
+        project_root = tmp_path / "project"
+        project_config_dir = project_root / ".aiwf"
+        project_config_dir.mkdir(parents=True, exist_ok=True)
+        (project_config_dir / "config.yml").write_text(
+            "providers:\n  default: claude\n  reviewer: manual\n",
+            encoding="utf-8",
+        )
+
+        result = load_config(
+            project_root=project_root,
+            user_home=tmp_path / "home",
+        )
+
+        assert result["providers"] == {
+            "planner": "claude",
+            "generator": "claude",
+            "reviewer": "manual",
+            "reviser": "claude",
+        }
+
+    def test_load_config_no_default_uses_builtin_defaults(
+        self, tmp_path: Path
+    ) -> None:
+        """Without providers.default, uses built-in 'manual' defaults."""
+        result = load_config(
+            project_root=tmp_path / "project",
+            user_home=tmp_path / "home",
+        )
+
+        assert result["providers"] == {
+            "planner": "manual",
+            "generator": "manual",
+            "reviewer": "manual",
+            "reviser": "manual",
+        }
+
+    def test_load_config_partial_providers_merged_with_defaults(
+        self, tmp_path: Path
+    ) -> None:
+        """Partial providers config is merged with built-in defaults."""
+        project_root = tmp_path / "project"
+        project_config_dir = project_root / ".aiwf"
+        project_config_dir.mkdir(parents=True, exist_ok=True)
+        (project_config_dir / "config.yml").write_text(
+            "providers:\n  planner: claude\n",
+            encoding="utf-8",
+        )
+
+        result = load_config(
+            project_root=project_root,
+            user_home=tmp_path / "home",
+        )
+
+        # planner overridden, others keep defaults
+        assert result["providers"] == {
+            "planner": "claude",
+            "generator": "manual",
+            "reviewer": "manual",
+            "reviser": "manual",
+        }
