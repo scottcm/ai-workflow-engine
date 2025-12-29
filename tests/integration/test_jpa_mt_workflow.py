@@ -588,3 +588,76 @@ Finally passing!
         assert state.phase == WorkflowPhase.COMPLETE
         assert state.status == WorkflowStatus.SUCCESS
         assert state.current_iteration == 3
+
+
+class TestContextValidationIntegration:
+    """Integration tests for context validation at workflow initialization."""
+
+    def test_missing_required_field_raises_error(self, orchestrator):
+        """Missing required context field should raise ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            orchestrator.initialize_run(
+                profile="jpa-mt",
+                context={
+                    "scope": "domain",
+                    # "entity" is missing
+                    "table": "app.products",
+                    "bounded_context": "catalog",
+                    "schema_file": "schema.sql",
+                },
+                providers={"planner": "manual"},
+            )
+        assert "entity" in str(exc_info.value)
+
+    def test_invalid_scope_choice_raises_error(self, orchestrator):
+        """Invalid choice for scope should raise ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            orchestrator.initialize_run(
+                profile="jpa-mt",
+                context={
+                    "scope": "invalid_scope",  # Not in ["domain", "vertical"]
+                    "entity": "Product",
+                    "table": "app.products",
+                    "bounded_context": "catalog",
+                    "schema_file": "schema.sql",
+                },
+                providers={"planner": "manual"},
+            )
+        assert "scope" in str(exc_info.value)
+        assert "invalid_scope" in str(exc_info.value)
+
+    def test_nonexistent_schema_file_raises_error(self, orchestrator):
+        """Non-existent schema_file path should raise ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            orchestrator.initialize_run(
+                profile="jpa-mt",
+                context={
+                    "scope": "domain",
+                    "entity": "Product",
+                    "table": "app.products",
+                    "bounded_context": "catalog",
+                    "schema_file": "nonexistent.sql",
+                },
+                providers={"planner": "manual"},
+            )
+        assert "schema_file" in str(exc_info.value)
+
+    def test_multiple_validation_errors_reported(self, orchestrator):
+        """Multiple validation errors should all be reported."""
+        with pytest.raises(ValueError) as exc_info:
+            orchestrator.initialize_run(
+                profile="jpa-mt",
+                context={
+                    "scope": "invalid",
+                    # entity missing
+                    # table missing
+                    "bounded_context": "catalog",
+                    "schema_file": "nonexistent.sql",
+                },
+                providers={"planner": "manual"},
+            )
+        error_msg = str(exc_info.value)
+        # Should mention multiple fields
+        assert "scope" in error_msg
+        assert "entity" in error_msg
+        assert "table" in error_msg
