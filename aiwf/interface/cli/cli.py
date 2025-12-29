@@ -151,15 +151,25 @@ def init_cmd(
         # CLI --standards-provider overrides config default
         effective_standards_provider = standards_provider or cfg.get("default_standards_provider")
 
+        # Build context from CLI args
+        context = {
+            "scope": scope,
+            "entity": entity,
+            "table": table,
+            "bounded_context": bounded_context,
+        }
+        # Add optional fields if provided
+        if dev is not None:
+            context["dev"] = dev
+        if task_id is not None:
+            context["task_id"] = task_id
+        if schema_file:
+            context["schema_file"] = schema_file
+
         session_id = orchestrator.initialize_run(
             profile=profile,
             providers=providers,
-            scope=scope,
-            entity=entity,
-            table=table,
-            bounded_context=bounded_context,
-            dev=dev,
-            task_id=task_id,
+            context=context,
             metadata=metadata,
             standards_provider=effective_standards_provider,
         )
@@ -485,8 +495,7 @@ def list_cmd(
                 sessions.append(SessionSummary(
                     session_id=state.session_id,
                     profile=state.profile,
-                    scope=state.scope,
-                    entity=state.entity,
+                    context=state.context,
                     phase=state.phase.name,
                     status=state.status.name,
                     iteration=state.current_iteration,
@@ -520,7 +529,8 @@ def list_cmd(
             # Header
             click.echo(f"{'SESSION_ID':<34}{'PROFILE':<10}{'ENTITY':<10}{'PHASE':<12}{'STATUS':<12}{'UPDATED'}")
             for s in sessions:
-                click.echo(f"{s.session_id:<34}{s.profile:<10}{s.entity:<10}{s.phase:<12}{s.status:<12}{s.updated_at}")
+                entity = s.context.get("entity", "") if s.context else ""
+                click.echo(f"{s.session_id:<34}{s.profile:<10}{entity:<10}{s.phase:<12}{s.status:<12}{s.updated_at}")
 
     except click.exceptions.Exit:
         raise

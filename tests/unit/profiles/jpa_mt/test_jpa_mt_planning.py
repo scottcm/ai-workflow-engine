@@ -9,22 +9,26 @@ from aiwf.domain.models.workflow_state import WorkflowStatus
 
 
 class TestMetadataValidation:
-    """Tests for jpa-mt profile metadata validation."""
+    """Tests for jpa-mt profile metadata validation.
 
-    def test_validate_metadata_requires_schema_file(self, jpa_mt_profile):
-        """jpa-mt profile requires schema_file in metadata."""
-        with pytest.raises(ValueError, match="jpa-mt profile requires --schema-file argument"):
-            jpa_mt_profile.validate_metadata(None)
+    Note: With ADR-0008 Phase 1, schema_file is now validated via context_schema,
+    not metadata. The validate_metadata method is now a no-op for jpa-mt profile.
+    """
 
-        with pytest.raises(ValueError, match="jpa-mt profile requires --schema-file argument"):
-            jpa_mt_profile.validate_metadata({})
+    def test_validate_metadata_accepts_none(self, jpa_mt_profile):
+        """jpa-mt profile accepts None metadata (no-op since ADR-0008)."""
+        # Should not raise - schema_file is now validated via context
+        jpa_mt_profile.validate_metadata(None)
 
-        with pytest.raises(ValueError, match="jpa-mt profile requires --schema-file argument"):
-            jpa_mt_profile.validate_metadata({"other_field": "value"})
+    def test_validate_metadata_accepts_empty_dict(self, jpa_mt_profile):
+        """jpa-mt profile accepts empty metadata (no-op since ADR-0008)."""
+        # Should not raise - schema_file is now validated via context
+        jpa_mt_profile.validate_metadata({})
 
-    def test_validate_metadata_accepts_schema_file(self, jpa_mt_profile):
-        """jpa-mt profile accepts metadata with schema_file."""
+    def test_validate_metadata_accepts_arbitrary_metadata(self, jpa_mt_profile):
+        """jpa-mt profile accepts any metadata (no-op since ADR-0008)."""
         # Should not raise
+        jpa_mt_profile.validate_metadata({"other_field": "value"})
         jpa_mt_profile.validate_metadata({"schema_file": "path/to/schema.sql"})
 
 

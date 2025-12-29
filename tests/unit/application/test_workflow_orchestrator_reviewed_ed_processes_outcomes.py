@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -31,20 +32,15 @@ class _StubReviewProfile:
 
 
 def _arrange_at_reviewed(
-    sessions_root: Path, utf8: str
+    sessions_root: Path, utf8: str, valid_jpa_mt_context: dict[str, Any]
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 
@@ -63,10 +59,10 @@ def _arrange_at_reviewed(
 
 
 def test_reviewed_success_completes(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     _require_reviewed_phase()
-    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8)
+    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
 
     stub = _StubReviewProfile(WorkflowStatus.SUCCESS)
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
@@ -81,10 +77,10 @@ def test_reviewed_success_completes(
 
 
 def test_reviewed_failed_enters_revising_and_creates_next_iteration(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     _require_reviewed_phase()
-    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8)
+    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
 
     stub = _StubReviewProfile(WorkflowStatus.FAILED)
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
@@ -101,11 +97,11 @@ def test_reviewed_failed_enters_revising_and_creates_next_iteration(
 
 
 def test_reviewed_error_is_recoverable_stays_in_phase(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When process_review_response returns ERROR, stay in REVIEWED with last_error set."""
     _require_reviewed_phase()
-    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8)
+    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
 
     error_msg = "Could not parse review metadata."
     stub = _StubReviewProfile(WorkflowStatus.ERROR, error_message=error_msg)
@@ -122,11 +118,11 @@ def test_reviewed_error_is_recoverable_stays_in_phase(
 
 
 def test_reviewed_success_clears_last_error(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When process_review_response succeeds after previous error, clear last_error."""
     _require_reviewed_phase()
-    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8)
+    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
 
     # First, simulate a previous error by setting last_error
     state = store.load(session_id)
@@ -146,10 +142,10 @@ def test_reviewed_success_clears_last_error(
 
 
 def test_reviewed_cancelled_terminal_cancelled(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     _require_reviewed_phase()
-    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8)
+    orch, store, session_id, _ = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
 
     stub = _StubReviewProfile(WorkflowStatus.CANCELLED)
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
@@ -163,11 +159,11 @@ def test_reviewed_cancelled_terminal_cancelled(
 
 
 def test_reviewed_failed_copies_code_files_to_next_iteration(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When review returns FAILED, code files from previous iteration are copied to new iteration."""
     _require_reviewed_phase()
-    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
 
     # Create code files in iteration-1 with subdirectory
     code_dir = it_dir / "code"
@@ -203,11 +199,11 @@ def test_reviewed_failed_copies_code_files_to_next_iteration(
 
 
 def test_reviewed_failed_without_code_dir_still_transitions(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When review returns FAILED but no code dir exists, transition still succeeds."""
     _require_reviewed_phase()
-    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
 
     # Ensure no code directory exists in iteration-1
     code_dir = it_dir / "code"
@@ -231,11 +227,11 @@ def test_reviewed_failed_without_code_dir_still_transitions(
 
 
 def test_reviewed_failed_copies_only_missing_files(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When destination has existing files, only missing files are copied."""
     _require_reviewed_phase()
-    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
 
     session_dir = sessions_root / session_id
 

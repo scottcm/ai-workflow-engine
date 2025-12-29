@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,21 +16,16 @@ def _require_reviewed_phase() -> None:
 
 
 def _arrange_at_reviewing_with_prompt(
-    sessions_root: Path, utf8: str
+    sessions_root: Path, utf8: str, valid_jpa_mt_context: dict[str, Any]
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
     """Arrange state at REVIEWING with prompt already written (as if from GENERATED)."""
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
     # Force state to REVIEWING with iteration-1 and prompt already written
@@ -48,11 +44,11 @@ def _arrange_at_reviewing_with_prompt(
 
 
 def test_reviewing_is_noop_when_response_missing(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """REVIEWING phase is a no-op waiting for response (prompt was generated on entry)."""
     _require_reviewed_phase()
-    orch, store, session_id, it_dir = _arrange_at_reviewing_with_prompt(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_reviewing_with_prompt(sessions_root, utf8, valid_jpa_mt_context)
 
     # Guard: profile must not be called in REVIEWING phase (only checks for response)
     monkeypatch.setattr(
@@ -72,10 +68,10 @@ def test_reviewing_is_noop_when_response_missing(
 
 
 def test_reviewing_transitions_to_reviewed_when_response_exists_without_processing(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     _require_reviewed_phase()
-    orch, store, session_id, it_dir = _arrange_at_reviewing_with_prompt(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_reviewing_with_prompt(sessions_root, utf8, valid_jpa_mt_context)
 
     # Prompt already exists from arrangement
     (it_dir / "review-response.md").write_text("VERDICT: PASS\n", encoding=utf8)
@@ -98,7 +94,7 @@ class _StubReviewPromptProfile:
 
 
 def test_review_prompt_generated_on_entry_from_generated(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """Review prompt is generated on entry to REVIEWING (in _step_generated)."""
     _require_reviewed_phase()
@@ -106,14 +102,9 @@ def test_review_prompt_generated_on_entry_from_generated(
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 

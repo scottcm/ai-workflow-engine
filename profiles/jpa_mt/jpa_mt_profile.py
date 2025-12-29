@@ -36,6 +36,15 @@ class JpaMtProfile(WorkflowProfile):
             "phases": ["planning", "generation", "review", "revision"],
             "requires_config": True,
             "config_keys": ["standards.root", "scopes", "layer_standards"],
+            "context_schema": {
+                "scope": {"type": "string", "required": True, "choices": ["domain", "vertical"]},
+                "entity": {"type": "string", "required": True},
+                "table": {"type": "string", "required": True},
+                "bounded_context": {"type": "string", "required": True},
+                "schema_file": {"type": "path", "required": True, "exists": True},
+                "dev": {"type": "string", "required": False},
+                "task_id": {"type": "string", "required": False},
+            },
         }
 
     def __init__(self, **config):
@@ -48,9 +57,13 @@ class JpaMtProfile(WorkflowProfile):
         self.config = model.model_dump()
 
     def validate_metadata(self, metadata: dict[str, Any] | None) -> None:
-        """Validate that required metadata is provided for jpa-mt profile."""
-        if not metadata or "schema_file" not in metadata:
-            raise ValueError("jpa-mt profile requires --schema-file argument")
+        """Validate metadata for jpa-mt profile.
+
+        Note: schema_file is now validated via context_schema, not metadata.
+        This method is kept for compatibility but no longer requires schema_file.
+        """
+        # schema_file is now validated via context_schema in ADR-0008
+        pass
 
     def get_default_standards_provider_key(self) -> str:
         """Return the default standards provider key for JPA-MT profile."""

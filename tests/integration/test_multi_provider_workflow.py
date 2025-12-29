@@ -215,16 +215,19 @@ class TestMultiProviderWorkflow:
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context={
+                "scope": "domain",
+                "entity": "TestEntity",
+                "table": "app.test_entity",
+                "bounded_context": "test",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "planner-provider",
                 "generator": "generator-provider",
                 "reviewer": "manual",
                 "reviser": "manual",
             },
-            bounded_context="test",
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Verify providers are stored correctly
@@ -248,14 +251,17 @@ class TestMultiProviderWorkflow:
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context={
+                "scope": "domain",
+                "entity": "TestEntity",
+                "table": "app.test_entity",
+                "bounded_context": "test",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "planner-provider",
                 "generator": "generator-provider",
             },
-            bounded_context="test",
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Step to PLANNING
@@ -279,14 +285,17 @@ class TestMultiProviderWorkflow:
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context={
+                "scope": "domain",
+                "entity": "TestEntity",
+                "table": "app.test_entity",
+                "bounded_context": "test",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "planner-provider",
                 "generator": "generator-provider",
             },
-            bounded_context="test",
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Go through PLANNING
@@ -321,14 +330,17 @@ class TestMultiProviderWorkflow:
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context={
+                "scope": "domain",
+                "entity": "TestEntity",
+                "table": "app.test_entity",
+                "bounded_context": "test",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "failing-planner",
                 "generator": "generator-provider",
             },
-            bounded_context="test",
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Step to PLANNING
@@ -354,14 +366,17 @@ class TestMultiProviderWorkflow:
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context={
+                "scope": "domain",
+                "entity": "TestEntity",
+                "table": "app.test_entity",
+                "bounded_context": "test",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "manual",  # Manual for planning
                 "generator": "generator-provider",  # Auto for generation
             },
-            bounded_context="test",
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Step to PLANNING
@@ -421,14 +436,17 @@ class TestMultiProviderWorkflow:
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context={
+                "scope": "domain",
+                "entity": "TestEntity",
+                "table": "app.test_entity",
+                "bounded_context": "test",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "planner-provider",  # Will succeed
                 "generator": "failing-generator",  # Will fail
             },
-            bounded_context="test",
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Complete PLANNING phase successfully
@@ -484,16 +502,19 @@ class TestProviderRoleIsolation:
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context={
+                "scope": "domain",
+                "entity": "TestEntity",
+                "table": "app.test_entity",
+                "bounded_context": "test",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "planner-provider",
                 "generator": "generator-provider",
                 "reviewer": "manual",
                 "reviser": "manual",
             },
-            bounded_context="test",
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Track provider invocations
@@ -528,16 +549,19 @@ class TestProviderRoleIsolation:
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context={
+                "scope": "domain",
+                "entity": "TestEntity",
+                "table": "app.test_entity",
+                "bounded_context": "test",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "planner-provider",
                 "generator": "generator-provider",
                 "reviewer": "manual",
                 "reviser": "manual",
             },
-            bounded_context="test",
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Reload from store

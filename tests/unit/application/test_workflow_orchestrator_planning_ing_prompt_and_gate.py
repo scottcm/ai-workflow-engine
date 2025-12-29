@@ -12,7 +12,7 @@ from aiwf.domain.profiles.profile_factory import ProfileFactory
 
 
 def test_planning_prompt_generated_on_entry_from_initialized(
-    sessions_root: Path, mock_jpa_mt_profile
+    sessions_root: Path, mock_jpa_mt_profile, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """Prompt generation now happens on entry to PLANNING (in _step_initialized)."""
     store = SessionStore(sessions_root=sessions_root)
@@ -20,14 +20,9 @@ def test_planning_prompt_generated_on_entry_from_initialized(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 
@@ -47,7 +42,7 @@ def test_planning_prompt_generated_on_entry_from_initialized(
 
 
 def test_planning_is_noop_when_response_missing(
-    sessions_root: Path, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """PLANNING phase is a no-op waiting for response (prompt already exists)."""
     store = SessionStore(sessions_root=sessions_root)
@@ -55,14 +50,9 @@ def test_planning_is_noop_when_response_missing(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
     orch.step(session_id)  # INITIALIZED -> PLANNING (generates prompt)
@@ -87,21 +77,16 @@ def test_planning_is_noop_when_response_missing(
 
 
 def test_planning_transitions_to_planned_when_response_exists_without_processing(
-    sessions_root: Path, monkeypatch: pytest.MonkeyPatch, utf8: str
+    sessions_root: Path, monkeypatch: pytest.MonkeyPatch, utf8: str, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
     orch.step(session_id)  # INITIALIZED -> PLANNING (generates prompt)

@@ -8,7 +8,7 @@ def test_init_success_prints_only_session_id_and_calls_orchestrator_once(monkeyp
     """
     Success path:
     - CLI instantiates WorkflowOrchestrator and calls initialize_run as an instance method
-    - passes profile/providers from config
+    - passes profile/providers from config and context dict
     - MUST NOT call step()
     - prints ONLY the returned session_id to stdout (single line)
     - runs hermetically (isolated filesystem)
@@ -24,23 +24,13 @@ def test_init_success_prints_only_session_id_and_calls_orchestrator_once(monkeyp
         *,
         profile,
         providers,
-        scope,
-        entity,
-        table,
-        bounded_context,
-        dev=None,
-        task_id=None,
+        context,
         **kwargs,
     ):
         calls["init"] = {
             "profile": profile,
             "providers": providers,
-            "scope": scope,
-            "entity": entity,
-            "table": table,
-            "bounded_context": bounded_context,
-            "dev": dev,
-            "task_id": task_id,
+            "context": context,
             "extra_kwargs": dict(kwargs),
         }
         return "sess_123"
@@ -88,26 +78,25 @@ def test_init_success_prints_only_session_id_and_calls_orchestrator_once(monkeyp
             prog_name="aiwf",
         )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, f"Failed with output: {result.output}"
     assert result.exception is None
     assert result.output == "sess_123\n"
 
-    assert calls["init"] == {
-        "profile": "jpa-mt",
-        "providers": {
-            "planner": "manual",
-            "generator": "manual",
-            "reviewer": "manual",
-            "reviser": "manual",
-        },
+    assert calls["init"]["profile"] == "jpa-mt"
+    assert calls["init"]["providers"] == {
+        "planner": "manual",
+        "generator": "manual",
+        "reviewer": "manual",
+        "reviser": "manual",
+    }
+    # Context should now be a dict
+    assert calls["init"]["context"] == {
         "scope": "domain",
         "entity": "Foo",
         "table": "foo",
         "bounded_context": "bc",
-        "dev": None,
-        "task_id": None,
-        "extra_kwargs": {"metadata": None, "standards_provider": "scoped-layer-fs"},
     }
+    assert calls["init"]["extra_kwargs"].get("standards_provider") == "scoped-layer-fs"
     assert calls["step_called"] is False
 
 
@@ -170,16 +159,16 @@ def test_init_missing_required_option_is_nonzero_and_mentions_missing_option() -
     assert "--bounded-context" in result.output
 
 
-def test_init_with_schema_file_stores_path_in_metadata(monkeypatch) -> None:
-    """When --schema-file is provided, path is stored in metadata (not content)."""
+def test_init_with_schema_file_stores_path_in_context(monkeypatch) -> None:
+    """When --schema-file is provided, path is stored in context."""
     calls: dict[str, object] = {"init": None}
 
     import aiwf.application.workflow_orchestrator as wo
     import aiwf.domain.constants as constants
     import aiwf.interface.cli.cli as cli_module
 
-    def fake_initialize_run(self, *, metadata=None, **kwargs):
-        calls["init"] = {"metadata": metadata, **kwargs}
+    def fake_initialize_run(self, *, context=None, metadata=None, **kwargs):
+        calls["init"] = {"context": context, "metadata": metadata, **kwargs}
         return "sess_456"
 
     # Mock load_config to return a valid profile
@@ -211,10 +200,10 @@ def test_init_with_schema_file_stores_path_in_metadata(monkeypatch) -> None:
             prog_name="aiwf",
         )
 
-    # Path stored, not content - file existence not checked at init time
-    assert result.exit_code == 0
+    # schema_file stored in context
+    assert result.exit_code == 0, f"Failed with: {result.output}"
     assert result.output == "sess_456\n"
-    assert calls["init"]["metadata"] == {"schema_file": "schema.sql"}
+    assert calls["init"]["context"]["schema_file"] == "schema.sql"
 
 
 def test_init_uses_config_default_standards_provider(monkeypatch) -> None:

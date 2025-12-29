@@ -199,10 +199,20 @@ def test_generated_artifacts_record_iteration_and_iteration_relative_paths(
     import aiwf.application.workflow_orchestrator as wo_mod
     monkeypatch.setattr(wo_mod, "materialize_standards", lambda session_dir, context, provider: "0" * 64)
 
+    # Create a valid context with schema_file
+    schema_file = sessions_root.parent / "schema.sql"
+    schema_file.write_text("CREATE TABLE foo (...);")
+    valid_context = {
+        "scope": "domain",
+        "entity": "Foo",
+        "table": "foo",
+        "bounded_context": "core",
+        "schema_file": str(schema_file),
+    }
+
     session_id = orchestrator.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Foo",
+        context=valid_context,
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
     )
@@ -278,10 +288,20 @@ def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
     extractor = FakeBundleExtractor()
     monkeypatch.setattr(importlib, "import_module", lambda _name: extractor)
 
+    # Create a valid context with schema_file
+    schema_file = sessions_root.parent / "schema.sql"
+    schema_file.write_text("CREATE TABLE foo (...);")
+    valid_context = {
+        "scope": "domain",
+        "entity": "Foo",
+        "table": "foo",
+        "bounded_context": "core",
+        "schema_file": str(schema_file),
+    }
+
     session_id = orchestrator.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Foo",
+        context=valid_context,
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
     )

@@ -49,12 +49,14 @@ class TestJpaMtWorkflowIntegration:
         """initialize_run should create a valid session."""
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Product",
+            context={
+                "scope": "domain",
+                "entity": "Product",
+                "table": "app.products",
+                "bounded_context": "catalog",
+                "schema_file": "schema.sql",
+            },
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual"},
-            bounded_context="catalog",
-            table="app.products",
-            metadata={"schema_file": "schema.sql"},
         )
 
         assert session_id is not None
@@ -65,17 +67,21 @@ class TestJpaMtWorkflowIntegration:
         assert state.phase == WorkflowPhase.INITIALIZED
         assert state.status == WorkflowStatus.IN_PROGRESS
         assert state.profile == "jpa-mt"
-        assert state.scope == "domain"
-        assert state.entity == "Product"
+        assert state.context["scope"] == "domain"
+        assert state.context["entity"] == "Product"
 
     def test_step_to_planning_generates_prompt(self, orchestrator, tmp_path):
         """Stepping from INITIALIZED should generate planning prompt."""
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Product",
+            context={
+                "scope": "domain",
+                "entity": "Product",
+                "table": "app.products",
+                "bounded_context": "catalog",
+                "schema_file": "schema.sql",
+            },
             providers={"planner": "manual"},
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Step to PLANNING
@@ -96,10 +102,14 @@ class TestJpaMtWorkflowIntegration:
         """Providing planning response should transition to PLANNED."""
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Product",
+            context={
+                "scope": "domain",
+                "entity": "Product",
+                "table": "app.products",
+                "bounded_context": "catalog",
+                "schema_file": "schema.sql",
+            },
             providers={"planner": "manual"},
-            metadata={"schema_file": "schema.sql"},
         )
 
         # Step to PLANNING and generate prompt
@@ -128,10 +138,14 @@ Standard JPA entity.
         """Full workflow from init to COMPLETE with passing review."""
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Product",
+            context={
+                "scope": "domain",
+                "entity": "Product",
+                "table": "app.products",
+                "bounded_context": "catalog",
+                "schema_file": "schema.sql",
+            },
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual"},
-            metadata={"schema_file": "schema.sql"},
         )
         session_dir = tmp_path / session_id
 
@@ -242,10 +256,14 @@ Code looks good. All standards followed.
         """Review with FAIL verdict should trigger REVISING phase."""
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Product",
+            context={
+                "scope": "domain",
+                "entity": "Product",
+                "table": "app.products",
+                "bounded_context": "catalog",
+                "schema_file": "schema.sql",
+            },
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual"},
-            metadata={"schema_file": "schema.sql"},
         )
         session_dir = tmp_path / session_id
 
@@ -316,15 +334,19 @@ Critical: Missing @TenantId annotation.
         """Full workflow with FAIL review, revision, and eventual PASS to COMPLETE."""
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Product",
+            context={
+                "scope": "domain",
+                "entity": "Product",
+                "table": "app.products",
+                "bounded_context": "catalog",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "manual",
                 "generator": "manual",
                 "reviewer": "manual",
                 "reviser": "manual",
             },
-            metadata={"schema_file": "schema.sql"},
         )
         session_dir = tmp_path / session_id
 
@@ -469,15 +491,19 @@ All issues resolved. Code now includes @TenantId annotation.
         """Test that multiple failed reviews correctly increment iterations."""
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Widget",
+            context={
+                "scope": "domain",
+                "entity": "Widget",
+                "table": "app.widgets",
+                "bounded_context": "catalog",
+                "schema_file": "schema.sql",
+            },
             providers={
                 "planner": "manual",
                 "generator": "manual",
                 "reviewer": "manual",
                 "reviser": "manual",
             },
-            metadata={"schema_file": "schema.sql"},
         )
         session_dir = tmp_path / session_id
 

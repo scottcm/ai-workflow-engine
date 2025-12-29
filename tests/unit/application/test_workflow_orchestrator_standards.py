@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -62,7 +63,7 @@ def _sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def test_orchestrator_materializes_standards_on_initialize(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_orchestrator_materializes_standards_on_initialize(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]) -> None:
     global _provider_calls
     _provider_calls = 0
 
@@ -89,12 +90,11 @@ def test_orchestrator_materializes_standards_on_initialize(tmp_path: Path, monke
 
         monkeypatch.setattr(session_store, "save", _save_capture)
 
-        monkeypatch.setattr(profile_factory_module.ProfileFactory, "create", staticmethod(lambda profile_name: profile))
+        monkeypatch.setattr(profile_factory_module.ProfileFactory, "create", staticmethod(lambda profile_name, config=None: profile))
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Tier",
+            context=valid_jpa_mt_context,
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
             execution_mode=ExecutionMode.INTERACTIVE,
         )
@@ -162,7 +162,7 @@ class _FactoryStandardsProvider:
 
 
 def test_orchestrator_uses_standards_provider_parameter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """initialize_run uses standards_provider parameter when provided."""
     from aiwf.domain.standards import StandardsProviderFactory
@@ -194,13 +194,12 @@ def test_orchestrator_uses_standards_provider_parameter(
         monkeypatch.setattr(
             profile_factory_module.ProfileFactory,
             "create",
-            staticmethod(lambda profile_name: profile),
+            staticmethod(lambda profile_name, config=None: profile),
         )
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Tier",
+            context=valid_jpa_mt_context,
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
             execution_mode=ExecutionMode.INTERACTIVE,
             standards_provider="test-factory-provider",
@@ -222,7 +221,7 @@ def test_orchestrator_uses_standards_provider_parameter(
 
 
 def test_orchestrator_uses_profile_default_when_no_standards_provider_param(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """initialize_run falls back to profile's get_default_standards_provider_key() when no parameter."""
     from aiwf.domain.standards import StandardsProviderFactory
@@ -254,13 +253,12 @@ def test_orchestrator_uses_profile_default_when_no_standards_provider_param(
         monkeypatch.setattr(
             profile_factory_module.ProfileFactory,
             "create",
-            staticmethod(lambda profile_name: profile),
+            staticmethod(lambda profile_name, config=None: profile),
         )
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="Tier",
+            context=valid_jpa_mt_context,
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
             execution_mode=ExecutionMode.INTERACTIVE,
             # No standards_provider parameter - should use profile default

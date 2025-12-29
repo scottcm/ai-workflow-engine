@@ -42,21 +42,16 @@ class _StubReviewPromptProfile:
 
 
 def _arrange_at_generated(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
     orch.step(session_id)  # -> PLANNING
@@ -64,11 +59,11 @@ def _arrange_at_generated(
     session_dir = sessions_root / session_id
     it_dir = session_dir / "iteration-1"
     it_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Planning artifacts in iteration-1
     (it_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
     (it_dir / "planning-response.md").write_text("# PLAN\n", encoding=utf8)
-    
+
     # Create plan.md at session root for ED approval
     (session_dir / "plan.md").write_text("# PLAN\n", encoding=utf8)
 
@@ -97,19 +92,19 @@ def _arrange_at_generated(
     gen_stub = _StubGenerationProfile()
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: gen_stub))
     orch.step(session_id)
-    
+
     assert store.load(session_id).phase == WorkflowPhase.GENERATED
     return orch, store, session_id, it_dir
 
 
 def test_generated_gates_on_artifact_hashes_and_enters_reviewing(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """GENERATED is an ED phase that gates on artifact hashes (approval required).
-    
+
     After approval sets sha256 on artifacts, step() advances to REVIEWING.
     """
-    orch, store, session_id, it_dir = _arrange_at_generated(sessions_root, utf8, monkeypatch)
+    orch, store, session_id, it_dir = _arrange_at_generated(sessions_root, utf8, monkeypatch, valid_jpa_mt_context)
 
     # At GENERATED, artifacts exist but are unhashed
     state = store.load(session_id)

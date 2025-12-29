@@ -74,7 +74,7 @@ def register_failing_provider():
 
 @pytest.fixture
 def orchestrator_with_session(
-    sessions_root: Path, register_failing_provider
+    sessions_root: Path, register_failing_provider, valid_jpa_mt_context: dict[str, Any]
 ) -> tuple[WorkflowOrchestrator, str]:
     """Create orchestrator and initialize a session in PLANNING phase."""
     store = SessionStore(sessions_root=sessions_root)
@@ -82,10 +82,8 @@ def orchestrator_with_session(
 
     session_id = orchestrator.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="TestEntity",
+        context=valid_jpa_mt_context,
         providers={"planner": "failing-generate"},
-        bounded_context="test",
     )
 
     # Step to PLANNING phase to generate prompt
@@ -168,7 +166,7 @@ class TestOrchestratorProviderErrors:
         assert WorkflowEventType.WORKFLOW_FAILED in emitted_events
 
     def test_approve_provider_error_can_retry_after_fix(
-        self, sessions_root: Path, register_failing_provider
+        self, sessions_root: Path, register_failing_provider, valid_jpa_mt_context: dict[str, Any]
     ):
         """Workflow can continue after provider error is fixed."""
         # This tests the recovery path
@@ -178,10 +176,8 @@ class TestOrchestratorProviderErrors:
 
         session_id = orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planner": "failing-generate"},
-            bounded_context="test",
         )
         orchestrator.step(session_id)
 

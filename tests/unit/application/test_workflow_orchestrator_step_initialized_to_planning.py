@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
 from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, WorkflowStatus
@@ -9,20 +10,16 @@ from aiwf.domain.persistence.session_store import SessionStore
 
 def test_step_transitions_initialized_to_planning_only(
     sessions_root: Path,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 

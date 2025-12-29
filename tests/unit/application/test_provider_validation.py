@@ -85,7 +85,7 @@ def register_validating_providers():
 
 
 def test_initialize_run_validates_all_providers(
-    sessions_root: Path, register_validating_providers
+    sessions_root: Path, register_validating_providers, valid_jpa_mt_context: dict[str, Any]
 ):
     """initialize_run() calls validate() on each configured provider."""
     store = SessionStore(sessions_root=sessions_root)
@@ -95,13 +95,11 @@ def test_initialize_run_validates_all_providers(
 
     orchestrator.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="TestEntity",
+        context=valid_jpa_mt_context,
         providers={
             "planner": "validating",
             "generator": "validating",
         },
-        bounded_context="test",
     )
 
     # Should have been validated twice (once per role)
@@ -109,7 +107,7 @@ def test_initialize_run_validates_all_providers(
 
 
 def test_initialize_run_fails_fast_on_invalid_provider(
-    sessions_root: Path, register_validating_providers
+    sessions_root: Path, register_validating_providers, valid_jpa_mt_context: dict[str, Any]
 ):
     """initialize_run() raises ProviderError when validation fails."""
     store = SessionStore(sessions_root=sessions_root)
@@ -118,15 +116,13 @@ def test_initialize_run_fails_fast_on_invalid_provider(
     with pytest.raises(ProviderError, match="API key not configured"):
         orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planner": "failing-validation"},
-            bounded_context="test",
         )
 
 
 def test_initialize_run_cleans_up_session_dir_on_validation_failure(
-    sessions_root: Path, register_validating_providers
+    sessions_root: Path, register_validating_providers, valid_jpa_mt_context: dict[str, Any]
 ):
     """initialize_run() removes session directory when provider validation fails."""
     store = SessionStore(sessions_root=sessions_root)
@@ -138,10 +134,8 @@ def test_initialize_run_cleans_up_session_dir_on_validation_failure(
     with pytest.raises(ProviderError):
         orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planner": "failing-validation"},
-            bounded_context="test",
         )
 
     # Count directories after - should be same as before (no orphaned dirs)
@@ -149,7 +143,7 @@ def test_initialize_run_cleans_up_session_dir_on_validation_failure(
     assert dirs_before == dirs_after, "Session directory should be cleaned up on validation failure"
 
 
-def test_manual_provider_validates_successfully(sessions_root: Path):
+def test_manual_provider_validates_successfully(sessions_root: Path, valid_jpa_mt_context: dict[str, Any]):
     """ManualProvider.validate() succeeds (no external dependencies)."""
     store = SessionStore(sessions_root=sessions_root)
     orchestrator = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
@@ -157,10 +151,8 @@ def test_manual_provider_validates_successfully(sessions_root: Path):
     # Should not raise - manual provider has no validation to fail
     session_id = orchestrator.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="TestEntity",
+        context=valid_jpa_mt_context,
         providers={"planner": "manual"},
-        bounded_context="test",
     )
 
     assert session_id is not None
@@ -210,7 +202,7 @@ def register_failing_standards_provider():
     StandardsProviderFactory._registry.update(original_registry)
 
 
-def test_initialize_run_fails_on_unregistered_standards_provider(sessions_root: Path):
+def test_initialize_run_fails_on_unregistered_standards_provider(sessions_root: Path, valid_jpa_mt_context: dict[str, Any]):
     """initialize_run() raises KeyError when standards_provider key is not registered."""
     store = SessionStore(sessions_root=sessions_root)
     orchestrator = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
@@ -218,16 +210,14 @@ def test_initialize_run_fails_on_unregistered_standards_provider(sessions_root: 
     with pytest.raises(KeyError):
         orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planner": "manual"},
-            bounded_context="test",
             standards_provider="nonexistent-standards-provider",
         )
 
 
 def test_initialize_run_fails_on_standards_provider_validation_failure(
-    sessions_root: Path, register_failing_standards_provider
+    sessions_root: Path, register_failing_standards_provider, valid_jpa_mt_context: dict[str, Any]
 ):
     """initialize_run() raises ProviderError when standards provider validation fails."""
     store = SessionStore(sessions_root=sessions_root)
@@ -236,16 +226,14 @@ def test_initialize_run_fails_on_standards_provider_validation_failure(
     with pytest.raises(ProviderError, match="Standards root not configured"):
         orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planner": "manual"},
-            bounded_context="test",
             standards_provider="failing-standards",
         )
 
 
 def test_initialize_run_cleans_up_session_on_standards_provider_failure(
-    sessions_root: Path, register_failing_standards_provider
+    sessions_root: Path, register_failing_standards_provider, valid_jpa_mt_context: dict[str, Any]
 ):
     """initialize_run() removes session directory when standards provider validation fails."""
     store = SessionStore(sessions_root=sessions_root)
@@ -257,10 +245,8 @@ def test_initialize_run_cleans_up_session_on_standards_provider_failure(
     with pytest.raises(ProviderError):
         orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planner": "manual"},
-            bounded_context="test",
             standards_provider="failing-standards",
         )
 
@@ -270,7 +256,7 @@ def test_initialize_run_cleans_up_session_on_standards_provider_failure(
 
 
 def test_initialize_run_cleans_up_session_on_unregistered_standards_provider(
-    sessions_root: Path,
+    sessions_root: Path, valid_jpa_mt_context: dict[str, Any]
 ):
     """initialize_run() removes session directory when standards provider key is not found."""
     store = SessionStore(sessions_root=sessions_root)
@@ -282,10 +268,8 @@ def test_initialize_run_cleans_up_session_on_unregistered_standards_provider(
     with pytest.raises(KeyError):
         orchestrator.initialize_run(
             profile="jpa-mt",
-            scope="domain",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planner": "manual"},
-            bounded_context="test",
             standards_provider="nonexistent-provider",
         )
 

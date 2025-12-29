@@ -26,33 +26,28 @@ class _StubPlanningProfile:
 
 
 def test_planned_processes_planning_response_writes_plan_and_enters_generating_with_iteration_1(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
     orch.step(session_id)  # INITIALIZED -> PLANNING
 
     session_dir = sessions_root / session_id
-    
+
     # Planning artifacts are in iteration-1 per approval_specs.py
     iteration_dir = session_dir / "iteration-1"
     iteration_dir.mkdir(parents=True, exist_ok=True)
     (iteration_dir / "planning-prompt.md").write_text("PROMPT", encoding=utf8)
     (iteration_dir / "planning-response.md").write_text("# PLAN\n- x\n", encoding=utf8)
-    
+
     # Also create plan.md at session root for ED approval
     (session_dir / "plan.md").write_text("# PLAN\n- x\n", encoding=utf8)
 
@@ -92,7 +87,7 @@ def test_planned_processes_planning_response_writes_plan_and_enters_generating_w
 
 
 def test_planned_error_is_recoverable_stays_in_phase(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When process_planning_response returns ERROR, stay in PLANNED with last_error set."""
     store = SessionStore(sessions_root=sessions_root)
@@ -100,14 +95,9 @@ def test_planned_error_is_recoverable_stays_in_phase(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
     orch.step(session_id)  # INITIALIZED -> PLANNING
@@ -145,7 +135,7 @@ def test_planned_error_is_recoverable_stays_in_phase(
 
 
 def test_planned_success_clears_last_error(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When process_planning_response succeeds after previous error, clear last_error."""
     store = SessionStore(sessions_root=sessions_root)
@@ -153,14 +143,9 @@ def test_planned_success_clears_last_error(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
     orch.step(session_id)  # INITIALIZED -> PLANNING

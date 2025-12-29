@@ -22,7 +22,7 @@ class StepOutput(BaseOutput):
     status: str | None = None
     iteration: int | None = None
     noop_awaiting_artifact: bool = False
-    awaiting_paths: list[str] = []
+    awaiting_paths: list[str] = Field(default_factory=list)
     last_error: str | None = None
 
 
@@ -49,8 +49,7 @@ class SessionSummary(BaseModel):
     """Summary of a single session for list output."""
     session_id: str
     profile: str
-    scope: str
-    entity: str
+    context: dict[str, Any]
     phase: str
     status: str
     iteration: int

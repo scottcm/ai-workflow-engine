@@ -8,6 +8,7 @@ Covers:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 import sys
 
@@ -71,7 +72,7 @@ class _StubReviewProcessProfile:
 
 
 def _arrange_at_revising_with_prompt(
-    sessions_root: Path, utf8: str
+    sessions_root: Path, utf8: str, valid_jpa_mt_context: dict[str, Any]
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
     """Arrange state at REVISING with revision prompt already written."""
     store = SessionStore(sessions_root=sessions_root)
@@ -79,8 +80,7 @@ def _arrange_at_revising_with_prompt(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="TestEntity",
+        context=valid_jpa_mt_context,
         providers={
             "planner": "manual",
             "generator": "manual",
@@ -88,10 +88,6 @@ def _arrange_at_revising_with_prompt(
             "reviser": "manual",
         },
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="test",
-        table="app.test",
-        dev="test",
-        task_id="TEST-001",
         metadata={"test": True},
     )
 
@@ -112,7 +108,7 @@ def _arrange_at_revising_with_prompt(
 
 
 def _arrange_at_reviewed_with_response(
-    sessions_root: Path, utf8: str
+    sessions_root: Path, utf8: str, valid_jpa_mt_context: dict[str, Any]
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
     """Arrange state at REVIEWED with review response and review_approved=True."""
     store = SessionStore(sessions_root=sessions_root)
@@ -120,8 +116,7 @@ def _arrange_at_reviewed_with_response(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="TestEntity",
+        context=valid_jpa_mt_context,
         providers={
             "planner": "manual",
             "generator": "manual",
@@ -129,10 +124,6 @@ def _arrange_at_reviewed_with_response(
             "reviser": "manual",
         },
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="test",
-        table="app.test",
-        dev="test",
-        task_id="TEST-001",
         metadata={"test": True},
     )
 
@@ -160,10 +151,11 @@ def test_revising_cancelled_status_transitions_to_cancelled(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     """When process_revision_response returns CANCELLED, transition to CANCELLED phase."""
     orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(
-        sessions_root, utf8
+        sessions_root, utf8, valid_jpa_mt_context
     )
 
     # Write revision response
@@ -189,13 +181,14 @@ def test_revising_fallback_bundle_extractor_import_error_transitions_to_error(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     """When write_plan is None and bundle_extractor import fails, transition to ERROR."""
     import builtins
     import importlib
 
     orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(
-        sessions_root, utf8
+        sessions_root, utf8, valid_jpa_mt_context
     )
 
     # Write revision response
@@ -244,10 +237,11 @@ def test_reviewed_unknown_result_status_noop(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     """When process_review_response returns an unexpected status, no transition occurs."""
     orch, store, session_id, it_dir = _arrange_at_reviewed_with_response(
-        sessions_root, utf8
+        sessions_root, utf8, valid_jpa_mt_context
     )
 
     before = store.load(session_id)

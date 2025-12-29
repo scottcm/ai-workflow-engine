@@ -43,7 +43,7 @@ class _CaptureContextProfile:
 
 
 def test_prompt_context_includes_code_files_for_reviewing_phase(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When entering REVIEWING from GENERATED, code_files from current iteration are included."""
     store = SessionStore(sessions_root=sessions_root)
@@ -51,14 +51,9 @@ def test_prompt_context_includes_code_files_for_reviewing_phase(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 
@@ -92,7 +87,7 @@ def test_prompt_context_includes_code_files_for_reviewing_phase(
 
 
 def test_prompt_context_includes_code_files_for_revising_phase(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When entering REVISING from REVIEWED, code_files from previous iteration are included."""
     store = SessionStore(sessions_root=sessions_root)
@@ -100,14 +95,9 @@ def test_prompt_context_includes_code_files_for_revising_phase(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 
@@ -143,7 +133,7 @@ def test_prompt_context_includes_code_files_for_revising_phase(
 
 
 def test_prompt_context_excludes_non_code_artifacts(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """code_files should only include artifacts under iteration-N/code/."""
     store = SessionStore(sessions_root=sessions_root)
@@ -151,14 +141,9 @@ def test_prompt_context_excludes_non_code_artifacts(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 
@@ -190,7 +175,7 @@ def test_prompt_context_excludes_non_code_artifacts(
 
 
 def test_prompt_context_empty_code_files_when_no_code_artifacts(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """code_files should be empty list when no code artifacts exist (only iteration-N/code/)."""
     store = SessionStore(sessions_root=sessions_root)
@@ -198,14 +183,9 @@ def test_prompt_context_empty_code_files_when_no_code_artifacts(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 

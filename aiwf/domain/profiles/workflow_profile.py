@@ -12,7 +12,7 @@ class WorkflowProfile(ABC):
 
         Returns:
             dict with keys: name, description, target_stack, scopes, phases,
-            requires_config, config_keys
+            requires_config, config_keys, context_schema
         """
         return {
             "name": "unknown",
@@ -22,6 +22,7 @@ class WorkflowProfile(ABC):
             "phases": ["planning", "generation", "review", "revision"],
             "requires_config": False,
             "config_keys": [],
+            "context_schema": {},  # Schema for validating context dict
         }
 
     def validate_metadata(self, metadata: dict[str, Any] | None) -> None:

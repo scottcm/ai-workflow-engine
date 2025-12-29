@@ -4,12 +4,42 @@
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
+from typing import Any
 
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import WorkflowStatus
 from aiwf.domain.models.write_plan import WriteOp, WritePlan
 from aiwf.domain.standards import StandardsProviderFactory
+
+
+@pytest.fixture
+def valid_jpa_mt_context(tmp_path: Path) -> dict[str, Any]:
+    """Return a valid context dict for jpa-mt profile tests."""
+    schema_file = tmp_path / "schema.sql"
+    schema_file.write_text("CREATE TABLE foo (...);")
+    return {
+        "scope": "domain",
+        "entity": "Foo",
+        "table": "foo",
+        "bounded_context": "core",
+        "schema_file": str(schema_file),
+    }
+
+
+@pytest.fixture(autouse=True)
+def create_schema_file_for_tests(tmp_path: Path, monkeypatch):
+    """Create a dummy schema file for tests using metadata with schema_file.
+
+    This fixture intercepts context validation to create a temp schema file
+    if the test doesn't provide one.
+    """
+    # Create a default schema file path for use by tests
+    schema_file = tmp_path / "test_schema.sql"
+    schema_file.write_text("CREATE TABLE test (...);")
+
+    # Store on tmp_path for tests that need it
+    monkeypatch.setattr("tests.unit.application.conftest._default_schema_file", str(schema_file), raising=False)
 
 
 class MockStandardsProvider:
@@ -83,12 +113,32 @@ def mock_jpa_mt_profile(monkeypatch, register_mock_standards_provider):
     )
 
     original_create = ProfileFactory.create
+    original_get_metadata = ProfileFactory.get_metadata
 
     def mock_create(profile_key, config=None):
         if profile_key == "jpa-mt":
             return mock_profile
         return original_create(profile_key, config=config)
 
+    def mock_get_metadata(profile_key):
+        if profile_key == "jpa-mt":
+            # Return metadata with context_schema for jpa-mt profile
+            return {
+                "name": "jpa-mt",
+                "description": "Mock JPA-MT profile",
+                "context_schema": {
+                    "scope": {"type": "string", "required": True, "choices": ["domain", "vertical"]},
+                    "entity": {"type": "string", "required": True},
+                    "table": {"type": "string", "required": True},
+                    "bounded_context": {"type": "string", "required": True},
+                    "schema_file": {"type": "path", "required": True, "exists": True},
+                    "dev": {"type": "string", "required": False},
+                    "task_id": {"type": "string", "required": False},
+                },
+            }
+        return original_get_metadata(profile_key)
+
     monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, key, **kw: mock_create(key, kw.get("config"))))
+    monkeypatch.setattr(ProfileFactory, "get_metadata", classmethod(lambda cls, key: mock_get_metadata(key)))
 
     return mock_profile

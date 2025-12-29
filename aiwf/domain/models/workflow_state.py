@@ -94,14 +94,9 @@ class WorkflowState(BaseModel):
     # Identity
     session_id: str
     profile: str
-    scope: str  # e.g., "domain", "vertical"
 
-    # Work context (used by templates)
-    entity: str
-    bounded_context: str | None = None
-    table: str | None = None
-    dev: str | None = None
-    task_id: str | None = None
+    # Generic context for profile-specific data
+    context: dict[str, Any] = Field(default_factory=dict)
 
     # State
     phase: WorkflowPhase

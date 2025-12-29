@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -29,21 +30,16 @@ class _StubGenProcessProfile:
 
 
 def _arrange_at_generating(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
     """Arrange state at GENERATING with prompt already generated."""
     store = SessionStore(sessions_root=sessions_root)
     orch = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
     orch.step(session_id)  # -> PLANNING (generates planning-prompt.md)
@@ -78,10 +74,10 @@ def _arrange_at_generating(
 
 
 def test_generation_prompt_generated_on_entry_from_planned(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """Prompt generation now happens on entry to GENERATING (in _step_planned)."""
-    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
+    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch, valid_jpa_mt_context)
 
     # Check that generation-prompt.md was created on entry
     prompt_file = it_dir / "generation-prompt.md"
@@ -90,10 +86,10 @@ def test_generation_prompt_generated_on_entry_from_planned(
 
 
 def test_generating_is_noop_when_response_missing(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """GENERATING phase is a no-op waiting for response (prompt already exists)."""
-    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
+    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch, valid_jpa_mt_context)
 
     # Guard: profile must not be called in GENERATING phase when no response exists
     # (auto-approval bypass may call it but with empty content, so we allow that)
@@ -108,10 +104,10 @@ def test_generating_is_noop_when_response_missing(
 
 
 def test_generating_processes_response_and_transitions_to_generated(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When response exists, GENERATING processes it and transitions to GENERATED."""
-    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
+    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch, valid_jpa_mt_context)
 
     # Prompt already exists from _arrange_at_generating
     (it_dir / "generation-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
@@ -127,10 +123,10 @@ def test_generating_processes_response_and_transitions_to_generated(
 
 
 def test_generating_error_is_recoverable_stays_in_phase(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When process_generation_response returns ERROR, stay in GENERATING with last_error set."""
-    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
+    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch, valid_jpa_mt_context)
 
     (it_dir / "generation-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
 
@@ -149,10 +145,10 @@ def test_generating_error_is_recoverable_stays_in_phase(
 
 
 def test_generating_success_clears_last_error(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch
+    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
     """When process_generation_response succeeds after previous error, clear last_error."""
-    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch)
+    orch, store, session_id, it_dir = _arrange_at_generating(sessions_root, utf8, monkeypatch, valid_jpa_mt_context)
 
     # Set up previous error
     state = store.load(session_id)

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from aiwf.application.approval_specs import ED_APPROVAL_SPECS, ING_APPROVAL_SPECS
 from aiwf.application.artifact_writer import write_artifacts
 from aiwf.application.approval_handler import build_approval_chain
+from aiwf.application.context_validation import validate_context
 from aiwf.application.standards_materializer import materialize_standards
 
 from aiwf.domain.models.processing_result import ProcessingResult
@@ -54,16 +55,18 @@ class WorkflowOrchestrator:
         self,
         *,
         profile: str,
-        scope: str,
-        entity: str,
         providers: dict[str, str],
+        context: dict[str, Any] | None = None,
         execution_mode: ExecutionMode = ExecutionMode.INTERACTIVE,
+        metadata: dict[str, Any] | None = None,
+        standards_provider: str | None = None,
+        # Legacy parameters for backward compatibility
+        scope: str | None = None,
+        entity: str | None = None,
         bounded_context: str | None = None,
         table: str | None = None,
         dev: str | None = None,
         task_id: str | None = None,
-        metadata: dict[str, Any] | None = None,
-        standards_provider: str | None = None,
     ) -> str:
         """Initialize a new workflow session and persist the initial state.
 
@@ -79,16 +82,17 @@ class WorkflowOrchestrator:
 
         Args:
             profile: Profile identifier (e.g., "jpa-mt")
-            scope: Workflow scope (e.g., "domain", "vertical")
-            entity: Entity name for code generation
             providers: Role to provider mapping (e.g., {"planner": "manual"})
+            context: Profile-specific context dict (new API)
             execution_mode: Interactive or automated execution
-            bounded_context: Optional bounded context name
-            table: Optional database table name
-            dev: Optional developer identifier
-            task_id: Optional task/ticket identifier
             metadata: Optional additional metadata
             standards_provider: Optional standards provider key override
+            scope: (Legacy) Workflow scope - use context instead
+            entity: (Legacy) Entity name - use context instead
+            bounded_context: (Legacy) Bounded context name - use context instead
+            table: (Legacy) Database table name - use context instead
+            dev: (Legacy) Developer identifier - use context instead
+            task_id: (Legacy) Task/ticket identifier - use context instead
 
         Returns:
             The generated session_id for the new workflow session.
@@ -97,19 +101,53 @@ class WorkflowOrchestrator:
         session_dir = self.sessions_root / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
 
+        # Build context from either new context param or legacy params
+        if context is not None:
+            # New API: use context directly
+            effective_context = dict(context)
+        else:
+            # Legacy API: build context from individual params
+            effective_context = {}
+            if scope is not None:
+                effective_context["scope"] = scope
+            if entity is not None:
+                effective_context["entity"] = entity
+            if table is not None:
+                effective_context["table"] = table
+            if bounded_context is not None:
+                effective_context["bounded_context"] = bounded_context
+            if dev is not None:
+                effective_context["dev"] = dev
+            if task_id is not None:
+                effective_context["task_id"] = task_id
+
+        # Normalize paths in metadata
         metadata = normalize_metadata_paths(metadata)
+
+        # Merge schema_file from metadata into context if present
+        if metadata and "schema_file" in metadata:
+            effective_context["schema_file"] = metadata["schema_file"]
+
+        # Check if profile is registered
+        if not ProfileFactory.is_registered(profile):
+            shutil.rmtree(session_dir, ignore_errors=True)
+            raise ValueError(f"Unknown profile: {profile}")
+
+        # Validate context against profile schema
+        profile_metadata = ProfileFactory.get_metadata(profile) or {}
+        context_schema = profile_metadata.get("context_schema", {})
+        validation_errors = validate_context(context_schema, effective_context)
+        if validation_errors:
+            shutil.rmtree(session_dir, ignore_errors=True)
+            error_details = "; ".join(f"{e.field}: {e.message}" for e in validation_errors)
+            raise ValueError(f"Context validation failed: {error_details}")
 
         state = _build_initial_state(
             session_id=session_id,
             profile=profile,
-            scope=scope,
-            entity=entity,
+            context=effective_context,
             providers=providers,
             execution_mode=execution_mode,
-            bounded_context=bounded_context,
-            table=table,
-            dev=dev,
-            task_id=task_id,
             metadata=metadata,
         )
 
@@ -147,10 +185,10 @@ class WorkflowOrchestrator:
             shutil.rmtree(session_dir, ignore_errors=True)
             raise
 
-        context = self._build_context(state)
+        standards_context = self._build_context(state)
         bundle_hash = materialize_standards(
             session_dir=session_dir,
-            context=context,
+            context=standards_context,
             provider=sp,
         )
         state.standards_hash = bundle_hash
@@ -303,12 +341,7 @@ class WorkflowOrchestrator:
     def _build_context(self, state: WorkflowState) -> dict[str, Any]:
         """Extract context dict from workflow state for providers."""
         return {
-            "scope": state.scope,
-            "entity": state.entity,
-            "table": state.table,
-            "bounded_context": state.bounded_context,
-            "dev": state.dev,
-            "task_id": state.task_id,
+            **state.context,
             "metadata": state.metadata,
         }
 
@@ -812,20 +845,16 @@ class WorkflowOrchestrator:
     def _prompt_context(self, *, state: WorkflowState) -> dict[str, Any]:
         """Build context dict for template rendering.
 
-        All metadata fields are flattened into the context so they're
+        All context fields and metadata fields are flattened so they're
         automatically available as {{KEY}} placeholders in templates.
         """
+        # Start with profile-specific context
         context = {
+            **state.context,
             "session_id": state.session_id,
             "profile": state.profile,
-            "scope": state.scope,
-            "entity": state.entity,
             "providers": state.providers,
             "execution_mode": state.execution_mode,
-            "bounded_context": state.bounded_context,
-            "table": state.table,
-            "dev": state.dev,
-            "task_id": state.task_id,
             "iteration": getattr(state, "current_iteration", None),
             "date": date.today().isoformat(),
             "phase": state.phase,
@@ -859,14 +888,9 @@ def _build_initial_state(
     *,
     session_id: str,
     profile: str,
-    scope: str,
-    entity: str,
+    context: dict[str, Any],
     providers: dict[str, str],
     execution_mode: ExecutionMode,
-    bounded_context: str | None,
-    table: str | None,
-    dev: str | None,
-    task_id: str | None,
     metadata: dict[str, Any] | None,
 ) -> WorkflowState:
     """Build the initial `WorkflowState` for a new session.
@@ -887,14 +911,9 @@ def _build_initial_state(
     return WorkflowState(
         session_id=session_id,
         profile=profile,
-        scope=scope,
-        entity=entity,
+        context=context,
         providers=providers,
         execution_mode=execution_mode,
-        bounded_context=bounded_context,
-        table=table,
-        dev=dev,
-        task_id=task_id,
         metadata=metadata or {},
         phase=initial_phase,
         status=initial_status,

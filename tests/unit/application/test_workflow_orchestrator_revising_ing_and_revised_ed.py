@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -33,7 +34,8 @@ class _StubReviewPromptProfile:
 
 def _arrange_at_revising_with_prompt(
     sessions_root: Path,
-    utf8: str
+    utf8: str,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> tuple[WorkflowOrchestrator, SessionStore, str, Path]:
     """Arrange state at REVISING with revision prompt already written (as if from REVIEWED)."""
     store = SessionStore(sessions_root=sessions_root)
@@ -41,14 +43,9 @@ def _arrange_at_revising_with_prompt(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 
@@ -72,9 +69,10 @@ def test_revising_is_noop_when_response_missing(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     """REVISING phase is a no-op waiting for response (prompt was generated on entry)."""
-    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8, valid_jpa_mt_context)
 
     # Guard: profile must not be called in REVISING phase (only checks for response)
     monkeypatch.setattr(
@@ -99,10 +97,11 @@ def test_revising_processes_response_and_transitions_to_revised(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     """When response exists, REVISING processes it, writes artifacts, and transitions to REVISED."""
     _require_revised_phase()
-    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8, valid_jpa_mt_context)
 
     # Prompt already exists from arrangement
     (it_dir / "revision-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
@@ -131,6 +130,7 @@ def test_revised_gates_on_artifact_hashes_and_advances_to_reviewing(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     """REVISED advances to REVIEWING when code artifacts exist and are hashed (approved).
 
@@ -142,14 +142,9 @@ def test_revised_gates_on_artifact_hashes_and_advances_to_reviewing(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 
@@ -195,6 +190,7 @@ def test_revised_blocks_when_artifacts_not_hashed(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     """REVISED blocks (no-op) when artifacts exist but are not yet hashed (not approved)."""
     _require_revised_phase()
@@ -203,14 +199,9 @@ def test_revised_blocks_when_artifacts_not_hashed(
 
     session_id = orch.initialize_run(
         profile="jpa-mt",
-        scope="domain",
-        entity="Client",
+        context=valid_jpa_mt_context,
         providers={"primary": "gemini"},
         execution_mode=ExecutionMode.INTERACTIVE,
-        bounded_context="client",
-        table="app.clients",
-        dev="test",
-        task_id="LMS-000",
         metadata={"test": True},
     )
 
@@ -249,9 +240,10 @@ def test_revising_error_is_recoverable_stays_in_phase(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     """When process_revision_response returns ERROR, stay in REVISING with last_error set."""
-    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8, valid_jpa_mt_context)
 
     (it_dir / "revision-response.md").write_text("<<<FILE: x.py>>>\n    pass\n", encoding=utf8)
 
@@ -273,9 +265,10 @@ def test_revising_success_clears_last_error(
     sessions_root: Path,
     utf8: str,
     monkeypatch: pytest.MonkeyPatch,
+    valid_jpa_mt_context: dict[str, Any],
 ) -> None:
     """When process_revision_response succeeds after previous error, clear last_error."""
-    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8)
+    orch, store, session_id, it_dir = _arrange_at_revising_with_prompt(sessions_root, utf8, valid_jpa_mt_context)
 
     # Set up previous error
     state = store.load(session_id)

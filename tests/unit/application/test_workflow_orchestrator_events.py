@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -53,7 +54,7 @@ class TestOrchestratorEventEmitter:
 class TestOrchestratorPhaseEnteredEvents:
     """Tests for PHASE_ENTERED event emission."""
 
-    def test_step_initialized_emits_phase_entered(self, tmp_path: Path) -> None:
+    def test_step_initialized_emits_phase_entered(self, tmp_path: Path, valid_jpa_mt_context: dict[str, Any]) -> None:
         """step() emits PHASE_ENTERED when transitioning INITIALIZED -> PLANNING."""
         observer = MagicMock()
         emitter = WorkflowEventEmitter()
@@ -64,8 +65,7 @@ class TestOrchestratorPhaseEnteredEvents:
         # Initialize a session (uses jpa-mt profile from conftest mock)
         session_id = orch.initialize_run(
             profile="jpa-mt",
-            scope="entity",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planning": "manual"},
         )
 
@@ -84,7 +84,7 @@ class TestOrchestratorPhaseEnteredEvents:
         assert phase_entered_events[0].session_id == session_id
 
     def test_step_planning_emits_phase_entered_on_transition(
-        self, tmp_path: Path
+        self, tmp_path: Path, valid_jpa_mt_context: dict[str, Any]
     ) -> None:
         """step() emits PHASE_ENTERED when transitioning PLANNING -> PLANNED."""
         observer = MagicMock()
@@ -95,8 +95,7 @@ class TestOrchestratorPhaseEnteredEvents:
 
         session_id = orch.initialize_run(
             profile="jpa-mt",
-            scope="entity",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planning": "manual"},
         )
 
@@ -125,7 +124,7 @@ class TestOrchestratorApprovalEvents:
     """Tests for APPROVAL_REQUIRED and APPROVAL_GRANTED events."""
 
     def test_step_planned_emits_approval_required_when_blocked(
-        self, tmp_path: Path
+        self, tmp_path: Path, valid_jpa_mt_context: dict[str, Any]
     ) -> None:
         """step() emits APPROVAL_REQUIRED when blocked on plan approval."""
         observer = MagicMock()
@@ -136,8 +135,7 @@ class TestOrchestratorApprovalEvents:
 
         session_id = orch.initialize_run(
             profile="jpa-mt",
-            scope="entity",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planning": "manual"},
         )
 
@@ -164,7 +162,7 @@ class TestOrchestratorApprovalEvents:
         assert len(approval_required_events) >= 1
         assert approval_required_events[0].phase == WorkflowPhase.PLANNED
 
-    def test_approve_emits_approval_granted(self, tmp_path: Path) -> None:
+    def test_approve_emits_approval_granted(self, tmp_path: Path, valid_jpa_mt_context: dict[str, Any]) -> None:
         """approve() emits APPROVAL_GRANTED after successful approval."""
         observer = MagicMock()
         emitter = WorkflowEventEmitter()
@@ -174,8 +172,7 @@ class TestOrchestratorApprovalEvents:
 
         session_id = orch.initialize_run(
             profile="jpa-mt",
-            scope="entity",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planning": "manual"},
         )
 
@@ -206,7 +203,7 @@ class TestOrchestratorApprovalEvents:
 class TestOrchestratorWorkflowLifecycleEvents:
     """Tests for WORKFLOW_COMPLETED and WORKFLOW_FAILED events."""
 
-    def test_workflow_failed_emitted_on_error(self, tmp_path: Path) -> None:
+    def test_workflow_failed_emitted_on_error(self, tmp_path: Path, valid_jpa_mt_context: dict[str, Any]) -> None:
         """WORKFLOW_FAILED is emitted when workflow enters error state."""
         observer = MagicMock()
         emitter = WorkflowEventEmitter()
@@ -216,8 +213,7 @@ class TestOrchestratorWorkflowLifecycleEvents:
 
         session_id = orch.initialize_run(
             profile="jpa-mt",
-            scope="entity",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planning": "manual"},
         )
 
@@ -239,7 +235,7 @@ class TestOrchestratorTerminalPhaseEvents:
     """Tests for PHASE_ENTERED on terminal transitions (COMPLETE, CANCELLED)."""
 
     def test_workflow_complete_emits_phase_entered(
-        self, tmp_path: Path, monkeypatch
+        self, tmp_path: Path, monkeypatch, valid_jpa_mt_context: dict[str, Any]
     ) -> None:
         """PHASE_ENTERED is emitted when entering COMPLETE phase."""
         from aiwf.domain.models.processing_result import ProcessingResult
@@ -252,8 +248,7 @@ class TestOrchestratorTerminalPhaseEvents:
 
         session_id = orch.initialize_run(
             profile="jpa-mt",
-            scope="entity",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planning": "manual"},
         )
 
@@ -279,8 +274,8 @@ class TestOrchestratorTerminalPhaseEvents:
         from aiwf.domain.profiles.profile_factory import ProfileFactory
         original_create = ProfileFactory.create
 
-        def mock_create(profile_name):
-            profile = original_create(profile_name)
+        def mock_create(profile_name, config=None):
+            profile = original_create(profile_name, config=config)
             profile.process_review_response = mock_process_review_response
             return profile
 
@@ -305,7 +300,7 @@ class TestOrchestratorTerminalPhaseEvents:
         assert len(completed_events) >= 1
 
     def test_reviewed_cancelled_emits_phase_entered(
-        self, tmp_path: Path, monkeypatch
+        self, tmp_path: Path, monkeypatch, valid_jpa_mt_context: dict[str, Any]
     ) -> None:
         """PHASE_ENTERED is emitted when REVIEWED transitions to CANCELLED."""
         from aiwf.domain.models.processing_result import ProcessingResult
@@ -318,8 +313,7 @@ class TestOrchestratorTerminalPhaseEvents:
 
         session_id = orch.initialize_run(
             profile="jpa-mt",
-            scope="entity",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planning": "manual"},
         )
 
@@ -345,8 +339,8 @@ class TestOrchestratorTerminalPhaseEvents:
         from aiwf.domain.profiles.profile_factory import ProfileFactory
         original_create = ProfileFactory.create
 
-        def mock_create(profile_name):
-            profile = original_create(profile_name)
+        def mock_create(profile_name, config=None):
+            profile = original_create(profile_name, config=config)
             profile.process_review_response = mock_process_review_response
             return profile
 
@@ -365,7 +359,7 @@ class TestOrchestratorTerminalPhaseEvents:
         assert phase_entered_events[0].phase == WorkflowPhase.CANCELLED
 
     def test_revising_cancelled_emits_phase_entered(
-        self, tmp_path: Path, monkeypatch
+        self, tmp_path: Path, monkeypatch, valid_jpa_mt_context: dict[str, Any]
     ) -> None:
         """PHASE_ENTERED is emitted when REVISING transitions to CANCELLED."""
         from aiwf.domain.models.processing_result import ProcessingResult
@@ -378,8 +372,7 @@ class TestOrchestratorTerminalPhaseEvents:
 
         session_id = orch.initialize_run(
             profile="jpa-mt",
-            scope="entity",
-            entity="TestEntity",
+            context=valid_jpa_mt_context,
             providers={"planning": "manual"},
         )
 
@@ -405,8 +398,8 @@ class TestOrchestratorTerminalPhaseEvents:
         from aiwf.domain.profiles.profile_factory import ProfileFactory
         original_create = ProfileFactory.create
 
-        def mock_create(profile_name):
-            profile = original_create(profile_name)
+        def mock_create(profile_name, config=None):
+            profile = original_create(profile_name, config=config)
             profile.process_revision_response = mock_process_revision_response
             return profile
 
