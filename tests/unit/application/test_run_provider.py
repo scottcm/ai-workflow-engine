@@ -36,13 +36,7 @@ class MockProvider(AIProvider):
         if self.validate_should_fail:
             raise ProviderError("Mock validation failed")
 
-    def generate(
-        self,
-        prompt: str,
-        context: dict[str, Any] | None = None,
-        connection_timeout: int | None = None,
-        response_timeout: int | None = None,
-    ) -> str | None:
+    def generate(self, prompt: str, *args, **kwargs) -> str | None:
         if self.should_fail:
             raise ProviderError("Mock provider failed")
         return self.response
@@ -126,7 +120,7 @@ def test_run_provider_propagates_provider_error(register_mock_provider):
     """run_provider lets ProviderError propagate from generate()."""
     # Create a mock provider that fails
     class FailingProvider(MockProvider):
-        def generate(self, prompt, context=None, connection_timeout=None, response_timeout=None):
+        def generate(self, prompt, *args, **kwargs):
             raise ProviderError("Provider generate failed")
 
     ProviderFactory.register("failing", FailingProvider)
@@ -144,7 +138,7 @@ def test_run_provider_passes_timeouts_from_metadata(register_mock_provider):
     call_args = {}
 
     class TimeoutTrackingProvider(MockProvider):
-        def generate(self, prompt, context=None, connection_timeout=None, response_timeout=None):
+        def generate(self, prompt, *args, connection_timeout=None, response_timeout=None, **kwargs):
             call_args["connection_timeout"] = connection_timeout
             call_args["response_timeout"] = response_timeout
             return "response"

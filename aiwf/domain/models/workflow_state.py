@@ -140,3 +140,11 @@ class WorkflowState(BaseModel):
 
     # Transient progress messages (excluded from serialization)
     messages: list[str] = Field(default_factory=list, exclude=True)
+
+    @field_validator("current_iteration")
+    @classmethod
+    def _current_iteration_ge_1(cls, v: int) -> int:
+        """Ensure current_iteration is always >= 1 (iterations are 1-based)."""
+        if v < 1:
+            raise ValueError("current_iteration must be >= 1")
+        return v

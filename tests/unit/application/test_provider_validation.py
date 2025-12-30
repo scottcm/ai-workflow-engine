@@ -34,13 +34,7 @@ class ValidatingProvider(AIProvider):
     def validate(self) -> None:
         ValidatingProvider.validation_calls.append("validated")
 
-    def generate(
-        self,
-        prompt: str,
-        context: dict[str, Any] | None = None,
-        connection_timeout: int | None = None,
-        response_timeout: int | None = None,
-    ) -> str | None:
+    def generate(self, prompt: str, *args, **kwargs) -> str | None:
         return None
 
 
@@ -61,13 +55,7 @@ class FailingValidationProvider(AIProvider):
     def validate(self) -> None:
         raise ProviderError("API key not configured")
 
-    def generate(
-        self,
-        prompt: str,
-        context: dict[str, Any] | None = None,
-        connection_timeout: int | None = None,
-        response_timeout: int | None = None,
-    ) -> str | None:
+    def generate(self, prompt: str, *args, **kwargs) -> str | None:
         return None
 
 

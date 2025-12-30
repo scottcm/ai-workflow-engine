@@ -70,7 +70,7 @@ def test_approve_records_prompt_hash_when_enabled(tmp_path: Path, monkeypatch: p
     prompt_path.write_text(prompt_content, encoding="utf-8", newline="\n")
 
     # Ensure provider is not the focal point; manual returns None
-    def fake_run_provider(provider_key: str, prompt: str) -> str | None:
+    def fake_run_provider(provider_key: str, prompt: str, system_prompt: str | None = None) -> str | None:
         return None
 
     import aiwf.application.approval_handler as approval_handler_module

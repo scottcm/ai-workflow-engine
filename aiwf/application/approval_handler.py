@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from aiwf.application.approval_specs import ED_APPROVAL_SPECS, ING_APPROVAL_SPECS
+from aiwf.application.prompt_assembler import PromptAssembler
 from aiwf.domain.models.workflow_state import Artifact, WorkflowPhase, WorkflowState, WorkflowStatus
 from aiwf.domain.providers.capabilities import ProviderCapabilities  # noqa: F401 - re-export for compatibility
 
@@ -89,12 +90,17 @@ def _update_or_create_artifact(
     ))
 
 
-def run_provider(provider_key: str, prompt: str) -> str | None:
+def run_provider(
+    provider_key: str,
+    prompt: str,
+    system_prompt: str | None = None,
+) -> str | None:
     """Invoke an AI provider to generate a response.
 
     Args:
         provider_key: Registered provider key (e.g., "manual", "claude")
         prompt: The prompt text to send
+        system_prompt: Optional system prompt for providers that support it
 
     Returns:
         Response string, or None if provider signals manual mode
@@ -112,6 +118,7 @@ def run_provider(provider_key: str, prompt: str) -> str | None:
 
     return provider.generate(
         prompt,
+        system_prompt=system_prompt,
         connection_timeout=connection_timeout,
         response_timeout=response_timeout,
     )
@@ -200,15 +207,37 @@ class IngPhaseApprovalHandler(ApprovalHandlerBase):
 
         prompt_relpath = spec.prompt_relpath_template.format(N=state.current_iteration)
         prompt_path = session_dir / prompt_relpath
+        response_relpath = spec.response_relpath_template.format(N=state.current_iteration)
 
         _require_file_exists(prompt_path, "prompt file", prompt_relpath)
         _hash_prompt_if_enabled(state, prompt_path, prompt_relpath, hash_prompts)
 
-        prompt_content = prompt_path.read_text(encoding="utf-8")
-        response = run_provider(provider_key, prompt_content)
+        # Get provider capabilities
+        from aiwf.domain.providers.provider_factory import ProviderFactory
+        provider = ProviderFactory.create(provider_key)
+        metadata = provider.get_metadata()
+        fs_ability = metadata.get("fs_ability", "none")
+        supports_system_prompt = metadata.get("supports_system_prompt", False)
+        supports_file_attachments = metadata.get("supports_file_attachments", False)
+
+        # Assemble prompt with session artifacts and output instructions
+        profile_prompt = prompt_path.read_text(encoding="utf-8")
+        assembler = PromptAssembler(session_dir, state)
+        assembled = assembler.assemble(
+            profile_prompt=profile_prompt,
+            fs_ability=fs_ability,
+            response_relpath=response_relpath,
+            supports_system_prompt=supports_system_prompt,
+            supports_file_attachments=supports_file_attachments,
+        )
+
+        response = run_provider(
+            provider_key,
+            assembled["user_prompt"],
+            system_prompt=assembled["system_prompt"] or None,
+        )
 
         if response is not None:
-            response_relpath = spec.response_relpath_template.format(N=state.current_iteration)
             response_path = session_dir / response_relpath
             response_path.parent.mkdir(parents=True, exist_ok=True)
             response_path.write_text(response, encoding="utf-8")

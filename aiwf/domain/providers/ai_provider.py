@@ -44,6 +44,7 @@ class AIProvider(ABC):
         self,
         prompt: str,
         context: dict[str, Any] | None = None,
+        system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
     ) -> str | None:
@@ -52,6 +53,7 @@ class AIProvider(ABC):
         Args:
             prompt: The prompt text to send to the AI
             context: Optional context dictionary (metadata, settings, etc.)
+            system_prompt: Optional system prompt for providers that support it
             connection_timeout: Timeout for establishing connection (None = use default)
             response_timeout: Timeout for receiving response (None = use default)
 

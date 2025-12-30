@@ -83,3 +83,62 @@ class TestWorkflowStateContext:
         assert "bounded_context" not in WorkflowState.model_fields
         assert "dev" not in WorkflowState.model_fields
         assert "task_id" not in WorkflowState.model_fields
+
+
+class TestWorkflowStateCurrentIteration:
+    """Tests for current_iteration validation."""
+
+    def test_current_iteration_defaults_to_1(self):
+        """current_iteration defaults to 1."""
+        state = WorkflowState(
+            session_id="test-123",
+            profile="jpa-mt",
+            phase=WorkflowPhase.INITIALIZED,
+            status=WorkflowStatus.IN_PROGRESS,
+            execution_mode=ExecutionMode.INTERACTIVE,
+            standards_hash="0" * 64,
+            providers={},
+        )
+        assert state.current_iteration == 1
+
+    def test_current_iteration_accepts_positive_values(self):
+        """current_iteration accepts positive integer values."""
+        state = WorkflowState(
+            session_id="test-123",
+            profile="jpa-mt",
+            phase=WorkflowPhase.REVISING,
+            status=WorkflowStatus.IN_PROGRESS,
+            execution_mode=ExecutionMode.INTERACTIVE,
+            standards_hash="0" * 64,
+            providers={},
+            current_iteration=5,
+        )
+        assert state.current_iteration == 5
+
+    def test_current_iteration_rejects_zero(self):
+        """current_iteration rejects 0."""
+        with pytest.raises(ValueError, match="current_iteration must be >= 1"):
+            WorkflowState(
+                session_id="test-123",
+                profile="jpa-mt",
+                phase=WorkflowPhase.INITIALIZED,
+                status=WorkflowStatus.IN_PROGRESS,
+                execution_mode=ExecutionMode.INTERACTIVE,
+                standards_hash="0" * 64,
+                providers={},
+                current_iteration=0,
+            )
+
+    def test_current_iteration_rejects_negative(self):
+        """current_iteration rejects negative values."""
+        with pytest.raises(ValueError, match="current_iteration must be >= 1"):
+            WorkflowState(
+                session_id="test-123",
+                profile="jpa-mt",
+                phase=WorkflowPhase.INITIALIZED,
+                status=WorkflowStatus.IN_PROGRESS,
+                execution_mode=ExecutionMode.INTERACTIVE,
+                standards_hash="0" * 64,
+                providers={},
+                current_iteration=-1,
+            )

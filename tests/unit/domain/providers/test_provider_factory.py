@@ -30,13 +30,7 @@ class MockAIProvider(AIProvider):
     def validate(self) -> None:
         pass
 
-    def generate(
-        self,
-        prompt: str,
-        context: dict[str, Any] | None = None,
-        connection_timeout: int | None = None,
-        response_timeout: int | None = None,
-    ) -> str | None:
+    def generate(self, prompt: str, *args, **kwargs) -> str | None:
         return "mock response"
 
 
@@ -185,13 +179,7 @@ class TestProviderFactory:
             def validate(self) -> None:
                 pass
 
-            def generate(
-                self,
-                prompt: str,
-                context: dict[str, Any] | None = None,
-                connection_timeout: int | None = None,
-                response_timeout: int | None = None,
-            ) -> str | None:
+            def generate(self, prompt: str, *args, **kwargs) -> str | None:
                 return "response"
 
         ProviderFactory.register("configurable", ConfigurableProvider)

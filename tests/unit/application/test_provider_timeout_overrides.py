@@ -44,9 +44,10 @@ class TimeoutTrackingProvider(AIProvider):
     def generate(
         self,
         prompt: str,
-        context: dict[str, Any] | None = None,
+        *args,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
+        **kwargs,
     ) -> str | None:
         TimeoutTrackingProvider.last_call_timeouts = {
             "connection_timeout": connection_timeout,
@@ -80,9 +81,10 @@ class NoneTimeoutProvider(AIProvider):
     def generate(
         self,
         prompt: str,
-        context: dict[str, Any] | None = None,
+        *args,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
+        **kwargs,
     ) -> str | None:
         NoneTimeoutProvider.last_call_timeouts = {
             "connection_timeout": connection_timeout,
@@ -116,9 +118,10 @@ class ZeroTimeoutProvider(AIProvider):
     def generate(
         self,
         prompt: str,
-        context: dict[str, Any] | None = None,
+        *args,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
+        **kwargs,
     ) -> str | None:
         ZeroTimeoutProvider.last_call_timeouts = {
             "connection_timeout": connection_timeout,

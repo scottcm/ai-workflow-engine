@@ -1,5 +1,7 @@
 import hashlib
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
 import pytest
 
 from aiwf.application.approval_specs import ING_APPROVAL_SPECS
@@ -12,6 +14,34 @@ from aiwf.domain.models.workflow_state import (
     WorkflowStatus,
 )
 from aiwf.domain.persistence.session_store import SessionStore
+
+
+def _create_mock_provider() -> MagicMock:
+    """Create a mock provider with default metadata for testing."""
+    mock_provider = MagicMock()
+    mock_provider.get_metadata.return_value = {
+        "name": "mock-provider",
+        "description": "Mock provider for testing",
+        "requires_config": False,
+        "config_keys": [],
+        "default_connection_timeout": 10,
+        "default_response_timeout": 60,
+        "fs_ability": "none",
+        "supports_system_prompt": False,
+        "supports_file_attachments": False,
+    }
+    return mock_provider
+
+
+@pytest.fixture(autouse=True)
+def mock_provider_factory(monkeypatch: pytest.MonkeyPatch):
+    """Mock ProviderFactory.create() to return a mock provider with default metadata."""
+    mock_provider = _create_mock_provider()
+    monkeypatch.setattr(
+        "aiwf.domain.providers.provider_factory.ProviderFactory.create",
+        lambda key: mock_provider,
+    )
+    yield mock_provider
 
 
 def _sha256_text(text: str) -> str:
@@ -64,11 +94,12 @@ def test_approve_generating_reads_prompt_calls_provider_writes_response(tmp_path
     edited_prompt = "v2-edited\n"
     prompt_path.write_text(edited_prompt, encoding="utf-8", newline="\n")
 
-    calls: dict[str, str] = {}
+    calls: dict[str, Any] = {}
 
-    def fake_run_provider(provider_key: str, prompt: str) -> str | None:
+    def fake_run_provider(provider_key: str, prompt: str, system_prompt: str | None = None) -> str | None:
         calls["provider_key"] = provider_key
         calls["prompt"] = prompt
+        calls["system_prompt"] = system_prompt
         return "LLM response"
 
     import aiwf.application.approval_handler as approval_handler_module
@@ -78,9 +109,9 @@ def test_approve_generating_reads_prompt_calls_provider_writes_response(tmp_path
 
     reloaded = store.load(session_id)
 
-    # provider called with edited prompt
+    # provider called with assembled prompt (includes profile prompt)
     assert calls["provider_key"] == providers[provider_role]
-    assert calls["prompt"] == edited_prompt
+    assert edited_prompt.strip() in calls["prompt"]  # Profile prompt is included in assembled prompt
 
     # response file written
     response_path = session_dir / response_relpath
@@ -119,7 +150,7 @@ def test_approve_generating_manual_provider_no_response_file(tmp_path: Path, mon
 
     called = {"count": 0}
 
-    def fake_run_provider(provider_key: str, prompt: str) -> str | None:
+    def fake_run_provider(provider_key: str, prompt: str, system_prompt: str | None = None) -> str | None:
         called["count"] += 1
         return None  # manual provider produces no response file
 
@@ -293,11 +324,12 @@ def test_approve_reviewing_uses_reviewer_role_and_correct_paths(tmp_path: Path, 
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("review prompt\n", encoding="utf-8", newline="\n")
 
-    calls: dict[str, str] = {}
+    calls: dict[str, Any] = {}
 
-    def fake_run_provider(provider_key: str, prompt: str) -> str | None:
+    def fake_run_provider(provider_key: str, prompt: str, system_prompt: str | None = None) -> str | None:
         calls["provider_key"] = provider_key
         calls["prompt"] = prompt
+        calls["system_prompt"] = system_prompt
         return "review response"
 
     import aiwf.application.approval_handler as approval_handler_module
@@ -306,7 +338,7 @@ def test_approve_reviewing_uses_reviewer_role_and_correct_paths(tmp_path: Path, 
     orch.approve(session_id=session_id, hash_prompts=False)
 
     assert calls["provider_key"] == providers[provider_role]
-    assert calls["prompt"] == "review prompt\n"
+    assert "review prompt" in calls["prompt"]  # Profile prompt included in assembled prompt
 
     response_path = session_dir / response_relpath
     assert response_path.exists()

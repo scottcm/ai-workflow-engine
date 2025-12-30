@@ -30,6 +30,7 @@ class ManualProvider(AIProvider):
         self,
         prompt: str,
         context: dict[str, Any] | None = None,
+        system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
     ) -> str | None:
