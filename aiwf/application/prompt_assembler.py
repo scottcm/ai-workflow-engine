@@ -140,7 +140,7 @@ class PromptAssembler:
         artifacts = {}
 
         # Standards bundle (for all phases except INITIALIZED)
-        if self.state.phase != WorkflowPhase.INITIALIZED:
+        if self.state.phase != WorkflowPhase.INIT:
             standards_content = self._get_artifact_content("standards-bundle.md", use_file_refs)
             if standards_content:
                 artifacts["standards-bundle.md"] = f"Coding standards\n\n{standards_content}"
@@ -162,7 +162,7 @@ class PromptAssembler:
         sections = []
 
         # Standards bundle (for all phases except INITIALIZED)
-        if self.state.phase != WorkflowPhase.INITIALIZED:
+        if self.state.phase != WorkflowPhase.INIT:
             standards_content = self._get_artifact_content(
                 "standards-bundle.md", use_file_refs
             )

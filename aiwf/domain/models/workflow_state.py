@@ -13,18 +13,30 @@ class ExecutionMode(str, Enum):
 
 
 class WorkflowPhase(str, Enum):
-    INITIALIZED = "initialized"    # Session created
-    PLANNING = "planning"          # Planning prompt sent
-    PLANNED = "planned"            # Plan response received
-    GENERATING = "generating"      # Generation prompt sent
-    GENERATED = "generated"        # Code received
-    REVIEWING = "reviewing"        # Review prompt sent
-    REVIEWED = "reviewed"          # Review completed
-    REVISING = "revising"          # Revision prompt sent
-    REVISED = "revised"            # Revision completed
-    COMPLETE = "complete"          # All work done
-    ERROR = "error"                # Unrecoverable error
-    CANCELLED = "cancelled"        # User cancelled session
+    """Workflow phase - WHAT work is being done.
+
+    ADR-0012: 4 active phases + terminal states.
+    Each active phase has ING and ED stages.
+    """
+
+    INIT = "init"            # Session created, ready to start
+    PLAN = "plan"            # Creating implementation plan
+    GENERATE = "generate"    # Generating code artifacts
+    REVIEW = "review"        # Reviewing generated code
+    REVISE = "revise"        # Revising based on feedback
+    COMPLETE = "complete"    # All work done successfully
+    ERROR = "error"          # Unrecoverable error
+    CANCELLED = "cancelled"  # User cancelled session
+
+
+class WorkflowStage(str, Enum):
+    """Workflow stage - WHERE in the phase we are.
+
+    ADR-0012: Each active phase has two stages.
+    """
+
+    ING = "ing"  # Input ready (prompt artifact exists, awaiting response)
+    ED = "ed"    # Output ready (response artifact exists, awaiting approval)
 
 
 class WorkflowStatus(str, Enum):
@@ -100,6 +112,7 @@ class WorkflowState(BaseModel):
 
     # State
     phase: WorkflowPhase
+    stage: WorkflowStage | None = None  # None for INIT and terminal phases
     status: WorkflowStatus
     execution_mode: ExecutionMode
     current_iteration: int = 1  # Starts at 1, increments on revision

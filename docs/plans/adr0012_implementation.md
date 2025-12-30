@@ -15,7 +15,7 @@
 | Phase | Status | Commit | Notes |
 |-------|--------|--------|-------|
 | 0. Cleanup | DONE | 1d4b23b | Deleted 42 test files, 441 remain |
-| 1. Models | NOT STARTED | - | |
+| 1. Models | DONE | e0efefe | New enums, ApprovalResult, stage field added |
 | 2. State Machine | NOT STARTED | - | |
 | 3. Approval Providers | NOT STARTED | - | |
 | 4. Provider Factory | NOT STARTED | - | |
@@ -23,8 +23,8 @@
 | 6. CLI | NOT STARTED | - | |
 | 7. Final Cleanup | NOT STARTED | - | |
 
-**Current Phase:** 1 (Models)
-**Next Action:** Write tests for WorkflowPhase, WorkflowStage, ApprovalResult
+**Current Phase:** 2 (State Machine)
+**Next Action:** Write table-driven tests for TransitionTable
 
 ---
 

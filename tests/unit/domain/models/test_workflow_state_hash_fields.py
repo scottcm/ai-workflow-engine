@@ -10,7 +10,7 @@ def _minimal_workflow_state_kwargs() -> dict:
         "profile": "jpa_mt",
         "scope": "domain",
         "entity": "Tier",
-        "phase": WorkflowPhase.INITIALIZED,
+        "phase": WorkflowPhase.INIT,
         "status": WorkflowStatus.IN_PROGRESS,
         "execution_mode": ExecutionMode.INTERACTIVE,
         "providers": {"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
