@@ -14,7 +14,7 @@
 
 | Phase | Status | Commit | Notes |
 |-------|--------|--------|-------|
-| 0. Cleanup | NOT STARTED | - | Delete old tests |
+| 0. Cleanup | DONE | 1d4b23b | Deleted 42 test files, 441 remain |
 | 1. Models | NOT STARTED | - | |
 | 2. State Machine | NOT STARTED | - | |
 | 3. Approval Providers | NOT STARTED | - | |
@@ -23,8 +23,8 @@
 | 6. CLI | NOT STARTED | - | |
 | 7. Final Cleanup | NOT STARTED | - | |
 
-**Current Phase:** 0 (Cleanup)
-**Next Action:** Delete old workflow tests, then write Phase 1 tests
+**Current Phase:** 1 (Models)
+**Next Action:** Write tests for WorkflowPhase, WorkflowStage, ApprovalResult
 
 ---
 
