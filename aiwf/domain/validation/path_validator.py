@@ -456,6 +456,87 @@ class PathValidator:
 
         return path
 
+    @classmethod
+    def validate_artifact_path(
+        cls,
+        path: str,
+        *,
+        protected_names: set[str] | None = None,
+    ) -> str:
+        """
+        Validate and normalize a path for artifact writing.
+
+        This method is designed for paths provided in WritePlan by profiles.
+        It normalizes separators, validates the path is relative and safe,
+        and checks for empty/invalid segments.
+
+        Args:
+            path: Relative path string (e.g., "Customer.java" or "entity/Customer.java")
+            protected_names: Optional set of filenames that cannot be overwritten
+                           (e.g., {"session.json"})
+
+        Returns:
+            Normalized path with forward slashes
+
+        Raises:
+            PathValidationError: If path is invalid
+
+        Rules enforced:
+        - Path must be non-empty
+        - No absolute paths (/, \\, C:\\, UNC)
+        - No path traversal (..)
+        - No current-directory references (.)
+        - No empty segments (leading/trailing/consecutive slashes)
+        - Filename (last segment) cannot start with dot
+        - Path cannot match protected names
+
+        Examples:
+            >>> PathValidator.validate_artifact_path("Customer.java")
+            'Customer.java'
+
+            >>> PathValidator.validate_artifact_path("entity/Customer.java")
+            'entity/Customer.java'
+
+            >>> PathValidator.validate_artifact_path("entity\\\\Customer.java")
+            'entity/Customer.java'
+
+            >>> PathValidator.validate_artifact_path("session.json", protected_names={"session.json"})
+            PathValidationError: Cannot write to protected file
+        """
+        if not path or not isinstance(path, str):
+            raise PathValidationError("Artifact path must be a non-empty string")
+
+        # Normalize backslashes to forward slashes
+        normalized = cls.normalize_path_separators(path.strip())
+
+        # Use existing validation for absolute paths and traversal
+        cls.validate_relative_path_pattern(normalized)
+
+        # Split into segments and validate each
+        segments = normalized.split("/")
+
+        # Check for empty segments (leading/trailing/consecutive slashes)
+        for i, segment in enumerate(segments):
+            if not segment:
+                raise PathValidationError(
+                    f"Invalid artifact path '{path}': empty path segment"
+                )
+
+        # Validate filename (last segment) doesn't start with dot
+        filename = segments[-1]
+        if filename.startswith("."):
+            raise PathValidationError(
+                f"Invalid artifact path '{path}': filename cannot start with '.'"
+            )
+
+        # Check against protected names
+        if protected_names and filename in protected_names:
+            raise PathValidationError(
+                f"Cannot write to protected file: '{filename}'"
+            )
+
+        return normalized
+
 # Convenience functions for common validations
 
 def sanitize_entity_name(entity: str) -> str:

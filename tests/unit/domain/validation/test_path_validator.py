@@ -207,7 +207,141 @@ class TestPathValidator:
         # Unicode char
         with pytest.raises(PathValidationError):
             PathValidator.sanitize_filename("File\u2603.java")
-            
+
         # Multiple dots
         assert PathValidator.sanitize_filename("my.test.file.java") == "my.test.file.java"
+
+
+class TestValidateArtifactPath:
+    """Tests for validate_artifact_path method."""
+
+    # --- Valid paths ---
+
+    def test_simple_filename(self):
+        """Simple filename is valid."""
+        assert PathValidator.validate_artifact_path("Customer.java") == "Customer.java"
+
+    def test_nested_path(self):
+        """Nested path with subdirectory is valid."""
+        assert PathValidator.validate_artifact_path("entity/Customer.java") == "entity/Customer.java"
+
+    def test_deeply_nested_path(self):
+        """Deeply nested path is valid."""
+        result = PathValidator.validate_artifact_path("com/example/entity/Customer.java")
+        assert result == "com/example/entity/Customer.java"
+
+    def test_windows_backslashes_normalized(self):
+        """Windows backslashes are normalized to forward slashes."""
+        assert PathValidator.validate_artifact_path("entity\\Customer.java") == "entity/Customer.java"
+        assert PathValidator.validate_artifact_path("com\\example\\Customer.java") == "com/example/Customer.java"
+
+    def test_filename_with_dots(self):
+        """Filenames with multiple dots are valid."""
+        assert PathValidator.validate_artifact_path("Customer.spec.java") == "Customer.spec.java"
+
+    def test_filename_with_numbers(self):
+        """Filenames with numbers are valid."""
+        assert PathValidator.validate_artifact_path("Customer2.java") == "Customer2.java"
+
+    # --- Invalid paths: empty/null ---
+
+    def test_empty_path_rejected(self):
+        """Empty path is rejected."""
+        with pytest.raises(PathValidationError, match="non-empty"):
+            PathValidator.validate_artifact_path("")
+
+    def test_whitespace_only_path_rejected(self):
+        """Whitespace-only path is rejected."""
+        with pytest.raises(PathValidationError, match="non-empty"):
+            PathValidator.validate_artifact_path("   ")
+
+    # --- Invalid paths: absolute paths ---
+
+    def test_absolute_path_rejected(self):
+        """Absolute paths are rejected."""
+        with pytest.raises(PathValidationError, match="Absolute"):
+            PathValidator.validate_artifact_path("/etc/passwd")
+
+    def test_windows_absolute_path_rejected(self):
+        """Windows absolute paths are rejected."""
+        with pytest.raises(PathValidationError, match="Drive-letter"):
+            PathValidator.validate_artifact_path("C:\\Windows\\System32\\file.dll")
+
+    def test_unc_path_rejected(self):
+        """UNC paths are rejected (after normalization becomes //server/share which is absolute)."""
+        with pytest.raises(PathValidationError, match="Absolute"):
+            PathValidator.validate_artifact_path("\\\\server\\share\\file.txt")
+
+    # --- Invalid paths: traversal ---
+
+    def test_parent_directory_traversal_rejected(self):
+        """Parent directory traversal is rejected."""
+        with pytest.raises(PathValidationError, match="traversal"):
+            PathValidator.validate_artifact_path("../Customer.java")
+
+    def test_nested_traversal_rejected(self):
+        """Nested traversal is rejected."""
+        with pytest.raises(PathValidationError, match="traversal"):
+            PathValidator.validate_artifact_path("entity/../../../etc/passwd")
+
+    def test_current_directory_reference_rejected(self):
+        """Current directory reference is rejected."""
+        with pytest.raises(PathValidationError, match="Current-directory"):
+            PathValidator.validate_artifact_path("./Customer.java")
+
+    # --- Invalid paths: empty segments ---
+
+    def test_leading_slash_rejected(self):
+        """Leading slash creates empty segment - rejected as absolute."""
+        with pytest.raises(PathValidationError):
+            PathValidator.validate_artifact_path("/Customer.java")
+
+    def test_trailing_slash_rejected(self):
+        """Trailing slash creates empty segment."""
+        with pytest.raises(PathValidationError, match="empty path segment"):
+            PathValidator.validate_artifact_path("entity/")
+
+    def test_consecutive_slashes_rejected(self):
+        """Consecutive slashes create empty segment."""
+        with pytest.raises(PathValidationError, match="empty path segment"):
+            PathValidator.validate_artifact_path("entity//Customer.java")
+
+    # --- Invalid paths: hidden files ---
+
+    def test_hidden_file_rejected(self):
+        """Hidden files (starting with dot) are rejected."""
+        with pytest.raises(PathValidationError, match="cannot start with"):
+            PathValidator.validate_artifact_path(".gitignore")
+
+    def test_hidden_file_in_subdirectory_rejected(self):
+        """Hidden files in subdirectories are rejected."""
+        with pytest.raises(PathValidationError, match="cannot start with"):
+            PathValidator.validate_artifact_path("config/.env")
+
+    # --- Protected names ---
+
+    def test_protected_name_rejected(self):
+        """Protected filenames are rejected."""
+        protected = {"session.json", "config.yml"}
+        with pytest.raises(PathValidationError, match="protected file"):
+            PathValidator.validate_artifact_path("session.json", protected_names=protected)
+
+    def test_protected_name_in_subdirectory_allowed(self):
+        """Protected name check only applies to filename, not full path."""
+        protected = {"session.json"}
+        # The filename is "data.json", not "session.json", so this should pass
+        result = PathValidator.validate_artifact_path("session/data.json", protected_names=protected)
+        assert result == "session/data.json"
+
+    def test_protected_name_as_directory_allowed(self):
+        """Directory named like protected file is allowed if filename is different."""
+        protected = {"session.json"}
+        # Filename is "Customer.java", directory is "session.json" (unusual but valid)
+        result = PathValidator.validate_artifact_path("session.json/Customer.java", protected_names=protected)
+        assert result == "session.json/Customer.java"
+
+    def test_no_protected_names_allows_all(self):
+        """Without protected_names, all valid filenames are allowed."""
+        assert PathValidator.validate_artifact_path("session.json") == "session.json"
+        assert PathValidator.validate_artifact_path("config.yml") == "config.yml"
 

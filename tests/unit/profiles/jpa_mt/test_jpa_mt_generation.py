@@ -1,6 +1,5 @@
 """Tests for JPA-MT generation prompt and response processing."""
 import pytest
-from pathlib import Path
 
 # Import profiles to trigger registration
 import profiles  # noqa: F401
@@ -72,3 +71,53 @@ class TestGenerationResponseProcessing:
         result = jpa_mt_profile.process_generation_response(response, tmp_path, iteration=1)
 
         assert result.status == WorkflowStatus.ERROR
+
+
+class TestWritePlanFilenamesOnly:
+    """Tests for profile returning filenames only (no iteration prefix)."""
+
+    def test_generation_response_returns_filename_only(self, jpa_mt_profile, tmp_path):
+        """process_generation_response returns filename without path prefix."""
+        response_content = '''
+<<<FILE: Customer.java>>>
+public class Customer {}
+'''
+        result = jpa_mt_profile.process_generation_response(response_content, tmp_path, iteration=1)
+
+        assert result.write_plan is not None
+        assert len(result.write_plan.writes) == 1
+        write_op = result.write_plan.writes[0]
+        # Should be just filename, NOT "iteration-1/code/Customer.java"
+        assert write_op.path == "Customer.java"
+        assert "iteration" not in write_op.path
+
+    def test_revision_response_returns_filename_only(self, jpa_mt_profile, tmp_path):
+        """process_revision_response returns filename without path prefix."""
+        response_content = '''
+<<<FILE: Customer.java>>>
+public class Customer { /* revised */ }
+'''
+        result = jpa_mt_profile.process_revision_response(response_content, tmp_path, iteration=2)
+
+        assert result.write_plan is not None
+        write_op = result.write_plan.writes[0]
+        # Should be just filename, even in iteration 2
+        assert write_op.path == "Customer.java"
+        assert "iteration" not in write_op.path
+
+    def test_multiple_files_all_have_filenames_only(self, jpa_mt_profile, tmp_path):
+        """Multiple files in response all have filenames only."""
+        response_content = '''
+<<<FILE: Customer.java>>>
+public class Customer {}
+
+<<<FILE: Order.java>>>
+public class Order {}
+'''
+        result = jpa_mt_profile.process_generation_response(response_content, tmp_path, iteration=1)
+
+        assert result.write_plan is not None
+        assert len(result.write_plan.writes) == 2
+        for write_op in result.write_plan.writes:
+            assert "iteration" not in write_op.path
+            assert "/" not in write_op.path  # No path separators

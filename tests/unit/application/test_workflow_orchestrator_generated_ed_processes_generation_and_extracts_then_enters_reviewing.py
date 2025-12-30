@@ -30,7 +30,7 @@ class _StubGenerationProfile:
         return ProcessingResult(
             status=WorkflowStatus.SUCCESS,
             write_plan=WritePlan(writes=[
-                WriteOp(path="code/x.py", content="pass\n")
+                WriteOp(path="x.py", content="pass\n")
             ])
         )
 

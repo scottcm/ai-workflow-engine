@@ -158,10 +158,14 @@ def test_reviewed_cancelled_terminal_cancelled(
     assert after.status == WorkflowStatus.CANCELLED
 
 
-def test_reviewed_failed_copies_code_files_to_next_iteration(
+def test_reviewed_failed_does_not_copy_files_immediately(
     sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
 ) -> None:
-    """When review returns FAILED, code files from previous iteration are copied to new iteration."""
+    """When review returns FAILED, code files are NOT copied immediately.
+
+    Files are copied later by artifact_writer when processing the revision response.
+    This test verifies the orchestrator does not copy files during REVIEWED -> REVISING.
+    """
     _require_reviewed_phase()
     orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
 
@@ -184,18 +188,12 @@ def test_reviewed_failed_copies_code_files_to_next_iteration(
     assert after.phase == WorkflowPhase.REVISING
     assert after.current_iteration == 2
 
-    # Verify all code files were copied to new iteration
+    # Verify iteration-2 dir exists but code files NOT copied yet
+    # (copy happens in artifact_writer during REVISING -> REVISED)
     session_dir = sessions_root / session_id
+    assert (session_dir / "iteration-2").is_dir()
     new_code_dir = session_dir / "iteration-2" / "code"
-    assert new_code_dir.is_dir()
-    assert (new_code_dir / "Foo.java").exists()
-    assert (new_code_dir / "Bar.java").exists()
-    assert (new_code_dir / "subdir" / "Baz.java").exists()
-
-    # Verify file contents are identical
-    assert (new_code_dir / "Foo.java").read_text(encoding=utf8) == "class Foo {}\n"
-    assert (new_code_dir / "Bar.java").read_text(encoding=utf8) == "class Bar {}\n"
-    assert (new_code_dir / "subdir" / "Baz.java").read_text(encoding=utf8) == "class Baz {}\n"
+    assert not new_code_dir.exists()
 
 
 def test_reviewed_failed_without_code_dir_still_transitions(
@@ -226,34 +224,6 @@ def test_reviewed_failed_without_code_dir_still_transitions(
     assert not (session_dir / "iteration-2" / "code").exists()
 
 
-def test_reviewed_failed_copies_only_missing_files(
-    sessions_root: Path, utf8: str, monkeypatch: pytest.MonkeyPatch, valid_jpa_mt_context: dict[str, Any]
-) -> None:
-    """When destination has existing files, only missing files are copied."""
-    _require_reviewed_phase()
-    orch, store, session_id, it_dir = _arrange_at_reviewed(sessions_root, utf8, valid_jpa_mt_context)
-
-    session_dir = sessions_root / session_id
-
-    # Create code files in iteration-1
-    code_dir = it_dir / "code"
-    code_dir.mkdir(parents=True, exist_ok=True)
-    (code_dir / "Foo.java").write_text("class Foo { /* original */ }\n", encoding=utf8)
-    (code_dir / "Bar.java").write_text("class Bar { /* original */ }\n", encoding=utf8)
-
-    # Pre-create iteration-2/code with a modified Foo.java
-    new_code_dir = session_dir / "iteration-2" / "code"
-    new_code_dir.mkdir(parents=True, exist_ok=True)
-    (new_code_dir / "Foo.java").write_text("class Foo { /* revised */ }\n", encoding=utf8)
-
-    stub = _StubReviewProfile(WorkflowStatus.FAILED)
-    monkeypatch.setattr(ProfileFactory, "create", classmethod(lambda cls, *a, **k: stub))
-
-    orch.approve(session_id)
-    orch.step(session_id)
-
-    # Verify existing file was NOT overwritten
-    assert (new_code_dir / "Foo.java").read_text(encoding=utf8) == "class Foo { /* revised */ }\n"
-
-    # Verify missing file WAS copied
-    assert (new_code_dir / "Bar.java").read_text(encoding=utf8) == "class Bar { /* original */ }\n"
+# Note: Tests for copy-forward behavior (copying missing files from previous iteration)
+# are in test_artifact_writer.py::TestCopyForwardFromPreviousIteration since that
+# functionality was moved from the orchestrator to artifact_writer.

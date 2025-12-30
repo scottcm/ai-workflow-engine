@@ -93,8 +93,14 @@ Two categories with different responsibilities:
 | Component | Does | Does Not |
 |-----------|------|----------|
 | Profile | Generate prompts, parse responses, return WritePlan | File I/O, mutate state |
-| Engine | Execute WritePlan, all file I/O, compute hashes | Generate prompts, parse responses |
+| Engine | Execute WritePlan, all file I/O, compute hashes, add path prefixes | Generate prompts, parse responses |
 | Provider | Accept prompt string, return response string (or None for manual) | File I/O |
+
+**WritePlan Path Contract:**
+- Profiles return filename-only or relative paths in WritePlan (e.g., `Customer.java` or `entity/Customer.java`)
+- Engine adds the `iteration-{N}/code/` prefix when writing artifacts
+- Engine normalizes legacy paths that include iteration prefixes
+- Engine validates paths: no traversal, no absolute paths, no hidden files, no protected files
 
 ### AI Providers
 

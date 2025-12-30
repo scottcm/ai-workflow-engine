@@ -665,21 +665,13 @@ class WorkflowOrchestrator:
             state.status = WorkflowStatus.SUCCESS
             self._add_message(state, "Workflow complete")
         elif result.status == WorkflowStatus.FAILED:
-            previous_iteration = state.current_iteration
             state.current_iteration += 1
             new_iteration_dir = session_dir / f"iteration-{state.current_iteration}"
             new_iteration_dir.mkdir(parents=True, exist_ok=True)
 
-            # Copy code files from previous iteration to new iteration
-            previous_code_dir = session_dir / f"iteration-{previous_iteration}" / "code"
-            new_code_dir = new_iteration_dir / "code"
-            if previous_code_dir.exists():
-                def copy_if_missing(src, dst):
-                    if not Path(dst).exists():
-                        shutil.copy2(src, dst)
-
-                shutil.copytree(previous_code_dir, new_code_dir,
-                                dirs_exist_ok=True, copy_function=copy_if_missing)
+            # Note: Code files are copied from previous iteration AFTER revision
+            # artifacts are written, in artifact_writer.py. This ensures profile
+            # writes happen first without overwrites, then missing files are copied.
 
             state.phase = WorkflowPhase.REVISING
             state.status = WorkflowStatus.IN_PROGRESS

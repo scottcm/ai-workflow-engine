@@ -183,8 +183,8 @@ def test_generated_artifacts_record_iteration_and_iteration_relative_paths(
     # Arrange
     gen_plan = WritePlan(
         writes=[
-            WriteOp(path="code/Foo.java", content="class Foo {}\n"),
-            WriteOp(path="code/Bar.java", content="class Bar {}\n"),
+            WriteOp(path="Foo.java", content="class Foo {}\n"),
+            WriteOp(path="Bar.java", content="class Bar {}\n"),
         ]
     )
 
@@ -267,10 +267,10 @@ def test_revised_artifacts_record_iteration_2_and_do_not_pollute_iteration_1(
 ) -> None:
     # Arrange
     gen_plan = WritePlan(
-        writes=[WriteOp(path="code/Foo.java", content="class Foo {}\n")]
+        writes=[WriteOp(path="Foo.java", content="class Foo {}\n")]
     )
     rev_plan = WritePlan(
-        writes=[WriteOp(path="code/Foo.java", content="class Foo { /*rev*/ }\n")]
+        writes=[WriteOp(path="Foo.java", content="class Foo { /*rev*/ }\n")]
     )
 
     fake_profile = FakeProfile(

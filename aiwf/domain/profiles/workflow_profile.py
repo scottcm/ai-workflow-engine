@@ -126,14 +126,26 @@ class WorkflowProfile(ABC):
     def process_generation_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
         """
         Process generation response and determine status.
-        
+
         Args:
-            content: Raw planning response content
+            content: Raw generation response content
             session_dir: Path to the workflow session directory
             iteration: Current iteration number of the workflow session
-        
+
         Returns:
-            ProcessingResult with status and optional artifacts
+            ProcessingResult with status and optional WritePlan.
+
+        WritePlan Contract:
+            Paths in WritePlan.writes should be filename-only or relative paths
+            without iteration prefixes. The engine adds the canonical
+            `iteration-{N}/code/` prefix when writing artifacts.
+
+            Examples of valid paths:
+            - "Customer.java" (filename only - preferred)
+            - "entity/Customer.java" (relative with subdirectory)
+
+            Legacy paths with iteration prefixes (e.g., "iteration-1/code/Customer.java")
+            are normalized by the engine but should be avoided in new profiles.
         """
         ...
 
@@ -152,11 +164,17 @@ class WorkflowProfile(ABC):
     def process_revision_response(self, content: str, session_dir: Path, iteration: int) -> ProcessingResult:
         """
         Process revision response and determine status.
+
         Args:
             content: Raw revision response content
             session_dir: Path to the workflow session directory
             iteration: Current iteration number of the workflow session
+
         Returns:
-            ProcessingResult with status and optional artifacts
+            ProcessingResult with status and optional WritePlan.
+
+        WritePlan Contract:
+            Same as process_generation_response - paths should be filename-only
+            or relative paths. The engine adds `iteration-{N}/code/` prefix.
         """
         ...

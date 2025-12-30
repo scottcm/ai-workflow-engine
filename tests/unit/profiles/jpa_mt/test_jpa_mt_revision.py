@@ -80,9 +80,10 @@ class TestRevisionResponseProcessing:
         assert result.status == WorkflowStatus.SUCCESS
         assert result.write_plan is not None
         assert len(result.write_plan.writes) == 2
-        # Check paths include iteration number
+        # Profile returns filenames only - engine adds iteration prefix
         paths = [w.path for w in result.write_plan.writes]
-        assert any("iteration-2" in p for p in paths)
+        assert "Product.java" in paths
+        assert "ProductRepository.java" in paths
 
     def test_process_revision_response_empty_returns_error(self, jpa_mt_profile, tmp_path):
         """Empty revision response should return ERROR status."""

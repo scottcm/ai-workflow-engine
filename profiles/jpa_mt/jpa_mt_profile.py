@@ -213,7 +213,7 @@ class JpaMtProfile(WorkflowProfile):
         writes = []
         for filename, code in code_blocks.items():
             writes.append(WriteOp(
-                path=f"iteration-{iteration}/code/{filename}",
+                path=filename,
                 content=code,
             ))
 
@@ -293,7 +293,7 @@ class JpaMtProfile(WorkflowProfile):
         writes = []
         for filename, code in code_blocks.items():
             writes.append(WriteOp(
-                path=f"iteration-{iteration}/code/{filename}",
+                path=filename,
                 content=code,
             ))
 

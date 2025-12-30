@@ -52,7 +52,7 @@ def test_orchestrator_executes_write_plan_exactly_once_when_present(tmp_path: Pa
     iteration_dir.mkdir(parents=True, exist_ok=True)
     (iteration_dir / "generation-response.md").write_text("ignored", encoding="utf-8")
 
-    plan = WritePlan(writes=[WriteOp(path="code/A.java", content="class A {}\n")])
+    plan = WritePlan(writes=[WriteOp(path="A.java", content="class A {}\n")])
     stub = _StubProfile(result=ProcessingResult(status=WorkflowStatus.SUCCESS, write_plan=plan))
 
     monkeypatch.setattr(profile_factory_module.ProfileFactory, "create", staticmethod(lambda profile: stub))
