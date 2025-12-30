@@ -15,7 +15,7 @@
 | Phase | Status | Commit | Notes |
 |-------|--------|--------|-------|
 | 0. Cleanup | DONE | 1d4b23b | Deleted 42 test files, 441 remain |
-| 1. Models | DONE | e0efefe | New enums, ApprovalResult, stage field added |
+| 1. Models | DONE | e0ca08d | New enums, ApprovalResult, stage field added |
 | 2. State Machine | NOT STARTED | - | |
 | 3. Approval Providers | NOT STARTED | - | |
 | 4. Provider Factory | NOT STARTED | - | |
