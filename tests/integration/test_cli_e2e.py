@@ -547,3 +547,42 @@ class TestCliProfileDiscovery:
 
         assert result.exit_code == 0
         assert "JPA Multi-Tenant Profile" in result.output
+
+
+class TestFsAbilityCliFlag:
+    """Tests for --fs-ability flag on approve command."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    def test_fs_ability_flag_accepted(self, runner):
+        """--fs-ability flag is recognized by approve command."""
+        # This tests the CLI accepts the flag (will fail on missing session, that's OK)
+        result = runner.invoke(cli, ["approve", "nonexistent", "--fs-ability", "none"])
+        # Should not fail with "no such option" error
+        assert "no such option" not in result.output.lower()
+        assert "--fs-ability" not in result.output or "Error" not in result.output
+
+    def test_fs_ability_invalid_value_rejected(self, runner):
+        """Invalid fs_ability value is rejected with helpful error."""
+        result = runner.invoke(cli, ["approve", "test-session", "--fs-ability", "invalid-value"])
+        assert result.exit_code != 0
+        assert "invalid" in result.output.lower() or "choice" in result.output.lower()
+
+    def test_fs_ability_valid_values_accepted(self, runner):
+        """All valid fs_ability values are accepted."""
+        valid_values = ["local-write", "local-read", "write-only", "none"]
+        for value in valid_values:
+            result = runner.invoke(cli, ["approve", "test", "--fs-ability", value])
+            # Should not fail on the fs-ability value itself
+            assert f"'{value}' is not" not in result.output
+
+    def test_fs_ability_help_shows_choices(self, runner):
+        """Help text shows available fs_ability choices."""
+        result = runner.invoke(cli, ["approve", "--help"])
+        assert "--fs-ability" in result.output
+        assert "local-write" in result.output
+        assert "local-read" in result.output
+        assert "write-only" in result.output
+        assert "none" in result.output

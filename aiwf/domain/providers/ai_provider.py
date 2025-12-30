@@ -11,7 +11,8 @@ class AIProvider(ABC):
 
         Returns:
             dict with keys: name, description, requires_config, config_keys,
-                           default_connection_timeout, default_response_timeout
+                           default_connection_timeout, default_response_timeout,
+                           fs_ability, supports_system_prompt, supports_file_attachments
         """
         return {
             "name": "unknown",
@@ -20,6 +21,10 @@ class AIProvider(ABC):
             "config_keys": [],
             "default_connection_timeout": 10,  # seconds
             "default_response_timeout": 300,  # 5 minutes
+            # New capability fields
+            "fs_ability": "local-write",  # Default: assume best case
+            "supports_system_prompt": False,
+            "supports_file_attachments": False,
         }
 
     @abstractmethod

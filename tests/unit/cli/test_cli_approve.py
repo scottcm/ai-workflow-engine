@@ -3,6 +3,7 @@ import pytest
 from click.testing import CliRunner
 
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowState, WorkflowStatus, ExecutionMode, PhaseTransition
+from tests.conftest import make_fake_approve
 
 
 def _fake_state(session_id: str) -> WorkflowState:
@@ -31,13 +32,14 @@ def test_cli_approve_invokes_orchestrator(tmp_path: Path, monkeypatch: pytest.Mo
 
     calls = {}
 
-    def fake_approve(self, session_id: str, hash_prompts: bool = False):
+    def capture_approve(session_id, hash_prompts, fs_ability):
         calls["session_id"] = session_id
         calls["hash_prompts"] = hash_prompts
+        calls["fs_ability"] = fs_ability
         return _fake_state(session_id)
 
     import aiwf.application.workflow_orchestrator as orch_mod
-    monkeypatch.setattr(orch_mod.WorkflowOrchestrator, "approve", fake_approve, raising=True)
+    monkeypatch.setattr(orch_mod.WorkflowOrchestrator, "approve", make_fake_approve(side_effect=capture_approve), raising=True)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["approve", "abc123"])
@@ -55,13 +57,13 @@ def test_cli_approve_hash_prompts_flags_override_config(tmp_path: Path, monkeypa
 
     calls = {}
 
-    def fake_approve(self, session_id: str, hash_prompts: bool = False):
+    def capture_approve(session_id, hash_prompts, fs_ability):
         calls["session_id"] = session_id
         calls["hash_prompts"] = hash_prompts
         return _fake_state(session_id)
 
     import aiwf.application.workflow_orchestrator as orch_mod
-    monkeypatch.setattr(orch_mod.WorkflowOrchestrator, "approve", fake_approve, raising=True)
+    monkeypatch.setattr(orch_mod.WorkflowOrchestrator, "approve", make_fake_approve(side_effect=capture_approve), raising=True)
 
     # config says hash_prompts False, CLI overrides True
     import aiwf.application.config_loader as cfg_mod
@@ -86,11 +88,13 @@ def test_cli_approve_missing_inputs_exits_nonzero_and_prints_message(tmp_path: P
 
     from aiwf.interface.cli.cli import cli
 
-    def fake_approve(self, session_id: str, hash_prompts: bool = False):
-        raise FileNotFoundError("Cannot approve: missing prompt file 'iteration-1/generation-prompt.md' (expected at X)")
-
     import aiwf.application.workflow_orchestrator as orch_mod
-    monkeypatch.setattr(orch_mod.WorkflowOrchestrator, "approve", fake_approve, raising=True)
+    monkeypatch.setattr(
+        orch_mod.WorkflowOrchestrator,
+        "approve",
+        make_fake_approve(side_effect=FileNotFoundError("Cannot approve: missing prompt file 'iteration-1/generation-prompt.md' (expected at X)")),
+        raising=True,
+    )
 
     runner = CliRunner()
     result = runner.invoke(cli, ["approve", "missing"])

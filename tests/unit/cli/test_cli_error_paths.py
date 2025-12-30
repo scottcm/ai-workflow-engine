@@ -15,6 +15,7 @@ from click.testing import CliRunner
 
 from aiwf.interface.cli.cli import cli
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
+from tests.conftest import make_fake_approve
 
 
 def _state(*, phase, status, iteration, last_error=None, plan_approved=False, review_approved=False, artifacts=None, prompt_hashes=None, plan_hash=None, review_hash=None):
@@ -158,15 +159,13 @@ def test_approve_error_status_json_emits_error_output(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
     import aiwf.interface.cli.cli as cli_mod
 
-    def fake_approve(self, session_id: str, hash_prompts: bool = False):
-        return _state(
-            phase=WorkflowPhase.GENERATING,
-            status=WorkflowStatus.ERROR,
-            iteration=1,
-            last_error="Cannot approve: missing prompt file 'iteration-1/generation-prompt.md'",
-        )
-
-    monkeypatch.setattr(wo.WorkflowOrchestrator, "approve", fake_approve, raising=True)
+    state = _state(
+        phase=WorkflowPhase.GENERATING,
+        status=WorkflowStatus.ERROR,
+        iteration=1,
+        last_error="Cannot approve: missing prompt file 'iteration-1/generation-prompt.md'",
+    )
+    monkeypatch.setattr(wo.WorkflowOrchestrator, "approve", make_fake_approve(return_value=state), raising=True)
 
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -191,15 +190,13 @@ def test_approve_error_status_plain_exits_1(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
     import aiwf.interface.cli.cli as cli_mod
 
-    def fake_approve(self, session_id: str, hash_prompts: bool = False):
-        return _state(
-            phase=WorkflowPhase.GENERATING,
-            status=WorkflowStatus.ERROR,
-            iteration=1,
-            last_error="Cannot approve: provider connection failed",
-        )
-
-    monkeypatch.setattr(wo.WorkflowOrchestrator, "approve", fake_approve, raising=True)
+    state = _state(
+        phase=WorkflowPhase.GENERATING,
+        status=WorkflowStatus.ERROR,
+        iteration=1,
+        last_error="Cannot approve: provider connection failed",
+    )
+    monkeypatch.setattr(wo.WorkflowOrchestrator, "approve", make_fake_approve(return_value=state), raising=True)
 
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -215,10 +212,12 @@ def test_approve_exception_json_mode_emits_error_output(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
     import aiwf.interface.cli.cli as cli_mod
 
-    def fake_approve(self, session_id: str, hash_prompts: bool = False):
-        raise RuntimeError("Unexpected filesystem error")
-
-    monkeypatch.setattr(wo.WorkflowOrchestrator, "approve", fake_approve, raising=True)
+    monkeypatch.setattr(
+        wo.WorkflowOrchestrator,
+        "approve",
+        make_fake_approve(side_effect=RuntimeError("Unexpected filesystem error")),
+        raising=True,
+    )
 
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -241,10 +240,12 @@ def test_approve_exception_plain_text_exits_1_with_message(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
     import aiwf.interface.cli.cli as cli_mod
 
-    def fake_approve(self, session_id: str, hash_prompts: bool = False):
-        raise RuntimeError("Permission denied: cannot write to session directory")
-
-    monkeypatch.setattr(wo.WorkflowOrchestrator, "approve", fake_approve, raising=True)
+    monkeypatch.setattr(
+        wo.WorkflowOrchestrator,
+        "approve",
+        make_fake_approve(side_effect=RuntimeError("Permission denied: cannot write to session directory")),
+        raising=True,
+    )
 
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -261,16 +262,14 @@ def test_approve_success_json_emits_proper_output(monkeypatch):
     import aiwf.application.workflow_orchestrator as wo
     import aiwf.interface.cli.cli as cli_mod
 
-    def fake_approve(self, session_id: str, hash_prompts: bool = False):
-        return _state(
-            phase=WorkflowPhase.PLANNED,
-            status=WorkflowStatus.IN_PROGRESS,
-            iteration=1,
-            plan_approved=True,
-            plan_hash="abc123def456",
-        )
-
-    monkeypatch.setattr(wo.WorkflowOrchestrator, "approve", fake_approve, raising=True)
+    state = _state(
+        phase=WorkflowPhase.PLANNED,
+        status=WorkflowStatus.IN_PROGRESS,
+        iteration=1,
+        plan_approved=True,
+        plan_hash="abc123def456",
+    )
+    monkeypatch.setattr(wo.WorkflowOrchestrator, "approve", make_fake_approve(return_value=state), raising=True)
 
     runner = CliRunner()
     with runner.isolated_filesystem():

@@ -352,11 +352,17 @@ def status_cmd(ctx: click.Context, session_id: str) -> None:
 
 @cli.command("approve")
 @click.argument("session_id", type=str)
+@click.option(
+    "--fs-ability",
+    type=click.Choice(["local-write", "local-read", "write-only", "none"]),
+    default=None,
+    help="Override provider's filesystem capability for this invocation",
+)
 @click.option("--hash-prompts", is_flag=True, help="Hash prompts.")
 @click.option("--no-hash-prompts", is_flag=True, help="Do not hash prompts.")
 @click.option("--events", is_flag=True, help="Emit workflow events to stderr.")
 @click.pass_context
-def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash_prompts: bool, events: bool) -> None:
+def approve_cmd(ctx: click.Context, session_id: str, fs_ability: str | None, hash_prompts: bool, no_hash_prompts: bool, events: bool) -> None:
     try:
         from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
         from aiwf.domain.persistence.session_store import SessionStore
@@ -383,8 +389,8 @@ def approve_cmd(ctx: click.Context, session_id: str, hash_prompts: bool, no_hash
             event_emitter=event_emitter,
         )
 
-        # Call orchestrator.approve
-        state = orchestrator.approve(session_id, hash_prompts=effective_hash)
+        # Call orchestrator.approve with fs_ability
+        state = orchestrator.approve(session_id, hash_prompts=effective_hash, fs_ability=fs_ability)
         _emit_progress(state)
 
         # Collect hashes for output

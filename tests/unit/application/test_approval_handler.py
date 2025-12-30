@@ -185,3 +185,45 @@ class TestBuildApprovalChain:
             assert chain.can_handle(state) is False
             # The successor chain should be able to handle it
             assert chain._successor is not None
+
+
+class TestProviderCapabilities:
+    """Tests for ProviderCapabilities dataclass."""
+
+    def test_create_with_all_fields(self):
+        """Can create ProviderCapabilities with all fields."""
+        from aiwf.application.approval_handler import ProviderCapabilities
+
+        caps = ProviderCapabilities(
+            fs_ability="local-write",
+            supports_system_prompt=True,
+            supports_file_attachments=True,
+        )
+        assert caps.fs_ability == "local-write"
+        assert caps.supports_system_prompt is True
+        assert caps.supports_file_attachments is True
+
+    def test_create_with_minimal_capabilities(self):
+        """Can create ProviderCapabilities with minimal capabilities."""
+        from aiwf.application.approval_handler import ProviderCapabilities
+
+        caps = ProviderCapabilities(
+            fs_ability="none",
+            supports_system_prompt=False,
+            supports_file_attachments=False,
+        )
+        assert caps.fs_ability == "none"
+        assert caps.supports_system_prompt is False
+        assert caps.supports_file_attachments is False
+
+    def test_all_fs_ability_values_valid(self):
+        """All documented fs_ability values can be used."""
+        from aiwf.application.approval_handler import ProviderCapabilities
+
+        for fs_ability in ["local-write", "local-read", "write-only", "none"]:
+            caps = ProviderCapabilities(
+                fs_ability=fs_ability,
+                supports_system_prompt=False,
+                supports_file_attachments=False,
+            )
+            assert caps.fs_ability == fs_ability

@@ -112,3 +112,39 @@ def _register_test_providers():
     # Restore original registry state after test
     ProviderFactory._registry.clear()
     ProviderFactory._registry.update(original_registry)
+
+
+def make_fake_approve(return_value=None, side_effect=None):
+    """Factory for creating mock orchestrator.approve() methods.
+
+    This centralizes the signature so tests don't duplicate the full signature
+    when mocking WorkflowOrchestrator.approve().
+
+    Args:
+        return_value: Value to return from the mock (a WorkflowState or mock).
+        side_effect: Exception to raise, or callable to invoke.
+
+    Returns:
+        A mock function with the correct signature for orchestrator.approve().
+
+    Example:
+        def test_approve_success(monkeypatch):
+            fake_state = _build_state(...)
+            monkeypatch.setattr(
+                WorkflowOrchestrator, "approve",
+                make_fake_approve(return_value=fake_state),
+            )
+    """
+    def fake_approve(
+        self,
+        session_id: str,
+        hash_prompts: bool = False,
+        fs_ability: str | None = None,
+    ):
+        if side_effect is not None:
+            if callable(side_effect) and not isinstance(side_effect, type):
+                return side_effect(session_id, hash_prompts, fs_ability)
+            raise side_effect
+        return return_value
+
+    return fake_approve

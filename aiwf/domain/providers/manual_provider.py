@@ -16,6 +16,10 @@ class ManualProvider(AIProvider):
             "config_keys": [],
             "default_connection_timeout": None,  # No timeout for manual
             "default_response_timeout": None,
+            # ManualProvider: no inherent capability, user specifies via CLI/config
+            "fs_ability": None,  # Must be specified by user or use default
+            "supports_system_prompt": False,
+            "supports_file_attachments": False,
         }
 
     def validate(self) -> None:

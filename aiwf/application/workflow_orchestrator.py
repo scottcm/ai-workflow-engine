@@ -196,12 +196,31 @@ class WorkflowOrchestrator:
 
         return session_id
 
-    def approve(self, session_id: str, hash_prompts: bool = False) -> WorkflowState:
+    def approve(
+        self,
+        session_id: str,
+        hash_prompts: bool = False,
+        fs_ability: str | None = None,
+    ) -> WorkflowState:
+        """Approve the current phase and advance the workflow.
+
+        Args:
+            session_id: The session to approve
+            hash_prompts: Whether to hash prompt files
+            fs_ability: Resolved filesystem capability (stored for Phase 5 prompt assembly)
+
+        Returns:
+            Updated workflow state
+        """
         from aiwf.domain.events.event_types import WorkflowEventType
 
         state = self.session_store.load(session_id)
         state.messages = []  # Clear transient messages
         session_dir = self.sessions_root / session_id
+
+        # Store fs_ability for use in prompt assembly (Phase 5)
+        # Currently unused but wired through to ensure plumbing works
+        _ = fs_ability
 
         try:
             original_phase = state.phase

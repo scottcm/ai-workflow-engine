@@ -1,8 +1,9 @@
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from aiwf.domain.providers.capabilities import VALID_FS_ABILITIES
 
 
 class ConfigLoadError(Exception):
@@ -102,6 +103,77 @@ def _expand_default_provider(providers: dict[str, str]) -> dict[str, str]:
             expanded[role] = default_value
 
     return expanded
+
+
+def _validate_fs_ability(value: str, source: str) -> str:
+    """Validate fs_ability value.
+
+    Args:
+        value: The fs_ability value to validate
+        source: Description of where the value came from (for error message)
+
+    Returns:
+        The validated value
+
+    Raises:
+        ConfigLoadError: If value is not valid
+    """
+    if value not in VALID_FS_ABILITIES:
+        valid = ", ".join(sorted(VALID_FS_ABILITIES))
+        raise ConfigLoadError(
+            f"Invalid fs_ability '{value}' in {source}. Valid values: {valid}"
+        )
+    return value
+
+
+def resolve_fs_ability(
+    cli_override: str | None,
+    provider_key: str,
+    config: dict[str, Any],
+    provider_metadata: dict[str, Any],
+) -> str:
+    """Resolve fs_ability with precedence: CLI > config > provider > default.
+
+    Args:
+        cli_override: Value from --fs-ability CLI flag (already validated by Click)
+        provider_key: Provider name (e.g., "manual", "claude-code")
+        config: Loaded config dict
+        provider_metadata: Provider's get_metadata() result
+
+    Returns:
+        Resolved fs_ability value
+
+    Raises:
+        ConfigLoadError: If config contains invalid fs_ability value
+    """
+    # 1. CLI override (highest precedence) - already validated by Click
+    if cli_override:
+        return cli_override
+
+    # 2. Config: per-provider setting
+    providers_config = config.get("providers", {})
+    provider_config = providers_config.get(provider_key, {})
+    if isinstance(provider_config, dict) and "fs_ability" in provider_config:
+        return _validate_fs_ability(
+            provider_config["fs_ability"],
+            f"providers.{provider_key}.fs_ability",
+        )
+
+    # 3. Config: global default
+    defaults_config = providers_config.get("defaults", {})
+    if isinstance(defaults_config, dict) and "fs_ability" in defaults_config:
+        return _validate_fs_ability(
+            defaults_config["fs_ability"],
+            "providers.defaults.fs_ability",
+        )
+
+    # 4. Provider metadata
+    provider_fs_ability = provider_metadata.get("fs_ability")
+    if provider_fs_ability:
+        return provider_fs_ability
+
+    # 5. Engine default
+    return "local-write"
 
 
 def load_config(*, project_root: Path | None = None, user_home: Path | None = None) -> dict[str, Any]:
