@@ -549,6 +549,191 @@ class TestCliProfileDiscovery:
         assert "JPA Multi-Tenant Profile" in result.output
 
 
+class TestJpaMtProfileCommands:
+    """Tests for jpa-mt profile-specific CLI commands."""
+
+    def test_jpa_mt_init_creates_session(self, cli_env):
+        """aiwf jpa-mt init creates session with context."""
+        runner = make_runner()
+
+        result = runner.invoke(
+            cli,
+            [
+                "jpa-mt",
+                "init",
+                "--scope", "domain",
+                "--entity", "Customer",
+                "--table", "app.customers",
+                "--bounded-context", "crm",
+                "--schema-file", "schema.sql",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Session initialized:" in result.output
+        assert "Entity: Customer" in result.output
+        assert "Scope: domain" in result.output
+
+    def test_jpa_mt_init_json_output(self, cli_env):
+        """aiwf --json jpa-mt init returns proper JSON."""
+        runner = make_runner()
+
+        result = runner.invoke(
+            cli,
+            [
+                "--json",
+                "jpa-mt",
+                "init",
+                "--scope", "domain",
+                "--entity", "Customer",
+                "--table", "app.customers",
+                "--bounded-context", "crm",
+                "--schema-file", "schema.sql",
+            ],
+        )
+
+        assert result.exit_code == 0
+        output = json.loads(result.stdout)
+        assert output["exit_code"] == 0
+        assert "session_id" in output
+        assert len(output["session_id"]) > 0
+
+    def test_jpa_mt_init_help_shows_all_options(self, cli_env):
+        """aiwf jpa-mt init --help shows all profile-specific options."""
+        runner = make_runner()
+
+        result = runner.invoke(cli, ["jpa-mt", "init", "--help"])
+
+        assert result.exit_code == 0
+        assert "--scope" in result.output
+        assert "--entity" in result.output
+        assert "--table" in result.output
+        assert "--bounded-context" in result.output
+        assert "--schema-file" in result.output
+        assert "--dev" in result.output
+        assert "--task-id" in result.output
+        assert "--execution-mode" in result.output
+        assert "--planner" in result.output
+        assert "--generator" in result.output
+        assert "--reviewer" in result.output
+        assert "--revisor" in result.output
+
+    def test_jpa_mt_init_with_optional_args(self, cli_env):
+        """aiwf jpa-mt init accepts optional dev and task-id."""
+        runner = make_runner()
+
+        result = runner.invoke(
+            cli,
+            [
+                "--json",
+                "jpa-mt",
+                "init",
+                "--scope", "domain",
+                "--entity", "Invoice",
+                "--table", "app.invoices",
+                "--bounded-context", "billing",
+                "--schema-file", "schema.sql",
+                "--dev", "alice",
+                "--task-id", "PROJ-123",
+            ],
+        )
+
+        assert result.exit_code == 0
+        output = json.loads(result.stdout)
+        session_id = output["session_id"]
+
+        # Verify context contains optional fields
+        from aiwf.domain.persistence.session_store import SessionStore
+        store = SessionStore(sessions_root=cli_env["sessions_root"])
+        state = store.load(session_id)
+        assert state.context["dev"] == "alice"
+        assert state.context["task_id"] == "PROJ-123"
+
+    def test_jpa_mt_schema_info_shows_schema(self, cli_env):
+        """aiwf jpa-mt schema-info shows session schema information."""
+        runner = make_runner()
+
+        # First create a session
+        init_result = runner.invoke(
+            cli,
+            [
+                "--json",
+                "jpa-mt",
+                "init",
+                "--scope", "domain",
+                "--entity", "Product",
+                "--table", "app.products",
+                "--bounded-context", "catalog",
+                "--schema-file", "schema.sql",
+            ],
+        )
+        session_id = json.loads(init_result.stdout)["session_id"]
+
+        # Get schema info
+        result = runner.invoke(cli, ["jpa-mt", "schema-info", session_id])
+
+        assert result.exit_code == 0
+        assert "Schema file:" in result.output
+        assert "schema.sql" in result.output
+        assert "Table: app.products" in result.output
+        assert "Entity: Product" in result.output
+
+    def test_jpa_mt_schema_info_json_output(self, cli_env):
+        """aiwf --json jpa-mt schema-info returns proper JSON."""
+        runner = make_runner()
+
+        # First create a session
+        init_result = runner.invoke(
+            cli,
+            [
+                "--json",
+                "jpa-mt",
+                "init",
+                "--scope", "domain",
+                "--entity", "Product",
+                "--table", "app.products",
+                "--bounded-context", "catalog",
+                "--schema-file", "schema.sql",
+            ],
+        )
+        session_id = json.loads(init_result.stdout)["session_id"]
+
+        # Get schema info in JSON
+        result = runner.invoke(cli, ["--json", "jpa-mt", "schema-info", session_id])
+
+        assert result.exit_code == 0
+        output = json.loads(result.stdout)
+        assert output["exit_code"] == 0
+        assert output["session_id"] == session_id
+        assert "schema.sql" in output["schema_file"]
+        assert output["table"] == "app.products"
+        assert output["entity"] == "Product"
+
+    def test_jpa_mt_layers_lists_scopes(self, cli_env):
+        """aiwf jpa-mt layers lists available scopes."""
+        runner = make_runner()
+
+        result = runner.invoke(cli, ["jpa-mt", "layers"])
+
+        assert result.exit_code == 0
+        assert "Available scopes:" in result.output
+        assert "domain" in result.output
+        assert "vertical" in result.output
+
+    def test_jpa_mt_layers_json_output(self, cli_env):
+        """aiwf --json jpa-mt layers returns proper JSON."""
+        runner = make_runner()
+
+        result = runner.invoke(cli, ["--json", "jpa-mt", "layers"])
+
+        assert result.exit_code == 0
+        output = json.loads(result.stdout)
+        assert output["exit_code"] == 0
+        assert "layers" in output
+        assert "domain" in output["layers"]
+        assert "vertical" in output["layers"]
+
+
 class TestFsAbilityCliFlag:
     """Tests for --fs-ability flag on approve command."""
 

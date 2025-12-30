@@ -673,6 +673,45 @@ dev: null
 
 ---
 
+## Execution Mode vs Providers (Orthogonal Concerns)
+
+The engine separates two independent concerns that are often conflated:
+
+| Concern | Question | Options |
+|---------|----------|---------|
+| **Execution Mode** | Who drives the workflow? | `INTERACTIVE`, `AUTOMATED` |
+| **Providers** | Who produces responses? | `manual`, `claude`, `gemini`, etc. |
+
+### Execution Mode (Control Flow)
+
+- **INTERACTIVE**: User must issue `step` and `approve` commands to advance the workflow state machine
+- **AUTOMATED**: Engine advances automatically without user commands (future: CI/CD pipelines)
+
+### Providers (Data Flow)
+
+- **manual**: No programmatic response; expects response file written externally (by user copy/paste or AI agent)
+- **claude/gemini/etc.**: API call produces the response automatically
+
+### Why They Are Orthogonal
+
+These concerns are independent and can be combined in any configuration:
+
+| Mode | Providers | Description |
+|------|-----------|-------------|
+| INTERACTIVE + all manual | User copies prompts to AI chat, pastes responses, runs step/approve | Budget-friendly, full control |
+| INTERACTIVE + claude | User controls *when* (step/approve), Claude produces *what* | Human-paced with API automation |
+| AUTOMATED + all non-manual | Full automation end-to-end | CI/CD pipelines, batch processing |
+| INTERACTIVE + mixed | Some phases automated, others manual | Automate review, manual generation |
+
+### Key Insight
+
+- "Manual provider" ≠ "Interactive mode" (common source of confusion)
+- The CLI flag `--execution-mode interactive` controls who advances the state machine
+- Provider configuration controls who produces responses per phase
+- These can be configured independently for maximum flexibility
+
+---
+
 ## Provider Extension Model
 
 Providers are string-in, string-out. The engine owns all file I/O: it writes prompt files, reads prompt content, calls the provider, and writes response files.

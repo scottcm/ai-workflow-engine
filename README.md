@@ -282,6 +282,39 @@ This ensures AI only gets relevant standards for the code being generated.
 
 ---
 
+### 5. Execution Mode vs Providers (Orthogonal Concerns)
+
+The workflow engine separates two independent concerns:
+
+| Concern | Question Answered | Options |
+|---------|-------------------|---------|
+| **Execution Mode** | Who drives the workflow? | `INTERACTIVE` (user), `AUTOMATED` (engine) |
+| **Providers** | Who produces responses? | `manual`, `claude`, `gemini`, etc. |
+
+**Execution Mode (Control Flow):**
+- `INTERACTIVE`: User must issue `step` and `approve` commands to advance the workflow
+- `AUTOMATED`: Engine advances automatically without user commands
+
+**Providers (Data Flow):**
+- `manual`: No programmatic response; expects response file written externally (by user or AI agent)
+- `claude`/`gemini`/etc.: API call produces the response automatically
+
+**Key Insight:** These are orthogonal. You can mix and match:
+
+| Mode | Providers | Use Case |
+|------|-----------|----------|
+| INTERACTIVE + all manual | User copies prompts to AI chat, pastes responses, runs step/approve | Budget-friendly, full control |
+| INTERACTIVE + claude | User controls *when* to advance, Claude produces *what* | Human-paced with API automation |
+| AUTOMATED + all non-manual | Full automation end-to-end | CI/CD pipelines, batch processing |
+| INTERACTIVE + mixed | Some phases automated, others manual | Automate review, manual generation |
+
+**Why this matters:**
+- "Manual provider" ≠ "Interactive mode" (common confusion)
+- You can use AI APIs while still maintaining step-by-step control
+- You can run fully automated workflows that still require human response creation
+
+---
+
 ### Putting It Together
 
 **Actual workflow sequence** (showing when `step` and `approve` are used):
@@ -476,7 +509,7 @@ This project showcases enterprise-grade software engineering practices appropria
 ```
 ┌─────────────────────────────────────────────┐
 │  Interface Layer (CLI)                      │
-│  - Click-based commands                     │
+│  - Click-based commands                     ���
 │  - JSON and plain text output               │
 ├─────────────────────────────────────────────┤
 │  Application Layer (Orchestration)          │

@@ -106,6 +106,14 @@ Providers enable automated workflow execution. Key points:
 
 See [docs/provider-implementation-guide.md](docs/provider-implementation-guide.md) for implementation details.
 
+### Execution Mode vs Providers
+
+Two orthogonal concerns:
+- **Execution Mode** (control flow): `INTERACTIVE` = user issues step/approve, `AUTOMATED` = engine auto-advances
+- **Providers** (data flow): `manual` = external response file, `claude`/`gemini` = API produces response
+
+Key insight: "Manual provider" ≠ "Interactive mode". Example: `INTERACTIVE + claude` means user controls *when* to advance, Claude produces *what*.
+
 ### Data Flow
 
 1. Engine calls `profile.generate_*_prompt(context)` → string
