@@ -18,16 +18,13 @@ You are reviewing code — **not generating or modifying it**.
 
 ---
 
-## 2. Required Attachments
+## 2. Required Inputs
 
-- Approved Plan: @.aiwf/sessions/{{SESSION_ID}}/plan.md
-- Standards Bundle: @.aiwf/sessions/{{SESSION_ID}}/standards-bundle.md
+This prompt includes:
+- The approved planning document (provided in sections above)
+- The standards bundle (provided in sections above)
 - Schema DDL: @{{SCHEMA_FILE}}
-- Generated Code: @.aiwf/sessions/{{SESSION_ID}}/iteration-{{ITERATION}}/code/
-
-### Code Files to Review
-
-{{CODE_FILES}}
+- Generated code files (provided in sections above)
 
 If any required input is missing, emit: `VALIDATION FAILED: <reason>` and STOP.
 

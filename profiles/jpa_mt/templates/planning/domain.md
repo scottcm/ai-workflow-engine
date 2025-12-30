@@ -143,9 +143,3 @@ Before generating, verify:
 4. No assumptions beyond schema + standards + fallbacks
 
 If validation fails, emit single-line error message and no planning document.
-
----
-
-## Output Destination
-
-Save your complete planning document as `planning-response.md` to same location as `planning-prompt.md`.

@@ -46,9 +46,3 @@ Reviewing **domain layer** artifacts only:
 Answer: Are all planned artifacts present, implementing the plan exactly, following standards?
 
 Missing artifacts or plan deviations are CRITICAL.
-
----
-
-## Output Destination
-
-Save your complete review as `review-response.md` to same location as `review-prompt.md`.

@@ -33,9 +33,3 @@ Before emitting bundle, verify:
 - No extra fields or methods introduced
 
 If validation fails, emit single-line error message and no file markers.
-
----
-
-## Output Destination
-
-Save your complete code bundle as `revision-response.md` to same location as `revision-prompt.md`.

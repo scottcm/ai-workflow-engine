@@ -15,9 +15,10 @@ You are planning implementation details — **not generating code**.
 
 ---
 
-## 2. Required Attachments
+## 2. Required Inputs
 
-- Standards Bundle: @.aiwf/sessions/{{SESSION_ID}}/standards-bundle.md
+This prompt includes:
+- The standards bundle (provided in sections above)
 - Schema DDL: @{{SCHEMA_FILE}}
 
 If any required input is missing, follow the Validation Contract in the shared base template and STOP.

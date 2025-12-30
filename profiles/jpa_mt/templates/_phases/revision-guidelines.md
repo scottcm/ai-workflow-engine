@@ -15,17 +15,14 @@ You are revising code — **not redesigning or improving it**.
 
 ---
 
-## 2. Required Attachments
+## 2. Required Inputs
 
-- Approved Plan: @.aiwf/sessions/{{SESSION_ID}}/plan.md
-- Standards Bundle: @.aiwf/sessions/{{SESSION_ID}}/standards-bundle.md
+This prompt includes:
+- The approved planning document (provided in sections above)
+- The standards bundle (provided in sections above)
 - Schema DDL: @{{SCHEMA_FILE}}
-- Previous Code: @.aiwf/sessions/{{SESSION_ID}}/iteration-{{PREVIOUS_ITERATION}}/code/
-- Review Feedback: @.aiwf/sessions/{{SESSION_ID}}/iteration-{{PREVIOUS_ITERATION}}/review-response.md
-
-### Code Files to Revise
-
-{{CODE_FILES}}
+- Previous code files (provided in sections above)
+- Review feedback (provided in sections above)
 
 If any required input is missing, emit: `VALIDATION FAILED: <reason>` and STOP.
 

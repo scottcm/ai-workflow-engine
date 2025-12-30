@@ -22,10 +22,11 @@ If the entity references other entities not in this task:
 
 ---
 
-## Required Attachments
+## Required Inputs
 
-- Approved Plan: @.aiwf/sessions/{{SESSION_ID}}/plan.md
-- Standards Bundle: @.aiwf/sessions/{{SESSION_ID}}/standards-bundle.md
+This prompt includes:
+- The approved planning document (provided in sections above)
+- The standards bundle (provided in sections above)
 - Schema DDL: @{{SCHEMA_FILE}}
 
 If any required input is missing or inconsistent, emit validation failure per generation guidelines.

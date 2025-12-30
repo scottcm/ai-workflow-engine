@@ -40,9 +40,3 @@ Before emitting bundle, verify:
 - No extra fields or methods introduced
 
 If validation fails, emit single-line error message and no file markers.
-
----
-
-## Output Destination
-
-Save your complete code bundle as `generation-response.md` to same location as `generation-prompt.md`.
