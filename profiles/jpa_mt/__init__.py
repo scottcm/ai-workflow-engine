@@ -1,9 +1,21 @@
 """JPA Multi-Tenant Profile package."""
 
-from aiwf.domain.profiles.profile_factory import ProfileFactory
+import click
+
 from .jpa_mt_profile import JpaMtProfile
 
-# Register profile with factory
-ProfileFactory.register("jpa-mt", JpaMtProfile)
+__all__ = ["JpaMtProfile", "register"]
 
-__all__ = ["JpaMtProfile"]
+
+def register(cli_group: click.Group) -> type:
+    """Register jpa-mt commands and return profile class.
+
+    Full implementation in Phase 4. This stub allows discovery to work.
+    """
+    @cli_group.command("info")
+    def info():
+        """Show jpa-mt profile information."""
+        click.echo("JPA Multi-Tenant Profile")
+        click.echo("Use 'aiwf jpa-mt init' to start a new session.")
+
+    return JpaMtProfile

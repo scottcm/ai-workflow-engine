@@ -32,3 +32,6 @@ dev = [
 
 [tool.poetry.scripts]
 aiwf = "aiwf.interface.cli.cli:cli"
+
+[project.entry-points."aiwf.profiles"]
+jpa-mt = "profiles.jpa_mt:register"

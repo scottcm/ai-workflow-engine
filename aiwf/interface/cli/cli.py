@@ -1,8 +1,11 @@
 import click
+import logging
 from pathlib import Path
 from pydantic import BaseModel
 
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
+
+logger = logging.getLogger(__name__)
 from aiwf.interface.cli.output_models import (
     ApproveOutput,
     InitOutput,
@@ -939,3 +942,16 @@ def validate_cmd(
             )
             raise click.exceptions.Exit(1)
         raise click.ClickException(str(e)) from e
+
+
+# Discover and register profiles at import time
+def _init_profiles():
+    from aiwf.interface.cli.profile_discovery import discover_and_register_profiles
+    try:
+        registered = discover_and_register_profiles(cli)
+        logger.debug(f"Registered profiles: {registered}")
+    except Exception as e:
+        logger.warning(f"Error during profile discovery: {e}")
+
+
+_init_profiles()

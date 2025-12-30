@@ -93,3 +93,39 @@ class ProfileFactory:
         if profile_key not in cls._registry:
             return None
         return cls._registry[profile_key].get_metadata()
+
+    @classmethod
+    def get(cls, name: str) -> type[WorkflowProfile] | None:
+        """Get a registered profile class by name.
+
+        Args:
+            name: Profile identifier
+
+        Returns:
+            Profile class if registered, None otherwise
+        """
+        return cls._registry.get(name)
+
+    @classmethod
+    def clear(cls) -> None:
+        """Clear registry (for testing)."""
+        cls._registry.clear()
+
+    @classmethod
+    def snapshot(cls) -> dict[str, type[WorkflowProfile]]:
+        """Capture current registry state for later restoration.
+
+        Returns:
+            Copy of the current registry dict.
+        """
+        return dict(cls._registry)
+
+    @classmethod
+    def restore(cls, snapshot: dict[str, type[WorkflowProfile]]) -> None:
+        """Restore registry to a previously captured state.
+
+        Args:
+            snapshot: Registry state from a previous snapshot() call.
+        """
+        cls._registry.clear()
+        cls._registry.update(snapshot)

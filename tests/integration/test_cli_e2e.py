@@ -491,3 +491,59 @@ Code follows all standards.
         status_output = json.loads(status_result.stdout)
         assert status_output["phase"] == "COMPLETE"
         assert status_output["status"] == "SUCCESS"
+
+
+class TestCliProfileDiscovery:
+    """Tests for profile discovery via CLI."""
+
+    def test_help_shows_profile_command_groups(self, cli_env):
+        """aiwf --help shows profile command groups."""
+        runner = make_runner()
+
+        result = runner.invoke(cli, ["--help"])
+
+        assert result.exit_code == 0
+        # jpa-mt profile should be discovered via entry point
+        assert "jpa-mt" in result.output
+
+    def test_profiles_lists_discovered_profiles(self, cli_env):
+        """aiwf profiles lists all discovered profiles."""
+        runner = make_runner()
+
+        result = runner.invoke(cli, ["profiles"])
+
+        assert result.exit_code == 0
+        assert "jpa-mt" in result.output
+
+    def test_profiles_json_output(self, cli_env):
+        """aiwf profiles --json returns profile list."""
+        runner = make_runner()
+
+        result = runner.invoke(cli, ["--json", "profiles"])
+
+        assert result.exit_code == 0
+        output = json.loads(result.stdout)
+        assert output["schema_version"] == 1
+        assert output["command"] == "profiles"
+        assert "profiles" in output
+        profile_names = [p["name"] for p in output["profiles"]]
+        assert "jpa-mt" in profile_names
+
+    def test_profile_subcommand_help(self, cli_env):
+        """aiwf jpa-mt --help shows profile commands."""
+        runner = make_runner()
+
+        result = runner.invoke(cli, ["jpa-mt", "--help"])
+
+        assert result.exit_code == 0
+        # The stub info command should be visible
+        assert "info" in result.output
+
+    def test_profile_info_command(self, cli_env):
+        """aiwf jpa-mt info runs the stub command."""
+        runner = make_runner()
+
+        result = runner.invoke(cli, ["jpa-mt", "info"])
+
+        assert result.exit_code == 0
+        assert "JPA Multi-Tenant Profile" in result.output

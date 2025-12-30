@@ -31,6 +31,7 @@ def _defaults() -> dict[str, Any]:
         "hash_prompts": False,
         "dev": None,
         "default_standards_provider": "scoped-layer-fs",
+        "profiles_dir": None,  # Default: ~/.aiwf/profiles/
     }
 
 
