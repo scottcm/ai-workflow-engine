@@ -3,6 +3,11 @@ from pathlib import Path
 from typing import Any
 
 from aiwf.domain.models.processing_result import ProcessingResult
+from aiwf.domain.models.prompt_sections import PromptSections
+
+# Type alias for prompt generation return type
+# Profiles can return either a raw string (pass-through) or structured sections
+PromptResult = str | PromptSections
 
 
 class WorkflowProfile(ABC):
@@ -67,20 +72,20 @@ class WorkflowProfile(ABC):
         return {}
 
     @abstractmethod
-    def generate_planning_prompt(self, context: dict) -> str:
+    def generate_planning_prompt(self, context: dict) -> PromptResult:
         ...
 
     @abstractmethod
-    def generate_generation_prompt(self, context: dict) -> str:
+    def generate_generation_prompt(self, context: dict) -> PromptResult:
         """
         Generate code generation prompt content.
-        
+
         Args:
             context: Template context with workflow metadata
-        
+
         Returns:
-            Prompt content as string
-            
+            Prompt content as string or PromptSections
+
         Raises:
             KeyError: If required context keys missing
         """
@@ -88,24 +93,28 @@ class WorkflowProfile(ABC):
 
 
     @abstractmethod
-    def generate_review_prompt(self, context: dict) -> str:
+    def generate_review_prompt(self, context: dict) -> PromptResult:
         """
         Generate code review prompt content.
+
         Args:
             context: Template context with workflow metadata
+
         Returns:
-            Prompt content as string
+            Prompt content as string or PromptSections
         """
         ...
 
     @abstractmethod
-    def generate_revision_prompt(self, context: dict) -> str:
+    def generate_revision_prompt(self, context: dict) -> PromptResult:
         """
         Generate code revision prompt content.
+
         Args:
             context: Template context with workflow metadata
+
         Returns:
-            Prompt content as string
+            Prompt content as string or PromptSections
         """
         ...
 

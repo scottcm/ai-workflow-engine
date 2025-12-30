@@ -1,7 +1,7 @@
 import inspect
 import pytest
 from pathlib import Path
-from aiwf.domain.profiles.workflow_profile import WorkflowProfile
+from aiwf.domain.profiles.workflow_profile import WorkflowProfile, PromptResult
 from aiwf.domain.models.processing_result import ProcessingResult
 
 def test_workflow_profile_is_abstract():
@@ -28,30 +28,30 @@ def test_workflow_profile_has_required_methods():
 
 def test_method_signatures():
     """Verify method signatures match requirements."""
-    
-    # generate_planning_prompt(self, context: dict) -> str
+
+    # generate_planning_prompt(self, context: dict) -> PromptResult
     sig = inspect.signature(WorkflowProfile.generate_planning_prompt)
     assert list(sig.parameters.keys()) == ["self", "context"]
     assert sig.parameters["context"].annotation == dict
-    assert sig.return_annotation == str
+    assert sig.return_annotation == PromptResult
 
-    # generate_generation_prompt(self, context: dict) -> str
+    # generate_generation_prompt(self, context: dict) -> PromptResult
     sig = inspect.signature(WorkflowProfile.generate_generation_prompt)
     assert list(sig.parameters.keys()) == ["self", "context"]
     assert sig.parameters["context"].annotation == dict
-    assert sig.return_annotation == str
+    assert sig.return_annotation == PromptResult
 
-    # generate_review_prompt(self, context: dict) -> str
+    # generate_review_prompt(self, context: dict) -> PromptResult
     sig = inspect.signature(WorkflowProfile.generate_review_prompt)
     assert list(sig.parameters.keys()) == ["self", "context"]
     assert sig.parameters["context"].annotation == dict
-    assert sig.return_annotation == str
+    assert sig.return_annotation == PromptResult
 
-    # generate_revision_prompt(self, context: dict) -> str
+    # generate_revision_prompt(self, context: dict) -> PromptResult
     sig = inspect.signature(WorkflowProfile.generate_revision_prompt)
     assert list(sig.parameters.keys()) == ["self", "context"]
     assert sig.parameters["context"].annotation == dict
-    assert sig.return_annotation == str
+    assert sig.return_annotation == PromptResult
 
     # process_planning_response(self, content: str) -> ProcessingResult
     sig = inspect.signature(WorkflowProfile.process_planning_response)
@@ -80,3 +80,26 @@ def test_method_signatures():
     assert sig.parameters["session_dir"].annotation == Path
     assert sig.parameters["iteration"].annotation == int
     assert sig.return_annotation == ProcessingResult
+
+
+def test_prompt_result_type_alias():
+    """Verify PromptResult is a union of str and PromptSections."""
+    import types
+    from aiwf.domain.models.prompt_sections import PromptSections
+
+    # PromptResult should be a UnionType (str | PromptSections)
+    assert isinstance(PromptResult, types.UnionType)
+    assert str in PromptResult.__args__
+    assert PromptSections in PromptResult.__args__
+
+
+def test_prompt_result_accepts_string():
+    """Verify str is valid for PromptResult (backward compatibility)."""
+    from aiwf.domain.models.prompt_sections import PromptSections
+
+    # Both str and PromptSections should be valid PromptResult values
+    result_str: PromptResult = "raw prompt string"
+    result_sections: PromptResult = PromptSections(task="test task")
+
+    assert isinstance(result_str, str)
+    assert isinstance(result_sections, PromptSections)
