@@ -174,6 +174,19 @@ Prompt/response files:
 - `review-prompt.md`, `review-response.md`
 - `revision-prompt.md`, `revision-response.md`
 
+### Commit Messages
+
+Format:
+```
+type(scope): summary line
+
+- Single-level bullets only (no sub-bullets)
+- Each bullet is single-line text
+- No section headers unless commit is complex
+```
+
+Keep it simple. No Claude co-author citations.
+
 ## ADRs
 
 Architecture decisions in `docs/adr/`:
