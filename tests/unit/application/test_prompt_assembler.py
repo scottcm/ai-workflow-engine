@@ -475,3 +475,122 @@ class TestLargeArtifacts:
         )
 
         assert "Rule explanation" in result["user_prompt"]
+
+
+class TestPromptSectionsMode:
+    """Tests for PromptSections (structured) mode."""
+
+    def test_detects_prompt_sections_and_uses_builder(self, session_dir, generating_state):
+        """PromptSections input uses PromptBuilder path."""
+        from aiwf.domain.models.prompt_sections import PromptSections
+
+        sections = PromptSections(
+            task="Generate JPA entities",
+            role="Senior Java developer",
+        )
+        assembler = PromptAssembler(session_dir, generating_state)
+        result = assembler.assemble(
+            profile_prompt=sections,
+            fs_ability="local-write",
+        )
+
+        # Should have structured sections
+        assert "## Task" in result["user_prompt"]
+        assert "Generate JPA entities" in result["user_prompt"]
+        assert "## Role" in result["user_prompt"]
+        assert "Senior Java developer" in result["user_prompt"]
+
+    def test_detects_string_and_uses_passthrough(self, session_dir, generating_state):
+        """String input uses pass-through path."""
+        assembler = PromptAssembler(session_dir, generating_state)
+        result = assembler.assemble(
+            profile_prompt="Raw prompt string",
+            fs_ability="local-write",
+        )
+
+        # Should have raw string, not structured sections
+        assert "Raw prompt string" in result["user_prompt"]
+        assert "## Task" not in result["user_prompt"]
+
+    def test_sections_mode_merges_session_artifacts(self, session_dir, generating_state):
+        """PromptSections mode merges session artifacts into required_inputs."""
+        from aiwf.domain.models.prompt_sections import PromptSections
+
+        (session_dir / "standards-bundle.md").write_text("# Standards")
+        (session_dir / "plan.md").write_text("# Plan")
+
+        sections = PromptSections(
+            task="Generate code",
+            required_inputs={"schema.sql": "Database schema"},
+        )
+        assembler = PromptAssembler(session_dir, generating_state)
+        result = assembler.assemble(
+            profile_prompt=sections,
+            fs_ability="local-write",
+        )
+
+        # Should have both profile inputs and session artifacts
+        assert "schema.sql" in result["user_prompt"]
+        assert "standards-bundle.md" in result["user_prompt"]
+        assert "plan.md" in result["user_prompt"]
+
+    def test_sections_mode_includes_output_instructions(self, session_dir, generating_state):
+        """PromptSections mode includes output instructions."""
+        from aiwf.domain.models.prompt_sections import PromptSections
+
+        sections = PromptSections(task="Generate code")
+        assembler = PromptAssembler(session_dir, generating_state)
+        result = assembler.assemble(
+            profile_prompt=sections,
+            fs_ability="local-write",
+            response_relpath="iteration-1/generation-response.md",
+        )
+
+        assert "## Output" in result["user_prompt"]
+        assert "Save your complete response" in result["user_prompt"]
+
+    def test_sections_mode_system_prompt_separation(self, session_dir, generating_state):
+        """PromptSections mode separates role/constraints to system prompt."""
+        from aiwf.domain.models.prompt_sections import PromptSections
+
+        sections = PromptSections(
+            role="Developer",
+            task="Build feature",
+            constraints="Follow standards",
+        )
+        assembler = PromptAssembler(session_dir, generating_state)
+        result = assembler.assemble(
+            profile_prompt=sections,
+            fs_ability="local-write",
+            response_relpath="iteration-1/generation-response.md",
+            supports_system_prompt=True,
+        )
+
+        # Role and constraints should be in system prompt
+        assert "## Role" in result["system_prompt"]
+        assert "Developer" in result["system_prompt"]
+        assert "## Constraints" in result["system_prompt"]
+        assert "Follow standards" in result["system_prompt"]
+        # Output instructions also in system prompt
+        assert "## Output" in result["system_prompt"]
+        # Task should be in user prompt
+        assert "## Task" in result["user_prompt"]
+        assert "Build feature" in result["user_prompt"]
+
+    def test_sections_mode_expected_outputs_rendered(self, session_dir, generating_state):
+        """PromptSections mode renders expected_outputs."""
+        from aiwf.domain.models.prompt_sections import PromptSections
+
+        sections = PromptSections(
+            task="Generate entities",
+            expected_outputs=["entity/Customer.java", "entity/Order.java"],
+        )
+        assembler = PromptAssembler(session_dir, generating_state)
+        result = assembler.assemble(
+            profile_prompt=sections,
+            fs_ability="local-write",
+        )
+
+        assert "## Expected Outputs" in result["user_prompt"]
+        assert "entity/Customer.java" in result["user_prompt"]
+        assert "entity/Order.java" in result["user_prompt"]

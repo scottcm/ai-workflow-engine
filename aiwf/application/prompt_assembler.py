@@ -2,11 +2,19 @@
 
 from pathlib import Path
 
+from aiwf.application.prompt_builder import PromptBuilder
+from aiwf.domain.models.prompt_sections import PromptSections
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowState
+from aiwf.domain.profiles.workflow_profile import PromptResult
 
 
 class PromptAssembler:
-    """Assembles final prompts from session artifacts, profile content, and engine instructions."""
+    """Assembles final prompts from session artifacts, profile content, and engine instructions.
+
+    Supports two modes (Strategy pattern):
+    - Pass-through: profile returns string, engine appends artifacts and output instructions
+    - Structured: profile returns PromptSections, engine uses PromptBuilder
+    """
 
     def __init__(self, session_dir: Path, state: WorkflowState):
         self.session_dir = session_dir
@@ -14,7 +22,7 @@ class PromptAssembler:
 
     def assemble(
         self,
-        profile_prompt: str,
+        profile_prompt: PromptResult,
         fs_ability: str,
         response_relpath: str | None = None,
         supports_system_prompt: bool = False,
@@ -23,7 +31,7 @@ class PromptAssembler:
         """Assemble the final prompt.
 
         Args:
-            profile_prompt: The prompt content from the profile
+            profile_prompt: The prompt content from the profile (str or PromptSections)
             fs_ability: Provider's filesystem capability
             response_relpath: Path where response should be saved (e.g., "iteration-1/generation-response.md")
             supports_system_prompt: Whether provider supports system prompts
@@ -34,6 +42,67 @@ class PromptAssembler:
             - "user_prompt": The main prompt content
             - "system_prompt": System instructions (if supports_system_prompt)
         """
+        # Strategy: route based on profile_prompt type
+        if isinstance(profile_prompt, PromptSections):
+            return self._assemble_from_sections(
+                profile_prompt,
+                fs_ability,
+                response_relpath,
+                supports_system_prompt,
+                supports_file_attachments,
+            )
+        else:
+            return self._assemble_from_string(
+                profile_prompt,
+                fs_ability,
+                response_relpath,
+                supports_system_prompt,
+                supports_file_attachments,
+            )
+
+    def _assemble_from_sections(
+        self,
+        sections: PromptSections,
+        fs_ability: str,
+        response_relpath: str | None,
+        supports_system_prompt: bool,
+        supports_file_attachments: bool,
+    ) -> dict[str, str]:
+        """Assemble prompt from structured PromptSections using PromptBuilder."""
+        # Build session artifacts as dict for merging with required_inputs
+        session_artifacts = self._build_session_artifacts_dict(supports_file_attachments)
+
+        # Use PromptBuilder
+        builder = PromptBuilder.from_sections(sections)
+        builder.with_session_artifacts(session_artifacts)
+
+        # Build the prompt
+        result = builder.build(supports_system_prompt=supports_system_prompt)
+
+        # Add output instructions
+        output_instructions = self._build_output_instructions(fs_ability, response_relpath)
+        if output_instructions:
+            if supports_system_prompt:
+                # Append to system prompt
+                if result["system_prompt"]:
+                    result["system_prompt"] = result["system_prompt"] + "\n\n" + output_instructions
+                else:
+                    result["system_prompt"] = output_instructions
+            else:
+                # Append to user prompt
+                result["user_prompt"] = result["user_prompt"] + "\n\n" + output_instructions
+
+        return result
+
+    def _assemble_from_string(
+        self,
+        profile_prompt: str,
+        fs_ability: str,
+        response_relpath: str | None,
+        supports_system_prompt: bool,
+        supports_file_attachments: bool,
+    ) -> dict[str, str]:
+        """Assemble prompt from raw string (pass-through mode)."""
         # 1. Build session artifacts section
         artifacts = self._build_session_artifacts(supports_file_attachments)
 
@@ -65,6 +134,28 @@ class PromptAssembler:
                 "system_prompt": "",
                 "user_prompt": user_prompt,
             }
+
+    def _build_session_artifacts_dict(self, use_file_refs: bool) -> dict[str, str]:
+        """Build session artifacts as a dict for merging with PromptSections.required_inputs."""
+        artifacts = {}
+
+        # Standards bundle (for all phases except INITIALIZED)
+        if self.state.phase != WorkflowPhase.INITIALIZED:
+            standards_content = self._get_artifact_content("standards-bundle.md", use_file_refs)
+            if standards_content:
+                artifacts["standards-bundle.md"] = f"Coding standards\n\n{standards_content}"
+
+        # Plan (for generation, review, revision phases)
+        if self.state.phase in (
+            WorkflowPhase.GENERATING,
+            WorkflowPhase.REVIEWING,
+            WorkflowPhase.REVISING,
+        ):
+            plan_content = self._get_artifact_content("plan.md", use_file_refs)
+            if plan_content:
+                artifacts["plan.md"] = f"Approved implementation plan\n\n{plan_content}"
+
+        return artifacts
 
     def _build_session_artifacts(self, use_file_refs: bool) -> str:
         """Build the session artifacts section."""
