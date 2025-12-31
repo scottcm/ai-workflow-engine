@@ -17,7 +17,7 @@ AI-generated reviews are produced as immutable artifacts for human evaluation. T
 
 ## Decision Drivers
 
-- Enable workflow to progress based on review outcome (PASS → COMPLETE, FAIL → REVISING)
+- Enable workflow to progress based on review outcome (PASS → COMPLETE, FAIL → REVISE)
 - Reduce manual friction during review triage
 - Preserve immutability and human decision authority
 - Maintain consistency with existing parseable AI output patterns
@@ -31,7 +31,7 @@ The `jpa-mt` profile **emits a structured metadata block** as part of AI-generat
 
 The engine **parses this metadata** to:
 1. Display a summary line in the CLI for human triage
-2. Determine workflow progression (PASS → COMPLETE, FAIL → REVISING)
+2. Determine workflow progression (PASS → COMPLETE, FAIL → REVISE)
 
 ---
 
@@ -60,10 +60,10 @@ The profile's `process_review_response()` method parses the metadata:
 
 | Verdict | ProcessingResult.status | Workflow Transition |
 |---------|------------------------|---------------------|
-| PASS | `WorkflowStatus.SUCCESS` | REVIEWED → COMPLETE |
-| FAIL | `WorkflowStatus.FAILED` | REVIEWED → REVISING |
+| PASS | `WorkflowStatus.SUCCESS` | REVIEW[RESPONSE] → COMPLETE |
+| FAIL | `WorkflowStatus.FAILED` | REVIEW[RESPONSE] → REVISE[PROMPT] |
 
-The orchestrator's `_step_reviewed()` method uses this status to advance the workflow.
+The TransitionTable uses this status to determine the next phase. See ADR-0012 for the Phase+Stage model.
 
 ---
 
@@ -129,3 +129,4 @@ This preserves the principle: **"engine facilitates, human decides"**.
 
 - ADR-0001: Architecture Overview
 - ADR-0003: Workflow State Validation
+- ADR-0012: Workflow Phases, Stages, and Approval Providers (Phase+Stage model)

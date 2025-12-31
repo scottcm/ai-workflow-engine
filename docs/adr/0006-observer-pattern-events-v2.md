@@ -263,7 +263,7 @@ For out-of-process consumers (IDE extensions via CLI), events are emitted as str
 
 ```bash
 $ aiwf step abc123 --events
-[EVENT] phase_entered phase=GENERATING iteration=1
+[EVENT] phase_entered phase=GENERATE stage=PROMPT iteration=1
 [EVENT] artifact_created path=iteration-1/code/Entity.java
 {"exit_code":0,"session_id":"abc123",...}
 ```
@@ -393,5 +393,5 @@ proc.stderr.on('data', (data) => {
 ## Related Decisions
 
 - ADR-0001: Architecture Overview
-- ADR-0005: Chain of Responsibility for Approval (handlers emit events)
+- ADR-0012: Workflow Phases, Stages, and Approval Providers (TransitionTable emits events)
 

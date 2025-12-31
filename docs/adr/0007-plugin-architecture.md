@@ -697,8 +697,8 @@ User Request
 ## Related Decisions
 
 - ADR-0001: Architecture Overview
-- ADR-0005: Chain of Responsibility for Approval
 - ADR-0006: Observer Pattern for Workflow Events
+- ADR-0012: Workflow Phases, Stages, and Approval Providers (current workflow model)
 
 ---
 

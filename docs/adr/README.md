@@ -4,14 +4,12 @@ This directory contains Architecture Decision Records (ADRs) for the AI Workflow
 
 ## Current Architecture
 
-**Start here:** [ADR-0012: Workflow Phases, Stages, and Approval Providers](0012-workflow-phases-stages-approval-providers.md)
+**Start here:** [ADR-0001: Architecture Overview](0001-architecture-overview.md)
 
-ADR-0012 defines the current workflow model:
+ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design for:
 - **Phase+Stage model**: PLAN, GENERATE, REVIEW, REVISE phases, each with PROMPT and RESPONSE stages
-- **TransitionTable**: Declarative state machine replacing the old Chain of Responsibility pattern
+- **TransitionTable**: Declarative state machine for workflow transitions
 - **Commands**: `init`, `step`, `approve`, `reject`, `retry`, `status`, `cancel`
-
-The old architecture (ING/ED phases like PLANNING, PLANNED, GENERATING, GENERATED, etc.) documented in ADR-0001 has been superseded.
 
 ---
 
@@ -19,7 +17,7 @@ The old architecture (ING/ED phases like PLANNING, PLANNED, GENERATING, GENERATE
 
 | ADR | Status | Title | Notes |
 |-----|--------|-------|-------|
-| [0001](0001-architecture-overview.md) | Accepted | Architecture Overview | **Outdated** - Phase model superseded by ADR-0012 |
+| [0001](0001-architecture-overview.md) | Accepted | Architecture Overview | **Start here** - Current architecture |
 | [0002](0002-template-layering-system.md) | Accepted | Template Layering System | Valid - Profile template composition |
 | [0003](0003-workflow-state-validation.md) | Accepted | Workflow State Validation | Valid - Pydantic for state validation |
 | [0004](0004-structured-review-metadata.md) | Accepted | Structured Review Metadata | Valid - `@@@REVIEW_META` format |
@@ -38,13 +36,13 @@ The old architecture (ING/ED phases like PLANNING, PLANNED, GENERATING, GENERATE
 
 ### For New Contributors
 
-1. **[ADR-0012](0012-workflow-phases-stages-approval-providers.md)** - Current workflow model (required reading)
-2. **[ADR-0007](0007-plugin-architecture.md)** - How providers work
-3. **[ADR-0002](0002-template-layering-system.md)** - Profile template system
+1. **[ADR-0001](0001-architecture-overview.md)** - Architecture overview (start here)
+2. **[ADR-0012](0012-workflow-phases-stages-approval-providers.md)** - Phase+Stage model details
+3. **[ADR-0007](0007-plugin-architecture.md)** - How providers work
+4. **[ADR-0002](0002-template-layering-system.md)** - Profile template system
 
 ### For Understanding History
 
-- **[ADR-0001](0001-architecture-overview.md)** - Original architecture (now partially outdated)
 - **[ADR-0005](0005-approval-handler-chain.md)** - Why we tried Chain of Responsibility and replaced it
 
 ### Status Definitions
@@ -58,17 +56,13 @@ The old architecture (ING/ED phases like PLANNING, PLANNED, GENERATING, GENERATE
 
 ---
 
-## ADRs Needing Updates
+## ADRs Needing Review
 
-The following ADRs reference outdated concepts and need revision:
+The following draft ADRs may need updates:
 
 | ADR | Issue |
 |-----|-------|
-| 0001 | Documents old ING/ED phase model; needs replacement with v2 overview |
-| 0004 | References "REVIEWED phase" (now `REVIEW[RESPONSE]` stage) |
-| 0006 | Example code uses old phase names |
-| 0007 | References ADR-0005 which is superseded |
-| 0008 | Implementation plan phases may be outdated |
+| 0008 | Implementation plan phases may need status update |
 | 0009 | May overlap with ADR-0011; needs consolidation review |
 
 ---
