@@ -96,15 +96,23 @@ class TestOrchestratorApprove:
         assert result.phase == WorkflowPhase.PLAN
         assert result.stage == WorkflowStage.RESPONSE
 
-    def test_approve_from_plan_response_transitions_to_generate_prompt(self) -> None:
+    def test_approve_from_plan_response_transitions_to_generate_prompt(
+        self, tmp_path: Path
+    ) -> None:
         """approve from PLAN[RESPONSE] transitions to GENERATE[PROMPT]."""
         store = Mock(spec=SessionStore)
         state = _make_state(phase=WorkflowPhase.PLAN, stage=WorkflowStage.RESPONSE)
         store.load.return_value = state
 
+        # Create the required planning-response.md file
+        session_dir = tmp_path / "test-session"
+        iteration_dir = session_dir / "iteration-1"
+        iteration_dir.mkdir(parents=True)
+        (iteration_dir / "planning-response.md").write_text("# Plan content")
+
         orchestrator = WorkflowOrchestrator(
             session_store=store,
-            sessions_root=Path("/tmp/sessions"),
+            sessions_root=tmp_path,
         )
 
         with patch.object(orchestrator, "_execute_action"):
@@ -112,6 +120,8 @@ class TestOrchestratorApprove:
 
         assert result.phase == WorkflowPhase.GENERATE
         assert result.stage == WorkflowStage.PROMPT
+        assert result.plan_approved is True
+        assert result.plan_hash is not None
 
     def test_approve_from_init_raises_error(self) -> None:
         """approve from INIT raises InvalidCommand."""
@@ -169,8 +179,8 @@ class TestOrchestratorReject:
 class TestOrchestratorRetry:
     """Tests for retry command."""
 
-    def test_retry_from_response_transitions_back_to_prompt(self) -> None:
-        """retry from RESPONSE transitions back to PROMPT with feedback."""
+    def test_retry_from_response_stays_at_response(self) -> None:
+        """retry from RESPONSE stays at RESPONSE and regenerates."""
         store = Mock(spec=SessionStore)
         state = _make_state(phase=WorkflowPhase.PLAN, stage=WorkflowStage.RESPONSE)
         store.load.return_value = state
@@ -183,8 +193,9 @@ class TestOrchestratorRetry:
         with patch.object(orchestrator, "_execute_action"):
             result = orchestrator.retry("test-session", feedback="Add more detail")
 
+        # Retry stays at RESPONSE stage (regenerates response, not prompt)
         assert result.phase == WorkflowPhase.PLAN
-        assert result.stage == WorkflowStage.PROMPT
+        assert result.stage == WorkflowStage.RESPONSE
 
     def test_retry_from_prompt_stage_raises_error(self) -> None:
         """retry from PROMPT stage raises InvalidCommand."""
@@ -363,18 +374,19 @@ class TestTerminalStatusUpdates:
             sessions_root=Path("/tmp/sessions"),
         )
 
-        # Mock the action and transition to COMPLETE
+        # Mock the action, pre-transition approval, and transition to COMPLETE
         with patch.object(orchestrator, "_execute_action"):
-            with patch(
-                "aiwf.application.workflow_orchestrator.TransitionTable.get_transition"
-            ) as mock_transition:
-                from aiwf.application.transitions import TransitionResult, Action
-                mock_transition.return_value = TransitionResult(
-                    phase=WorkflowPhase.COMPLETE,
-                    stage=None,
-                    action=Action.FINALIZE,
-                )
-                result = orchestrator.approve("test-session")
+            with patch.object(orchestrator, "_handle_pre_transition_approval"):
+                with patch(
+                    "aiwf.application.workflow_orchestrator.TransitionTable.get_transition"
+                ) as mock_transition:
+                    from aiwf.application.transitions import TransitionResult, Action
+                    mock_transition.return_value = TransitionResult(
+                        phase=WorkflowPhase.COMPLETE,
+                        stage=None,
+                        action=Action.FINALIZE,
+                    )
+                    result = orchestrator.approve("test-session")
 
         assert result.phase == WorkflowPhase.COMPLETE
         assert result.status == WorkflowStatus.SUCCESS

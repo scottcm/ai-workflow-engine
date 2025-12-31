@@ -27,8 +27,8 @@ class TestTransitionTableValidTransitions:
             (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "approve", WorkflowPhase.GENERATE, WorkflowStage.PROMPT, Action.CREATE_PROMPT),
             # PLAN[RESPONSE] -> reject -> stay (halt)
             (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "reject", WorkflowPhase.PLAN, WorkflowStage.RESPONSE, Action.HALT),
-            # PLAN[RESPONSE] -> retry -> PLAN[PROMPT] (regenerate)
-            (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "retry", WorkflowPhase.PLAN, WorkflowStage.PROMPT, Action.RETRY),
+            # PLAN[RESPONSE] -> retry -> PLAN[RESPONSE] (regenerate response)
+            (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "retry", WorkflowPhase.PLAN, WorkflowStage.RESPONSE, Action.RETRY),
 
             # === GENERATE phase transitions ===
             # GENERATE[PROMPT] -> approve -> GENERATE[RESPONSE] (AI called)
@@ -37,16 +37,16 @@ class TestTransitionTableValidTransitions:
             (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "approve", WorkflowPhase.REVIEW, WorkflowStage.PROMPT, Action.CREATE_PROMPT),
             # GENERATE[RESPONSE] -> reject -> stay (halt)
             (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "reject", WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, Action.HALT),
-            # GENERATE[RESPONSE] -> retry -> GENERATE[PROMPT] (regenerate)
-            (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "retry", WorkflowPhase.GENERATE, WorkflowStage.PROMPT, Action.RETRY),
+            # GENERATE[RESPONSE] -> retry -> GENERATE[RESPONSE] (regenerate response)
+            (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "retry", WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, Action.RETRY),
 
             # === REVIEW phase transitions ===
             # REVIEW[PROMPT] -> approve -> REVIEW[RESPONSE] (AI called)
             (WorkflowPhase.REVIEW, WorkflowStage.PROMPT, "approve", WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.CALL_AI),
             # REVIEW[RESPONSE] -> reject -> stay (halt)
             (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "reject", WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.HALT),
-            # REVIEW[RESPONSE] -> retry -> REVIEW[PROMPT] (regenerate)
-            (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "retry", WorkflowPhase.REVIEW, WorkflowStage.PROMPT, Action.RETRY),
+            # REVIEW[RESPONSE] -> retry -> REVIEW[RESPONSE] (regenerate response)
+            (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "retry", WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.RETRY),
 
             # === REVISE phase transitions ===
             # REVISE[PROMPT] -> approve -> REVISE[RESPONSE] (AI called)
@@ -55,8 +55,8 @@ class TestTransitionTableValidTransitions:
             (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "approve", WorkflowPhase.REVIEW, WorkflowStage.PROMPT, Action.CREATE_PROMPT),
             # REVISE[RESPONSE] -> reject -> stay (halt)
             (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "reject", WorkflowPhase.REVISE, WorkflowStage.RESPONSE, Action.HALT),
-            # REVISE[RESPONSE] -> retry -> REVISE[PROMPT] (regenerate)
-            (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "retry", WorkflowPhase.REVISE, WorkflowStage.PROMPT, Action.RETRY),
+            # REVISE[RESPONSE] -> retry -> REVISE[RESPONSE] (regenerate response)
+            (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "retry", WorkflowPhase.REVISE, WorkflowStage.RESPONSE, Action.RETRY),
         ],
     )
     def test_valid_transition(

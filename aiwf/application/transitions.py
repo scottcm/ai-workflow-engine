@@ -87,7 +87,7 @@ class TransitionTable:
             WorkflowPhase.PLAN, WorkflowStage.RESPONSE, Action.HALT
         ),
         (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "retry"): TransitionResult(
-            WorkflowPhase.PLAN, WorkflowStage.PROMPT, Action.RETRY
+            WorkflowPhase.PLAN, WorkflowStage.RESPONSE, Action.RETRY  # Stay at RESPONSE, regenerate
         ),
         (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "cancel"): TransitionResult(
             WorkflowPhase.CANCELLED, None, Action.CANCEL
@@ -107,7 +107,7 @@ class TransitionTable:
             WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, Action.HALT
         ),
         (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "retry"): TransitionResult(
-            WorkflowPhase.GENERATE, WorkflowStage.PROMPT, Action.RETRY
+            WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, Action.RETRY  # Stay at RESPONSE, regenerate
         ),
         (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "cancel"): TransitionResult(
             WorkflowPhase.CANCELLED, None, Action.CANCEL
@@ -135,7 +135,7 @@ class TransitionTable:
             WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.HALT
         ),
         (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "retry"): TransitionResult(
-            WorkflowPhase.REVIEW, WorkflowStage.PROMPT, Action.RETRY
+            WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.RETRY  # Stay at RESPONSE, regenerate
         ),
         (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "cancel"): TransitionResult(
             WorkflowPhase.CANCELLED, None, Action.CANCEL
@@ -155,7 +155,7 @@ class TransitionTable:
             WorkflowPhase.REVISE, WorkflowStage.RESPONSE, Action.HALT
         ),
         (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "retry"): TransitionResult(
-            WorkflowPhase.REVISE, WorkflowStage.PROMPT, Action.RETRY
+            WorkflowPhase.REVISE, WorkflowStage.RESPONSE, Action.RETRY  # Stay at RESPONSE, regenerate
         ),
         (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "cancel"): TransitionResult(
             WorkflowPhase.CANCELLED, None, Action.CANCEL
