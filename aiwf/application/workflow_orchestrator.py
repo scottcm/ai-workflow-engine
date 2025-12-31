@@ -1,18 +1,24 @@
+"""Workflow orchestration using TransitionTable state machine.
+
+ADR-0012 Phase 5: Engine-owned workflow orchestration with explicit transitions.
+"""
+
 import uuid
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from aiwf.application.approval_handler import build_approval_chain
 from aiwf.application.context_validation import validate_context
 from aiwf.application.standards_materializer import materialize_standards
+from aiwf.application.transitions import Action, TransitionTable, TransitionResult
 
 from aiwf.domain.models.workflow_state import (
     ExecutionMode,
     PhaseTransition,
     WorkflowPhase,
+    WorkflowStage,
     WorkflowState,
     WorkflowStatus,
 )
@@ -27,6 +33,19 @@ if TYPE_CHECKING:
     from aiwf.domain.events.event_types import WorkflowEventType
 
 
+class InvalidCommand(Exception):
+    """Raised when a command is not valid for the current state."""
+
+    def __init__(self, command: str, phase: WorkflowPhase, stage: WorkflowStage | None):
+        self.command = command
+        self.phase = phase
+        self.stage = stage
+        stage_str = f"[{stage.value}]" if stage else ""
+        super().__init__(
+            f"Command '{command}' is not valid from {phase.value}{stage_str}"
+        )
+
+
 @dataclass
 class WorkflowOrchestrator:
     """Engine-owned workflow orchestration.
@@ -34,6 +53,8 @@ class WorkflowOrchestrator:
     This orchestrator owns deterministic phase transitions and persistence of
     `WorkflowState`. Profiles remain responsible for generating prompts and
     processing LLM responses; the orchestrator decides what happens next.
+
+    ADR-0012: Uses TransitionTable for explicit, table-driven state machine.
     """
 
     session_store: SessionStore
@@ -41,11 +62,274 @@ class WorkflowOrchestrator:
     event_emitter: "WorkflowEventEmitter | None" = None
 
     def __post_init__(self) -> None:
-        self._approval_chain = build_approval_chain()
         if self.event_emitter is None:
             from aiwf.domain.events.emitter import WorkflowEventEmitter
-
             self.event_emitter = WorkflowEventEmitter()
+
+    # ========================================================================
+    # Command Methods (ADR-0012)
+    # ========================================================================
+
+    def init(self, session_id: str) -> WorkflowState:
+        """Start workflow from INIT phase.
+
+        Transitions from INIT to PLAN[PROMPT] and executes CREATE_PROMPT action.
+
+        Args:
+            session_id: The session to initialize
+
+        Returns:
+            Updated workflow state
+
+        Raises:
+            InvalidCommand: If not in INIT phase
+        """
+        return self._execute_command(session_id, "init")
+
+    def approve(
+        self,
+        session_id: str,
+        hash_prompts: bool = False,
+        fs_ability: str | None = None,
+    ) -> WorkflowState:
+        """Approve current stage and advance workflow.
+
+        Args:
+            session_id: The session to approve
+            hash_prompts: Whether to hash prompt files (legacy, ignored)
+            fs_ability: Resolved filesystem capability (legacy, ignored)
+
+        Returns:
+            Updated workflow state
+
+        Raises:
+            InvalidCommand: If approve is not valid from current state
+        """
+        return self._execute_command(session_id, "approve")
+
+    def reject(self, session_id: str, feedback: str) -> WorkflowState:
+        """Reject current content with feedback.
+
+        Only valid from RESPONSE stages. Halts workflow until retry or cancel.
+
+        Args:
+            session_id: The session to reject
+            feedback: Explanation of why content was rejected
+
+        Returns:
+            Updated workflow state (unchanged phase/stage, stores feedback)
+
+        Raises:
+            InvalidCommand: If reject is not valid from current state
+        """
+        state = self.session_store.load(session_id)
+        state.messages = []
+
+        transition = TransitionTable.get_transition(state.phase, state.stage, "reject")
+        if transition is None:
+            raise InvalidCommand("reject", state.phase, state.stage)
+
+        # Store feedback for retrieval
+        state.approval_feedback = feedback
+
+        # State stays the same (HALT action)
+        self.session_store.save(state)
+        return state
+
+    def retry(self, session_id: str, feedback: str) -> WorkflowState:
+        """Retry current phase with feedback.
+
+        Transitions back to PROMPT stage to regenerate with feedback.
+
+        Args:
+            session_id: The session to retry
+            feedback: Feedback for regeneration
+
+        Returns:
+            Updated workflow state
+
+        Raises:
+            InvalidCommand: If retry is not valid from current state
+        """
+        state = self.session_store.load(session_id)
+        state.messages = []
+
+        transition = TransitionTable.get_transition(state.phase, state.stage, "retry")
+        if transition is None:
+            raise InvalidCommand("retry", state.phase, state.stage)
+
+        # Store feedback for prompt regeneration
+        state.approval_feedback = feedback
+
+        # Execute the retry action
+        self._execute_action(state, transition.action, session_id)
+
+        # Update state
+        state.phase = transition.phase
+        state.stage = transition.stage
+
+        self.session_store.save(state)
+        return state
+
+    def cancel(self, session_id: str) -> WorkflowState:
+        """Cancel workflow.
+
+        Valid from any active state. Transitions to CANCELLED.
+
+        Args:
+            session_id: The session to cancel
+
+        Returns:
+            Updated workflow state
+
+        Raises:
+            InvalidCommand: If cancel is not valid (e.g., already terminal)
+        """
+        state = self.session_store.load(session_id)
+        state.messages = []
+
+        transition = TransitionTable.get_transition(state.phase, state.stage, "cancel")
+        if transition is None:
+            raise InvalidCommand("cancel", state.phase, state.stage)
+
+        # Update state
+        state.phase = transition.phase
+        state.stage = transition.stage
+        state.status = WorkflowStatus.CANCELLED
+
+        self.session_store.save(state)
+        return state
+
+    # ========================================================================
+    # Legacy step() method - deprecated
+    # ========================================================================
+
+    def step(self, session_id: str) -> WorkflowState:
+        """DEPRECATED - Use init() instead.
+
+        The step command was removed in ADR-0012.
+        Use init() to start workflow from INIT phase.
+        """
+        # For backwards compatibility, treat step from INIT as init
+        state = self.session_store.load(session_id)
+        if state.phase == WorkflowPhase.INIT:
+            return self.init(session_id)
+
+        # Otherwise, step is no longer valid
+        raise InvalidCommand("step", state.phase, state.stage)
+
+    # ========================================================================
+    # Internal Methods
+    # ========================================================================
+
+    def _execute_command(self, session_id: str, command: str) -> WorkflowState:
+        """Execute a command using the TransitionTable.
+
+        Args:
+            session_id: The session to operate on
+            command: Command to execute
+
+        Returns:
+            Updated workflow state
+
+        Raises:
+            InvalidCommand: If command is not valid from current state
+        """
+        state = self.session_store.load(session_id)
+        state.messages = []
+
+        transition = TransitionTable.get_transition(state.phase, state.stage, command)
+        if transition is None:
+            raise InvalidCommand(command, state.phase, state.stage)
+
+        # Execute the action
+        self._execute_action(state, transition.action, session_id)
+
+        # Update state
+        state.phase = transition.phase
+        state.stage = transition.stage
+
+        # Update status for terminal states
+        if state.phase == WorkflowPhase.COMPLETE:
+            state.status = WorkflowStatus.SUCCESS
+        elif state.phase == WorkflowPhase.CANCELLED:
+            state.status = WorkflowStatus.CANCELLED
+        elif state.phase == WorkflowPhase.ERROR:
+            state.status = WorkflowStatus.ERROR
+
+        self.session_store.save(state)
+        return state
+
+    def _execute_action(
+        self,
+        state: WorkflowState,
+        action: Action,
+        session_id: str,
+    ) -> None:
+        """Execute an action after transition.
+
+        Actions describe WHAT happens after entering a new state.
+        This method performs the actual work.
+
+        Args:
+            state: Current workflow state
+            action: Action to execute
+            session_id: Session identifier
+        """
+        session_dir = self.sessions_root / session_id
+
+        if action == Action.CREATE_PROMPT:
+            self._action_create_prompt(state, session_dir)
+        elif action == Action.CALL_AI:
+            self._action_call_ai(state, session_dir)
+        elif action == Action.CHECK_VERDICT:
+            self._action_check_verdict(state, session_dir)
+        elif action == Action.FINALIZE:
+            self._action_finalize(state, session_dir)
+        elif action == Action.HALT:
+            # No action needed - workflow is halted
+            pass
+        elif action == Action.RETRY:
+            self._action_retry(state, session_dir)
+        elif action == Action.CANCEL:
+            # No action needed - state update handles it
+            pass
+
+    def _action_create_prompt(self, state: WorkflowState, session_dir: Path) -> None:
+        """Create prompt file for current phase.
+
+        Called when entering a PROMPT stage.
+        """
+        # TODO: Implement prompt creation using profile
+        self._add_message(state, f"Creating {state.phase.value} prompt")
+
+    def _action_call_ai(self, state: WorkflowState, session_dir: Path) -> None:
+        """Call AI provider to generate response.
+
+        Called when entering a RESPONSE stage.
+        """
+        # TODO: Implement AI call using provider
+        self._add_message(state, f"Calling AI for {state.phase.value}")
+
+    def _action_check_verdict(self, state: WorkflowState, session_dir: Path) -> None:
+        """Check review verdict to determine next state.
+
+        Only called from REVIEW[RESPONSE]. Determines COMPLETE vs REVISE.
+        """
+        # TODO: Implement verdict checking using profile
+        self._add_message(state, "Checking review verdict")
+
+    def _action_finalize(self, state: WorkflowState, session_dir: Path) -> None:
+        """Finalize workflow completion."""
+        self._add_message(state, "Workflow complete")
+
+    def _action_retry(self, state: WorkflowState, session_dir: Path) -> None:
+        """Prepare for retry with feedback."""
+        self._add_message(state, f"Retrying {state.phase.value} with feedback")
+
+    # ========================================================================
+    # Session Initialization
+    # ========================================================================
 
     def initialize_run(
         self,
@@ -99,10 +383,8 @@ class WorkflowOrchestrator:
 
         # Build context from either new context param or legacy params
         if context is not None:
-            # New API: use context directly
             effective_context = dict(context)
         else:
-            # Legacy API: build context from individual params
             effective_context = {}
             if scope is not None:
                 effective_context["scope"] = scope
@@ -148,11 +430,10 @@ class WorkflowOrchestrator:
         )
 
         # Validate all configured AI providers before continuing setup
-        # Clean up session directory if validation fails
         try:
             for role, provider_key in providers.items():
                 ai_provider = ProviderFactory.create(provider_key)
-                ai_provider.validate()  # Raises ProviderError if misconfigured
+                ai_provider.validate()
         except (KeyError, ProviderError):
             shutil.rmtree(session_dir, ignore_errors=True)
             raise
@@ -192,37 +473,20 @@ class WorkflowOrchestrator:
 
         return session_id
 
-    def approve(
-        self,
-        session_id: str,
-        hash_prompts: bool = False,
-        fs_ability: str | None = None,
-    ) -> WorkflowState:
-        """STUB - Will be replaced by TransitionTable in Phase 5.
-
-        ADR-0012 redesigns the workflow engine. This method is stubbed
-        during the transition period.
-
-        Args:
-            session_id: The session to approve
-            hash_prompts: Whether to hash prompt files
-            fs_ability: Resolved filesystem capability
-
-        Returns:
-            The current workflow state (unchanged during transition).
-        """
-        state = self.session_store.load(session_id)
-        state.messages = []
-        # STUB: No approvals during ADR-0012 transition
-        return state
+    # ========================================================================
+    # Helper Methods
+    # ========================================================================
 
     def _add_message(self, state: WorkflowState, message: str) -> None:
         """Add a progress message to the state."""
         state.messages.append(message)
 
-    def _add_phase_message(self, state: WorkflowState) -> None:
-        """Add phase transition message."""
-        self._add_message(state, f"Advancing to {state.phase.name} phase")
+    def _build_context(self, state: WorkflowState) -> dict[str, Any]:
+        """Extract context dict from workflow state for providers."""
+        return {
+            **state.context,
+            "metadata": state.metadata,
+        }
 
     def _emit(
         self,
@@ -232,7 +496,6 @@ class WorkflowOrchestrator:
     ) -> None:
         """Emit a workflow event with common fields."""
         from aiwf.domain.events.event import WorkflowEvent
-        from aiwf.domain.events.event_types import WorkflowEventType
 
         self.event_emitter.emit(
             WorkflowEvent(
@@ -244,34 +507,6 @@ class WorkflowOrchestrator:
                 **kwargs,
             )
         )
-
-    def step(self, session_id: str) -> WorkflowState:
-        """STUB - Will be replaced by TransitionTable in Phase 5.
-
-        ADR-0012 redesigns the workflow engine. This method is stubbed
-        during the transition period.
-
-        Args:
-            session_id: Identifier of the workflow session to advance.
-
-        Returns:
-            The current workflow state (unchanged during transition).
-        """
-        state = self.session_store.load(session_id)
-        state.messages = []
-        # STUB: No transitions during ADR-0012 transition
-        return state
-
-    def _build_context(self, state: WorkflowState) -> dict[str, Any]:
-        """Extract context dict from workflow state for providers."""
-        return {
-            **state.context,
-            "metadata": state.metadata,
-        }
-
-    # NOTE: Legacy _step_* methods removed during ADR-0012 transition.
-    # Will be replaced by TransitionTable in Phase 5.
-
 
 
 def _build_initial_state(
