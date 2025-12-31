@@ -24,7 +24,7 @@ ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design
 | [0005](0005-approval-handler-chain.md) | **Superseded** | Chain of Responsibility | Replaced by TransitionTable in ADR-0012 |
 | [0006](0006-observer-pattern-events-v2.md) | Accepted | Observer Pattern for Events | Valid - Event emission pattern |
 | [0007](0007-plugin-architecture.md) | Accepted | Plugin Architecture | Valid - AI/Standards provider plugins |
-| [0008](0008-engine-profile-separation-of-concerns.md) | Draft | Engine-Profile Separation | Partially implemented |
+| [0008](0008-engine-profile-separation-of-concerns.md) | Accepted | Engine-Profile Separation | Profile CLI commands, generic context |
 | [0009](0009-prompt-structure-and-ai-provider-capabilities.md) | Draft | Prompt Structure | Future design - PromptBundle |
 | [0010](0010-profile-provider-access.md) | Proposed | Profile Provider Access | Future - Multi-pass generation |
 | [0011](0011-prompt-builder-api.md) | Draft | Prompt Builder API | Valid - PromptSections design |
@@ -62,7 +62,6 @@ The following draft ADRs may need updates:
 
 | ADR | Issue |
 |-----|-------|
-| 0008 | Implementation plan phases may need status update |
 | 0009 | May overlap with ADR-0011; needs consolidation review |
 
 ---

@@ -1,7 +1,8 @@
 # ADR-0008: Engine-Profile Separation of Concerns
 
-**Status:** Draft
-**Date:** December 26, 2024 (Updated December 29, 2024)
+**Status:** Accepted
+**Date:** December 26, 2024
+**Accepted:** December 31, 2024
 **Deciders:** Scott
 
 ---
