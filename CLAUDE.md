@@ -30,8 +30,8 @@ ai-workflow-engine/
 │   │       └── path_validator.py    # PathValidator utilities
 │   ├── application/             # Orchestration logic
 │   │   ├── workflow_orchestrator.py # Main engine - step(), approve()
-│   │   ├── approval_handler.py      # Approval logic, run_provider()
-│   │   ├── approval_specs.py        # STUB - being replaced by TransitionTable
+│   │   ├── approval_handler.py      # run_provider() utility
+│   │   ├── approval_specs.py        # Legacy, empty (see TransitionTable)
 │   │   ├── config_loader.py         # YAML config loading
 │   │   └── standards_materializer.py
 │   └── interface/
@@ -136,9 +136,9 @@ Key insight: "Manual provider" ≠ "Interactive mode". Example: `INTERACTIVE + c
 5. Engine executes `result.write_plan`
 6. Engine updates state
 
-### State Transitions (ADR-0012 In Progress)
+### State Transitions
 
-The approval logic is being rewritten as a declarative `TransitionTable`. Stage transitions work as follows:
+The approval logic is implemented as a declarative `TransitionTable`. Stage transitions work as follows:
 
 ```
 PHASE[PROMPT] ──approve──► PHASE[RESPONSE] ──approve──► NEXT_PHASE[PROMPT]
@@ -206,12 +206,12 @@ Architecture decisions in `docs/adr/`:
 | 0002 | Accepted | Template layering with {{include:}} directives |
 | 0003 | Accepted | Pydantic for workflow state validation |
 | 0004 | Accepted | Structured review metadata (@@@REVIEW_META) |
-| 0005 | Accepted | Chain of Responsibility for approval handling |
+| 0005 | Superseded | Chain of Responsibility for approval handling (replaced by ADR-0012) |
 | 0006 | Accepted | Observer pattern for workflow events |
 | 0007 | Draft | Plugin architecture (AI providers, standards providers) |
 | 0008 | Draft | Configuration management |
 | 0009 | Draft | Session state schema versioning |
-| 0012 | Draft | Phase+Stage model, approval providers, TransitionTable |
+| 0012 | Accepted | Phase+Stage model, TransitionTable state machine |
 
 ## Extension Points
 
