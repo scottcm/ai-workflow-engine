@@ -1,7 +1,8 @@
 # ADR-0005: Chain of Responsibility for Approval Handling
 
-**Status:** Accepted  
-**Date:** December 24, 2024  
+**Status:** Superseded by ADR-0012
+**Date:** December 24, 2024
+**Superseded:** December 30, 2024
 **Deciders:** Scott
 
 ---

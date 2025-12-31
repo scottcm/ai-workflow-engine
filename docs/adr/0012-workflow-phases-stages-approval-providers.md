@@ -1,7 +1,8 @@
 # ADR-0012: Workflow Phases, Stages, and Approval Providers
 
-**Status:** Draft
+**Status:** Accepted
 **Date:** December 30, 2024
+**Accepted:** December 30, 2024
 **Deciders:** Scott
 
 ---
