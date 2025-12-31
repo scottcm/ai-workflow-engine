@@ -15,19 +15,7 @@ You are planning implementation details — **not generating code**.
 
 ---
 
-## 2. Required Inputs
-
-This prompt includes:
-- The standards bundle (provided in sections above)
-- Schema DDL: @{{SCHEMA_FILE}}
-
-If any required input is missing, follow the Validation Contract in the shared base template and STOP.
-
-You MUST NOT infer or invent missing information.
-
----
-
-## 3. Core Responsibilities
+## 2. Core Responsibilities
 
 You MUST:
 
@@ -47,7 +35,7 @@ You MUST NOT:
 
 ---
 
-## 4. Plan Content Expectations
+## 3. Plan Content Expectations
 
 The planning output MUST:
 
@@ -60,7 +48,7 @@ The plan SHOULD be structured and easy to reference by downstream phases.
 
 ---
 
-## 5. Use of Fallback Rules
+## 4. Use of Fallback Rules
 
 If the standards bundle does not define behavior for a required decision:
 
@@ -72,7 +60,7 @@ Fallback rules MUST NOT override explicit standards.
 
 ---
 
-## 6. Input Conflicts and Ambiguities
+## 5. Input Conflicts and Ambiguities
 
 Before generating any planning document, you MUST check for conflicts:
 
@@ -114,7 +102,7 @@ Do NOT proceed by choosing one interpretation. Do NOT defer conflicts to a "Ques
 
 ---
 
-## 7. Validation Failures
+## 6. Validation Failures
 
 You MUST fail the planning phase if:
 

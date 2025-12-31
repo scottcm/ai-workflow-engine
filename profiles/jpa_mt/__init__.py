@@ -114,6 +114,14 @@ def register(cli_group: click.Group) -> type:
                 providers=providers,
             )
 
+            # Transition from INIT to PLAN[PROMPT] and create the planning prompt
+            state = orchestrator.init(session_id)
+
+            # Emit progress messages
+            for msg in getattr(state, "messages", []):
+                if not json_mode:
+                    click.echo(msg, err=True)
+
             if json_mode:
                 click.echo(
                     InitOutput(exit_code=0, session_id=session_id).model_dump_json(
