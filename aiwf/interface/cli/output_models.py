@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class BaseOutput(BaseModel):
     schema_version: int = 1
-    command: Literal["init", "step", "status", "approve", "list", "profiles", "providers", "validate"]
+    command: Literal["init", "step", "status", "approve", "reject", "retry", "list", "profiles", "providers", "validate"]
     exit_code: int
     error: str | None = None
 
@@ -43,6 +43,25 @@ class ApproveOutput(BaseOutput):
     status: str | None = None
     approved: bool = False
     hashes: dict[str, str] = Field(default_factory=dict)
+
+
+class RejectOutput(BaseOutput):
+    """Output for reject command."""
+    command: Literal["reject"] = "reject"
+    session_id: str
+    phase: str | None = None
+    stage: str | None = None
+    status: str | None = None
+    feedback: str | None = None
+
+
+class RetryOutput(BaseOutput):
+    """Output for retry command."""
+    command: Literal["retry"] = "retry"
+    session_id: str
+    phase: str | None = None
+    stage: str | None = None
+    status: str | None = None
 
 
 class SessionSummary(BaseModel):
