@@ -8,8 +8,8 @@ def _minimal_workflow_state_kwargs() -> dict:
     return {
         "session_id": "s-1",
         "profile": "jpa_mt",
-        "scope": "domain",
-        "entity": "Tier",
+        # Profile-specific data goes in context dict, not as top-level fields
+        "context": {"scope": "domain", "entity": "Tier"},
         "phase": WorkflowPhase.INIT,
         "status": WorkflowStatus.IN_PROGRESS,
         "execution_mode": ExecutionMode.INTERACTIVE,
@@ -36,3 +36,19 @@ def test_workflow_state_accepts_plan_hash_when_provided() -> None:
     kwargs["plan_hash"] = "sha256:abcd"
     ws = WorkflowState(**kwargs)
     assert ws.plan_hash == "sha256:abcd"
+
+
+def test_workflow_state_rejects_unknown_fields() -> None:
+    """Profile-specific fields must go in context dict, not as top-level fields."""
+    kwargs = _minimal_workflow_state_kwargs()
+    kwargs["scope"] = "domain"  # This should be in context, not top-level
+    with pytest.raises(ValidationError) as exc_info:
+        WorkflowState(**kwargs)
+    assert "scope" in str(exc_info.value)
+
+
+def test_workflow_state_context_holds_profile_data() -> None:
+    """Profile-specific data is accessed via context dict."""
+    ws = WorkflowState(**_minimal_workflow_state_kwargs())
+    assert ws.context["scope"] == "domain"
+    assert ws.context["entity"] == "Tier"

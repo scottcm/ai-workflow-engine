@@ -68,8 +68,8 @@ def test_approval_result_requires_feedback_on_rejection():
 **Phase 2 (State Machine):** Table-driven
 ```python
 @pytest.mark.parametrize("current,command,expected", [
-    ((Phase.INIT, None), "step", (Phase.PLAN, Stage.ING)),
-    ((Phase.PLAN, Stage.ING), "approve", (Phase.PLAN, Stage.ED)),
+    ((Phase.INIT, None), "step", (Phase.PLAN, Stage.PROMPT)),
+    ((Phase.PLAN, Stage.PROMPT), "approve", (Phase.PLAN, Stage.RESPONSE)),
     # ... entire transition table
 ])
 def test_transitions(current, command, expected):
@@ -121,8 +121,8 @@ class WorkflowPhase(str, Enum):
     CANCELLED = "cancelled"
 
 class WorkflowStage(str, Enum):
-    ING = "ing"   # Input preparation (prompt ready)
-    ED = "ed"     # Output ready (response received)
+    PROMPT = "prompt"      # Prompt ready, awaiting AI/user response
+    RESPONSE = "response"  # Response received, awaiting approval
 
 class WorkflowState(BaseModel):
     phase: WorkflowPhase
@@ -163,22 +163,22 @@ class TransitionTable:
     # (current_phase, current_stage, command) -> (next_phase, next_stage, action)
     TRANSITIONS: dict[tuple, tuple] = {
         # From INIT
-        (Phase.INIT, None, "step"): (Phase.PLAN, Stage.ING, Action.CREATE_PROMPT),
+        (Phase.INIT, None, "step"): (Phase.PLAN, Stage.PROMPT, Action.CREATE_PROMPT),
 
-        # From PLAN[ING]
-        (Phase.PLAN, Stage.ING, "approve"): (Phase.PLAN, Stage.ED, Action.CALL_AI),
+        # From PLAN[PROMPT]
+        (Phase.PLAN, Stage.PROMPT, "approve"): (Phase.PLAN, Stage.RESPONSE, Action.CALL_AI),
 
-        # From PLAN[ED]
-        (Phase.PLAN, Stage.ED, "approve"): (Phase.GENERATE, Stage.ING, Action.CREATE_PROMPT),
-        (Phase.PLAN, Stage.ED, "reject"): (Phase.PLAN, Stage.ED, Action.HALT),
-        (Phase.PLAN, Stage.ED, "retry"): (Phase.PLAN, Stage.ING, Action.RETRY),
+        # From PLAN[RESPONSE]
+        (Phase.PLAN, Stage.RESPONSE, "approve"): (Phase.GENERATE, Stage.PROMPT, Action.CREATE_PROMPT),
+        (Phase.PLAN, Stage.RESPONSE, "reject"): (Phase.PLAN, Stage.RESPONSE, Action.HALT),
+        (Phase.PLAN, Stage.RESPONSE, "retry"): (Phase.PLAN, Stage.PROMPT, Action.RETRY),
 
         # ... similar for GENERATE, REVIEW, REVISE
 
         # Terminal transitions
-        (Phase.REVIEW, Stage.ED, "approve"): (Phase.COMPLETE, None, Action.FINALIZE),
+        (Phase.REVIEW, Stage.RESPONSE, "approve"): (Phase.COMPLETE, None, Action.FINALIZE),
         # Or if revision needed:
-        (Phase.REVIEW, Stage.ED, "reject"): (Phase.REVISE, Stage.ING, Action.CREATE_PROMPT),
+        (Phase.REVIEW, Stage.RESPONSE, "reject"): (Phase.REVISE, Stage.PROMPT, Action.CREATE_PROMPT),
     }
 
     @classmethod

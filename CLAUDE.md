@@ -31,7 +31,7 @@ ai-workflow-engine/
 │   ├── application/             # Orchestration logic
 │   │   ├── workflow_orchestrator.py # Main engine - step(), approve()
 │   │   ├── approval_handler.py      # Approval logic, run_provider()
-│   │   ├── approval_specs.py        # ING_APPROVAL_SPECS, ED_APPROVAL_SPECS
+│   │   ├── approval_specs.py        # STUB - being replaced by TransitionTable
 │   │   ├── config_loader.py         # YAML config loading
 │   │   └── standards_materializer.py
 │   └── interface/
@@ -67,26 +67,33 @@ ai-workflow-engine/
 
 ## Key Concepts
 
-### Phases
+### Phase + Stage Model (ADR-0012)
 
-Two categories with different responsibilities:
+**Phases** describe WHAT work is being done:
+- `INIT` - Session created (transient, immediately proceeds to PLAN)
+- `PLAN` - Creating implementation plan
+- `GENERATE` - Generating code artifacts (creates iteration-1/)
+- `REVIEW` - Reviewing generated code
+- `REVISE` - Revising based on feedback (creates iteration-N/)
+- `COMPLETE`, `ERROR`, `CANCELLED` - Terminal states
 
-**ING phases** (PLANNING, GENERATING, REVIEWING, REVISING):
-- Issue prompt artifacts if missing
-- Gate on response artifact presence
-- GENERATING/REVISING also extract code from responses
+**Stages** describe WHAT we're working on within active phases:
+- `PROMPT` - Prompt is created, editable, awaiting approval
+- `RESPONSE` - Response is created, editable, awaiting approval
 
-**ED phases** (PLANNED, GENERATED, REVIEWED, REVISED):
-- Gate on approval flags/hashes
-- Don't create prompts or process responses
-- REVIEWED processes verdict after approval
+Flow: `PLAN[PROMPT]` → approve → `PLAN[RESPONSE]` → approve → `GENERATE[PROMPT]` → ...
+
+**Key insight:** `approve` causes stage transitions. Work happens AFTER entering the new stage.
 
 ### Commands
 
-- `step` - Deterministic engine work, advances phases
-- `approve` - Hash artifacts, set approval flags, call providers
+- `init` - Create session, immediately enter PLAN[PROMPT], create planning prompt
+- `approve` - Approve current artifact, transition to next stage/phase
+- `reject` - Reject with feedback, stay in current stage for edits
+- `retry` - Request regeneration with feedback
+- `cancel` - Terminate workflow
 
-**Step advances. Approve commits.**
+**Approve transitions. Work follows.**
 
 ### Responsibility Boundaries
 
@@ -129,21 +136,23 @@ Key insight: "Manual provider" ≠ "Interactive mode". Example: `INTERACTIVE + c
 5. Engine executes `result.write_plan`
 6. Engine updates state
 
-### Approval Handler Patterns
+### State Transitions (ADR-0012 In Progress)
 
-`approval_handler.py` has five distinct code paths:
+The approval logic is being rewritten as a declarative `TransitionTable`. Stage transitions work as follows:
 
-| Pattern | Phases | Responsibility |
-|---------|--------|----------------|
-| ING Provider | PLANNING, GENERATING, REVIEWING, REVISING | Validate provider → hash prompt → call provider → write response |
-| ED Plan | PLANNED | Copy response → plan.md, set plan_approved |
-| ED Review | REVIEWED | Hash response, set review_approved |
-| ED Artifact | GENERATED, REVISED | Hash code files, create/update Artifact records |
-| GENERATING Fast Path | GENERATING (response exists) | Extract code before provider call |
+```
+PHASE[PROMPT] ──approve──► PHASE[RESPONSE] ──approve──► NEXT_PHASE[PROMPT]
+       │                         │
+       └── prompt editable       └── AI called, response editable
+```
 
-Helper naming: `_compute_*`, `_require_*`, `_update_or_create_*`
+Work happens AFTER entering the new stage:
+- Approve PROMPT → enter RESPONSE → AI produces response → user can edit
+- Approve RESPONSE → enter next PHASE[PROMPT] → prompt created → user can edit
 
-See ADR-0005 for planned decomposition into handler chain.
+**REVIEW[RESPONSE] is special:** The review contains a verdict (PASS/FAIL) that determines COMPLETE vs REVISE. The `--complete` and `--revise` flags allow user override when disagreeing with the verdict.
+
+See ADR-0012 for full transition table and resolved design decisions.
 
 ## Conventions
 
@@ -202,6 +211,7 @@ Architecture decisions in `docs/adr/`:
 | 0007 | Draft | Plugin architecture (AI providers, standards providers) |
 | 0008 | Draft | Configuration management |
 | 0009 | Draft | Session state schema versioning |
+| 0012 | Draft | Phase+Stage model, approval providers, TransitionTable |
 
 ## Extension Points
 

@@ -64,8 +64,8 @@ Each phase (except INIT, COMPLETE, ERROR, CANCELLED) has two stages:
 
 | Stage | Purpose |
 |-------|---------|
-| ING | Input preparation - prompt created, awaiting approval before AI processing |
-| ED | Output review - AI response received, awaiting approval before advancement |
+| PROMPT | Working on prompt - prompt created/editable, awaiting approval |
+| RESPONSE | Working on response - AI response received/editable, awaiting approval |
 
 ### State Representation
 
@@ -81,8 +81,8 @@ class WorkflowPhase(str, Enum):
     CANCELLED = "cancelled"
 
 class WorkflowStage(str, Enum):
-    ING = "ing"  # Input preparation
-    ED = "ed"    # Output review
+    PROMPT = "prompt"      # Working on prompt; awaiting approval
+    RESPONSE = "response"  # Working on response; awaiting approval
 
 class WorkflowState(BaseModel):
     phase: WorkflowPhase
@@ -169,8 +169,7 @@ providers:
 
 | Command | Purpose |
 |---------|---------|
-| `init` | Initialize workflow session |
-| `step` | Advance workflow (enter next phase, trigger AI processing) |
+| `init` | Initialize session, enter PLAN[PROMPT], create planning prompt |
 | `approve` | Accept pending content, advance to next stage/phase |
 | `reject` | Reject pending content with feedback (manual approver only) |
 | `retry` | Re-invoke AI provider with feedback to regenerate content |
@@ -178,7 +177,8 @@ providers:
 | `cancel` | Cancel workflow |
 
 **Command semantics:**
-- `approve` = "I accept this content as-is"
+- `init` = Create session and immediately begin workflow at PLAN[PROMPT]
+- `approve` = "I accept this content as-is" → transitions to next stage/phase
 - `reject` = "I reject this content, halt workflow" (manual approver, no automatic retry)
 - `retry` = "Regenerate with this feedback" (triggers AI provider again)
 
@@ -187,29 +187,30 @@ Note: `reject` without `retry` is only meaningful with manual approvers. With AI
 ### Workflow Flow
 
 ```
-init
-  │
-  ▼
-PLAN[ING] ─── prompt created ───► [approval gate] ───► PLAN[ED]
-  │                                                        │
-  │ (AI called, response received)                         │
-  │                                                        │
-  ▼                                                        ▼
-PLAN[ED] ─── plan ready ────────► [approval gate] ───► GENERATE[ING]
-  │
-  ▼
-GENERATE[ING] ─── prompt created ► [approval gate] ───► GENERATE[ED]
-  │                                                        │
-  │ (AI called, code generated)                            │
-  │                                                        │
-  ▼                                                        ▼
-GENERATE[ED] ─── code ready ─────► [approval gate] ───► REVIEW[ING]
-  │
-  ... continues through REVIEW and possibly REVISE ...
-  │
-  ▼
-COMPLETE
+init ──► PLAN[PROMPT] (prompt created)
+              │
+              ▼ approve
+         PLAN[RESPONSE] (AI called, plan ready)
+              │
+              ▼ approve
+         GENERATE[PROMPT] (prompt created)
+              │
+              ▼ approve
+         GENERATE[RESPONSE] (AI called, code ready)
+              │
+              ▼ approve
+         REVIEW[PROMPT] (prompt created)
+              │
+              ▼ approve
+         REVIEW[RESPONSE] (AI called, verdict ready)
+              │
+              ▼ approve (verdict determines next)
+         COMPLETE or REVISE[PROMPT]
 ```
+
+**Key insight:** Work happens AFTER entering each stage:
+- Enter PROMPT → profile creates prompt → user can edit → approve
+- Enter RESPONSE → AI produces response → user can edit → approve
 
 ### Approval Gate Behavior
 
@@ -227,13 +228,19 @@ At each approval gate:
 
 ### Stage Transitions
 
-Within a phase, transitions happen automatically:
+Stage transitions follow this pattern:
 
 ```
-PHASE[ING] ──approve──► (call AI) ──► PHASE[ED] ──approve──► (next phase)
+PHASE[PROMPT] ──approve──► PHASE[RESPONSE] ──approve──► NEXT_PHASE[PROMPT]
+      │                          │
+      └── prompt editable        └── AI called here, response editable
 ```
 
-The `step` command enters a phase. Once in ING stage, approval triggers AI provider and moves to ED. Once in ED stage, approval moves to next phase's ING.
+**Work happens AFTER entering the new stage:**
+- Approve PROMPT → enter RESPONSE → AI produces response → user can edit
+- Approve RESPONSE → enter next PHASE[PROMPT] → prompt created → user can edit
+
+This ensures content is always editable before the next approval gate.
 
 ### Retry Flow
 
@@ -278,8 +285,8 @@ Please regenerate, addressing the feedback above.
 
 Deferred hashing is preserved:
 
-- **ING stage approval**: Hash prompt (if enabled), record approval
-- **ED stage approval**: Hash response/artifacts, record approval
+- **PROMPT stage approval**: Hash prompt (if enabled), record approval
+- **RESPONSE stage approval**: Hash response/artifacts, record approval
 - Hashing occurs at approval time to capture any user edits
 
 ---
@@ -362,7 +369,7 @@ These questions were raised during design discussions and have been resolved:
 
 ### 1. Should prompt approval be a separate gate from response approval?
 
-**Decision:** Separate gates. Each phase has an ING stage (prompt/input) and ED stage (response/output), each with its own approval gate. This allows flexibility: some workflows may want to approve prompts but auto-approve outputs, or vice versa.
+**Decision:** Separate gates. Each phase has a PROMPT stage (prompt/input) and RESPONSE stage (response/output), each with its own approval gate. This allows flexibility: some workflows may want to approve prompts but auto-approve outputs, or vice versa.
 
 ### 2. How should approval providers access artifacts?
 
@@ -376,7 +383,7 @@ These questions were raised during design discussions and have been resolved:
 
 **Decision:** Approvers receive:
 - `phase`: Current workflow phase (PLAN, GENERATE, etc.)
-- `stage`: Current stage (ING or ED)
+- `stage`: Current stage (PROMPT or RESPONSE)
 - `files`: Dict of filepath → content
 - `context`: Dict with session metadata, iteration number, prior phase outputs
 
@@ -390,6 +397,74 @@ These questions were raised during design discussions and have been resolved:
 - AI provider + AI approver → auto-retry with feedback (up to max_retries)
 - AI provider + manual approver → pause for user (user can `approve`, `reject`, or `retry`)
 - Manual provider + any approver → pause for user (user must provide new content)
+
+### 7. How does REVIEW[RESPONSE] determine next phase (COMPLETE vs REVISE)?
+
+REVIEW is special because the response contains a **verdict** (PASS/FAIL) that determines where the workflow goes next. This creates two separate concerns:
+
+1. **Review Approval**: "Is this review good enough to act on?" (same as any other response approval)
+2. **Review Verdict**: "What does the review say about the code?" (unique to REVIEW)
+
+**Decision:**
+
+At REVIEW[RESPONSE], the `approve` command behavior depends on flags:
+
+| Command | Behavior |
+|---------|----------|
+| `approve` (no flags) | Accept review as-is. Profile parses verdict to determine COMPLETE vs REVISE. |
+| `approve --complete` | **User override**: Force COMPLETE even if review says FAIL. Engine calls `profile.update_review()` to fix verdict markers. |
+| `approve --revise` | **User override**: Force REVISE even if review says PASS. Engine calls `profile.update_review()` to fix verdict markers. |
+
+**Key insight**: The `--complete` and `--revise` flags are **only for when the user disagrees with the review**. Without flags, `approve` accepts the review as-is and lets the profile parse the verdict. The user may have edited the review file manually; no sanitization is done unless override flags are used.
+
+**Profile Methods:**
+
+```python
+class WorkflowProfile(ABC):
+    @abstractmethod
+    def parse_review_verdict(self, content: str) -> ReviewVerdict:
+        """Parse review content to determine PASS/FAIL verdict.
+
+        Used by engine in automated mode and when user approves without flags.
+        Profile defines its own verdict markers (e.g., @@@REVIEW_META).
+        """
+        ...
+
+    @abstractmethod
+    def update_review(
+        self,
+        content: str,
+        feedback: str | None = None,
+        verdict: ReviewVerdict | None = None,  # None = preserve existing
+        overwrite: bool = False
+    ) -> str:
+        """Update review content and/or verdict markers.
+
+        Called by engine when user uses --complete or --revise flags.
+
+        Args:
+            content: Current review content
+            feedback: Optional feedback to incorporate
+            verdict: New verdict to set (None preserves existing)
+            overwrite: If True, replace content with feedback only
+
+        Returns:
+            Updated review content with correct verdict markers
+        """
+        ...
+```
+
+**Use Cases for `update_review`:**
+
+| feedback | verdict | overwrite | Use Case |
+|----------|---------|-----------|----------|
+| None | PASS | False | User says `--complete`: just flip verdict markers |
+| None | FAIL | False | User says `--revise`: just flip verdict markers |
+| "..." | None | False | Add feedback, keep existing verdict |
+| "..." | PASS | False | Add feedback AND flip to PASS |
+| "..." | FAIL | False | Add feedback AND flip to FAIL |
+| "..." | PASS | True | Replace content with feedback, set PASS |
+| "..." | FAIL | True | Replace content with feedback, set FAIL |
 
 ---
 
@@ -417,7 +492,7 @@ providers:
   revise: { ai: claude, approver: skip }
 ```
 
-Single `step` command runs entire workflow. No human intervention required.
+Single `init` command runs entire workflow. With all approvers set to `skip`, each approval gate auto-advances. No human intervention required.
 
 ### Human-in-the-Loop Code Review (Interactive Mode)
 
@@ -429,7 +504,7 @@ providers:
   revise: { ai: claude, approver: skip }
 ```
 
-AI generates plan and code automatically. Workflow pauses at REVIEW[ED] for user to approve the review verdict before revision. **This is an interactive workflow** because it requires human approval at the review phase.
+AI generates plan and code automatically. Workflow pauses at REVIEW[RESPONSE] for user to approve the review verdict before revision. **This is an interactive workflow** because it requires human approval at the review phase.
 
 ### AI-to-AI Validation (Fully Automated)
 

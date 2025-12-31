@@ -5,6 +5,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+# Shared config for strict models - reject unknown fields
+STRICT_MODEL_CONFIG = ConfigDict(extra="forbid")
+
+
 class ExecutionMode(str, Enum):
     """Execution mode for workflow sessions."""
 
@@ -16,7 +20,7 @@ class WorkflowPhase(str, Enum):
     """Workflow phase - WHAT work is being done.
 
     ADR-0012: 4 active phases + terminal states.
-    Each active phase has ING and ED stages.
+    Each active phase has PROMPT and RESPONSE stages.
     """
 
     INIT = "init"            # Session created, ready to start
@@ -30,13 +34,19 @@ class WorkflowPhase(str, Enum):
 
 
 class WorkflowStage(str, Enum):
-    """Workflow stage - WHERE in the phase we are.
+    """Workflow stage - WHAT we're working on in the phase.
 
     ADR-0012: Each active phase has two stages.
+
+    PROMPT: Prompt is created, editable, awaiting approval.
+            Approve → transition to RESPONSE.
+
+    RESPONSE: Prompt sent to AI, response created, editable, awaiting approval.
+              Approve → transition to next phase's PROMPT (or COMPLETE).
     """
 
-    ING = "ing"  # Input ready (prompt artifact exists, awaiting response)
-    ED = "ed"    # Output ready (response artifact exists, awaiting approval)
+    PROMPT = "prompt"      # Working on prompt; awaiting approval
+    RESPONSE = "response"  # Working on response; awaiting approval
 
 
 class WorkflowStatus(str, Enum):
@@ -101,7 +111,13 @@ class PhaseTransition(BaseModel):
 
 
 class WorkflowState(BaseModel):
-    """Complete state snapshot of a workflow session."""
+    """Complete state snapshot of a workflow session.
+
+    Profile-specific data goes in `context` dict, not as top-level fields.
+    This model rejects unknown fields to enforce this boundary.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     # Identity
     session_id: str

@@ -49,8 +49,8 @@ class TestWorkflowStage:
 
     def test_stage_values_exist(self) -> None:
         """Both stage values exist."""
-        assert WorkflowStage.ING == "ing"
-        assert WorkflowStage.ED == "ed"
+        assert WorkflowStage.PROMPT == "prompt"
+        assert WorkflowStage.RESPONSE == "response"
 
     def test_stage_count_is_exactly_two(self) -> None:
         """Exactly 2 stages defined."""
@@ -58,20 +58,21 @@ class TestWorkflowStage:
 
     def test_stage_is_str_enum(self) -> None:
         """WorkflowStage is a string enum for JSON serialization."""
-        assert isinstance(WorkflowStage.ING, str)
-        assert WorkflowStage.ING == "ing"
+        assert isinstance(WorkflowStage.PROMPT, str)
+        assert WorkflowStage.PROMPT == "prompt"
 
 
 class TestPhaseStageSemantics:
     """Tests for phase+stage semantic meaning."""
 
-    def test_ing_stage_meaning(self) -> None:
-        """ING stage means prompt ready, waiting for response."""
-        # ING = Input preparation complete, prompt artifact exists
-        # Semantic test - documents the meaning
-        assert WorkflowStage.ING.value == "ing"
+    def test_prompt_stage_meaning(self) -> None:
+        """PROMPT stage: working on prompt, awaiting approval."""
+        # PROMPT = Prompt created, editable, awaiting approval
+        # Approve → transition to RESPONSE
+        assert WorkflowStage.PROMPT.value == "prompt"
 
-    def test_ed_stage_meaning(self) -> None:
-        """ED stage means response received, waiting for approval."""
-        # ED = Output ready, response artifact exists
-        assert WorkflowStage.ED.value == "ed"
+    def test_response_stage_meaning(self) -> None:
+        """RESPONSE stage: working on response, awaiting approval."""
+        # RESPONSE = Prompt sent to AI, response created, editable, awaiting approval
+        # Approve → transition to next phase
+        assert WorkflowStage.RESPONSE.value == "response"
