@@ -15,10 +15,10 @@ from unittest.mock import patch, MagicMock
 
 from aiwf.interface.cli.cli import cli
 from aiwf.domain.providers.provider_factory import ProviderFactory
-from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.response_provider import ResponseProvider
 
 
-class MockTestProvider(AIProvider):
+class MockTestProvider(ResponseProvider):
     """Test provider for list command tests."""
 
     def __init__(self, config: dict[str, Any] | None = None):

@@ -1,9 +1,9 @@
 from typing import Any
 
-from .ai_provider import AIProvider
+from .response_provider import ResponseProvider
 
 
-class ManualProvider(AIProvider):
+class ManualProvider(ResponseProvider):
     """Human-in-the-loop provider (prompts written to disk)."""
 
     @classmethod

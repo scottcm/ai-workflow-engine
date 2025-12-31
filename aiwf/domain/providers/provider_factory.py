@@ -1,16 +1,21 @@
 from typing import Any
-from .ai_provider import AIProvider
+from .response_provider import ResponseProvider
+
 
 class ProviderFactory:
-    """Factory for creating AI provider instances (Factory pattern)"""
+    """Factory for creating response provider instances (Factory pattern).
 
-    _registry: dict[str, type[AIProvider]] = {}
+    Response providers generate responses to prompts. They may call AI APIs
+    or signal manual mode where the user provides the response.
+    """
+
+    _registry: dict[str, type[ResponseProvider]] = {}
 
     @classmethod
-    def register(cls, key: str, provider_class: type[AIProvider]) -> None:
+    def register(cls, key: str, provider_class: type[ResponseProvider]) -> None:
         """
         Register a provider implementation.
-        
+
         Args:
             key: Provider identifier (e.g., "claude", "gemini", "manual")
             provider_class: The provider class to register
@@ -18,17 +23,17 @@ class ProviderFactory:
         cls._registry[key] = provider_class
 
     @classmethod
-    def create(cls, provider_key: str, config: dict[str, Any] | None = None) -> AIProvider:
+    def create(cls, provider_key: str, config: dict[str, Any] | None = None) -> ResponseProvider:
         """
         Create a provider instance.
-        
+
         Args:
             provider_key: Registered provider identifier
             config: Optional configuration for the provider
-            
+
         Returns:
-            Instantiated AIProvider
-            
+            Instantiated ResponseProvider
+
         Raises:
             KeyError: If provider_key is not registered
         """
@@ -42,7 +47,7 @@ class ProviderFactory:
         provider_class = cls._registry[provider_key]
         config = config or {}
         return provider_class(**config)
-    
+
     @classmethod
     def list_providers(cls) -> list[str]:
         """

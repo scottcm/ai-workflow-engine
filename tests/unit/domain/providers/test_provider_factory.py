@@ -1,4 +1,4 @@
-"""Unit tests for ProviderFactory (AI providers).
+"""Unit tests for ProviderFactory (response providers).
 
 Mirrors test_standards_provider_factory.py structure for consistency.
 """
@@ -7,11 +7,11 @@ import pytest
 from typing import Any
 
 from aiwf.domain.providers.provider_factory import ProviderFactory
-from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.response_provider import ResponseProvider
 
 
-class MockAIProvider(AIProvider):
-    """Mock AI provider for testing."""
+class MockResponseProvider(ResponseProvider):
+    """Mock response provider for testing."""
 
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
@@ -19,8 +19,8 @@ class MockAIProvider(AIProvider):
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
         return {
-            "name": "mock-ai-provider",
-            "description": "Mock AI provider for testing",
+            "name": "mock-response-provider",
+            "description": "Mock response provider for testing",
             "requires_config": False,
             "config_keys": [],
             "default_connection_timeout": 10,
@@ -49,17 +49,17 @@ class TestProviderFactory:
 
     def test_register_and_create(self):
         """Factory can register and create providers."""
-        ProviderFactory.register("mock", MockAIProvider)
+        ProviderFactory.register("mock", MockResponseProvider)
 
         provider = ProviderFactory.create("mock")
 
-        assert isinstance(provider, MockAIProvider)
+        assert isinstance(provider, MockResponseProvider)
         assert provider.config == {}
 
     def test_create_with_config(self):
         """Factory passes config as kwargs to provider constructor."""
-        ProviderFactory.register("mock", MockAIProvider)
-        # MockAIProvider accepts config dict in __init__
+        ProviderFactory.register("mock", MockResponseProvider)
+        # MockResponseProvider accepts config dict in __init__
         config = {"config": {"api_key": "test-key"}}
 
         provider = ProviderFactory.create("mock", config)
@@ -76,8 +76,8 @@ class TestProviderFactory:
 
     def test_create_keyerror_lists_available_providers(self):
         """KeyError message lists available providers."""
-        ProviderFactory.register("mock1", MockAIProvider)
-        ProviderFactory.register("mock2", MockAIProvider)
+        ProviderFactory.register("mock1", MockResponseProvider)
+        ProviderFactory.register("mock2", MockResponseProvider)
 
         with pytest.raises(KeyError) as exc_info:
             ProviderFactory.create("unknown")
@@ -88,8 +88,8 @@ class TestProviderFactory:
 
     def test_list_providers_returns_registered_keys(self):
         """list_providers returns all registered keys."""
-        ProviderFactory.register("mock1", MockAIProvider)
-        ProviderFactory.register("mock2", MockAIProvider)
+        ProviderFactory.register("mock1", MockResponseProvider)
+        ProviderFactory.register("mock2", MockResponseProvider)
 
         keys = ProviderFactory.list_providers()
 
@@ -105,13 +105,13 @@ class TestProviderFactory:
 
     def test_get_all_metadata_returns_metadata_list(self):
         """get_all_metadata returns list of metadata dicts."""
-        ProviderFactory.register("mock", MockAIProvider)
+        ProviderFactory.register("mock", MockResponseProvider)
 
         all_metadata = ProviderFactory.get_all_metadata()
 
         assert len(all_metadata) == 1
-        assert all_metadata[0]["name"] == "mock-ai-provider"
-        assert all_metadata[0]["description"] == "Mock AI provider for testing"
+        assert all_metadata[0]["name"] == "mock-response-provider"
+        assert all_metadata[0]["description"] == "Mock response provider for testing"
 
     def test_get_all_metadata_empty_when_no_registrations(self):
         """get_all_metadata returns empty list when no providers registered."""
@@ -121,12 +121,12 @@ class TestProviderFactory:
 
     def test_get_metadata_returns_metadata_for_registered(self):
         """get_metadata returns metadata for registered provider."""
-        ProviderFactory.register("mock", MockAIProvider)
+        ProviderFactory.register("mock", MockResponseProvider)
 
         metadata = ProviderFactory.get_metadata("mock")
 
         assert metadata is not None
-        assert metadata["name"] == "mock-ai-provider"
+        assert metadata["name"] == "mock-response-provider"
         assert metadata["default_connection_timeout"] == 10
         assert metadata["default_response_timeout"] == 60
 
@@ -139,7 +139,7 @@ class TestProviderFactory:
     def test_register_overwrites_existing_registration(self):
         """Registering with same key overwrites previous registration."""
 
-        class AnotherMockProvider(MockAIProvider):
+        class AnotherMockProvider(MockResponseProvider):
             @classmethod
             def get_metadata(cls) -> dict[str, Any]:
                 return {
@@ -151,7 +151,7 @@ class TestProviderFactory:
                     "default_response_timeout": 120,
                 }
 
-        ProviderFactory.register("mock", MockAIProvider)
+        ProviderFactory.register("mock", MockResponseProvider)
         ProviderFactory.register("mock", AnotherMockProvider)
 
         metadata = ProviderFactory.get_metadata("mock")
@@ -160,7 +160,7 @@ class TestProviderFactory:
     def test_create_passes_kwargs_to_constructor(self):
         """Factory passes config as kwargs to constructor."""
 
-        class ConfigurableProvider(AIProvider):
+        class ConfigurableProvider(ResponseProvider):
             def __init__(self, api_key: str = "", timeout: int = 30):
                 self.api_key = api_key
                 self.timeout = timeout
@@ -207,7 +207,7 @@ class TestProviderMetadataContract:
 
     def test_metadata_has_required_keys(self):
         """Provider metadata contains all required keys."""
-        ProviderFactory.register("mock", MockAIProvider)
+        ProviderFactory.register("mock", MockResponseProvider)
 
         metadata = ProviderFactory.get_metadata("mock")
 
@@ -223,7 +223,7 @@ class TestProviderMetadataContract:
 
     def test_metadata_timeouts_are_int_or_none(self):
         """Provider metadata timeout values are int or None."""
-        ProviderFactory.register("mock", MockAIProvider)
+        ProviderFactory.register("mock", MockResponseProvider)
 
         metadata = ProviderFactory.get_metadata("mock")
 
@@ -234,9 +234,9 @@ class TestProviderMetadataContract:
         assert resp_timeout is None or isinstance(resp_timeout, int)
 
     def test_base_provider_has_sensible_defaults(self):
-        """AIProvider base class provides sensible default metadata."""
+        """ResponseProvider base class provides sensible default metadata."""
         # Use base class default implementation
-        metadata = AIProvider.get_metadata()
+        metadata = ResponseProvider.get_metadata()
 
         assert metadata["name"] == "unknown"
         assert metadata["default_connection_timeout"] == 10

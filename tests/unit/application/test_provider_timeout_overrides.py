@@ -14,11 +14,11 @@ from unittest.mock import patch
 import pytest
 
 from aiwf.application.approval_handler import run_provider
-from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.response_provider import ResponseProvider
 from aiwf.domain.providers.provider_factory import ProviderFactory
 
 
-class TimeoutTrackingProvider(AIProvider):
+class TimeoutTrackingProvider(ResponseProvider):
     """Provider that records timeout values passed to generate()."""
 
     # Class-level storage to track calls across instances
@@ -56,7 +56,7 @@ class TimeoutTrackingProvider(AIProvider):
         return "response"
 
 
-class NoneTimeoutProvider(AIProvider):
+class NoneTimeoutProvider(ResponseProvider):
     """Provider with None timeout defaults (meaning no timeout)."""
 
     last_call_timeouts: dict[str, Any] = {}
@@ -93,7 +93,7 @@ class NoneTimeoutProvider(AIProvider):
         return "response"
 
 
-class ZeroTimeoutProvider(AIProvider):
+class ZeroTimeoutProvider(ResponseProvider):
     """Provider with zero timeout defaults (meaning no timeout per ADR-0007)."""
 
     last_call_timeouts: dict[str, Any] = {}
@@ -218,9 +218,9 @@ class TestTimeoutSemantics:
 class TestProviderMetadataTimeouts:
     """Tests for various provider timeout metadata configurations."""
 
-    def test_ai_provider_default_metadata_has_timeouts(self):
-        """AIProvider base class provides default timeout values."""
-        metadata = AIProvider.get_metadata()
+    def test_response_provider_default_metadata_has_timeouts(self):
+        """ResponseProvider base class provides default timeout values."""
+        metadata = ResponseProvider.get_metadata()
 
         assert "default_connection_timeout" in metadata
         assert "default_response_timeout" in metadata

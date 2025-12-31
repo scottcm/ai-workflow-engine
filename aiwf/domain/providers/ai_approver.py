@@ -1,4 +1,4 @@
-"""AI approval provider - delegates decision to an AI provider.
+"""AI approval provider - delegates decision to a response provider.
 
 ADR-0012 Phase 3: AI-powered approval for automated quality gates.
 """
@@ -8,7 +8,7 @@ from typing import Any
 
 from aiwf.domain.models.approval_result import ApprovalDecision, ApprovalResult
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
-from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.response_provider import ResponseProvider
 from aiwf.domain.providers.approval_provider import ApprovalProvider
 
 
@@ -37,22 +37,22 @@ Your response must start with either APPROVED or REJECTED.
 class AIApprovalProvider(ApprovalProvider):
     """Approval provider that delegates decision to an AI.
 
-    Uses an AIProvider to evaluate content and parse the response
+    Uses a ResponseProvider to evaluate content and parse the response
     as an approval decision.
     """
 
     def __init__(
         self,
-        ai_provider: AIProvider,
+        response_provider: ResponseProvider,
         prompt_template: str | None = None,
     ) -> None:
-        """Initialize with an AI provider.
+        """Initialize with a response provider.
 
         Args:
-            ai_provider: The AI provider to use for evaluation
+            response_provider: The response provider to use for evaluation
             prompt_template: Optional custom prompt template
         """
-        self._ai = ai_provider
+        self._response_provider = response_provider
         self._template = prompt_template or _DEFAULT_APPROVAL_PROMPT
 
     def evaluate(
@@ -63,13 +63,13 @@ class AIApprovalProvider(ApprovalProvider):
         files: dict[str, str | None],
         context: dict[str, Any],
     ) -> ApprovalResult:
-        """Evaluate content using AI and return decision.
+        """Evaluate content using response provider and return decision.
 
-        Sends content to AI provider and parses response as
+        Sends content to response provider and parses response as
         APPROVED or REJECTED with feedback.
         """
         prompt = self._build_prompt(phase, stage, files, context)
-        response = self._ai.generate(prompt)
+        response = self._response_provider.generate(prompt)
 
         return self._parse_response(response or "")
 

@@ -2,8 +2,16 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
-class AIProvider(ABC):
-    """Abstract interface for AI providers (Strategy pattern)."""
+class ResponseProvider(ABC):
+    """Abstract interface for response providers (Strategy pattern).
+
+    Response providers generate responses to prompts. They may call AI APIs
+    (Claude, Gemini) or signal manual mode where the user provides the response.
+
+    This is distinct from:
+    - ApprovalProvider: decides whether to approve/reject content
+    - StandardsProvider: creates standards bundles
+    """
 
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
@@ -48,10 +56,10 @@ class AIProvider(ABC):
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
     ) -> str | None:
-        """Generate AI response for the given prompt.
+        """Generate response for the given prompt.
 
         Args:
-            prompt: The prompt text to send to the AI
+            prompt: The prompt text to send
             context: Optional context dictionary (metadata, settings, etc.)
             system_prompt: Optional system prompt for providers that support it
             connection_timeout: Timeout for establishing connection (None = use default)
@@ -64,3 +72,7 @@ class AIProvider(ABC):
             ProviderError: If the provider call fails (network, auth, timeout, etc.)
         """
         ...
+
+
+# Backwards compatibility alias
+AIProvider = ResponseProvider

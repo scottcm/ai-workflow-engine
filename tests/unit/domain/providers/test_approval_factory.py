@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.response_provider import ResponseProvider
 from aiwf.domain.providers.approval_provider import ApprovalProvider
 from aiwf.domain.providers.approval_factory import ApprovalProviderFactory
 from aiwf.domain.providers.skip_approver import SkipApprovalProvider
@@ -41,13 +41,13 @@ class TestApprovalProviderFactoryAIFallback:
     """Tests for AI provider fallback behavior."""
 
     def test_unknown_key_creates_ai_approval_provider(self) -> None:
-        """Unknown key creates AIApprovalProvider wrapping AI provider."""
-        mock_ai = Mock(spec=AIProvider)
+        """Unknown key creates AIApprovalProvider wrapping response provider."""
+        mock_response_provider = Mock(spec=ResponseProvider)
 
         with patch(
             "aiwf.domain.providers.approval_factory.ProviderFactory"
         ) as mock_factory:
-            mock_factory.create.return_value = mock_ai
+            mock_factory.create.return_value = mock_response_provider
 
             provider = ApprovalProviderFactory.create("claude")
 
@@ -56,13 +56,13 @@ class TestApprovalProviderFactoryAIFallback:
 
     def test_ai_fallback_passes_config_to_provider_factory(self) -> None:
         """AI fallback passes config to ProviderFactory.create."""
-        mock_ai = Mock(spec=AIProvider)
+        mock_response_provider = Mock(spec=ResponseProvider)
         config = {"api_key": "test-key", "model": "claude-3"}
 
         with patch(
             "aiwf.domain.providers.approval_factory.ProviderFactory"
         ) as mock_factory:
-            mock_factory.create.return_value = mock_ai
+            mock_factory.create.return_value = mock_response_provider
 
             ApprovalProviderFactory.create("claude", config=config)
 
@@ -156,14 +156,14 @@ class TestApprovalProviderFactoryConfig:
         assert isinstance(manual, ManualApprovalProvider)
 
     def test_ai_provider_receives_config(self) -> None:
-        """AI provider creation receives config."""
-        mock_ai = Mock(spec=AIProvider)
+        """Response provider creation receives config."""
+        mock_response_provider = Mock(spec=ResponseProvider)
         config = {"model": "gpt-4", "temperature": 0.7}
 
         with patch(
             "aiwf.domain.providers.approval_factory.ProviderFactory"
         ) as mock_factory:
-            mock_factory.create.return_value = mock_ai
+            mock_factory.create.return_value = mock_response_provider
 
             ApprovalProviderFactory.create("gpt", config=config)
 

@@ -1,10 +1,10 @@
-# AI Provider Implementation Guide
+# Response Provider Implementation Guide
 
-This guide explains how to implement a custom AI provider for the AI Workflow Engine.
+This guide explains how to implement a custom response provider for the AI Workflow Engine.
 
 ## Overview
 
-AI providers enable automated workflow execution by calling external AI services (LLMs). The engine invokes providers during the `approve` command for ING phases (PLANNING, GENERATING, REVIEWING, REVISING).
+Response providers enable automated workflow execution by calling external AI services (LLMs). The engine invokes providers during the `approve` command for ING phases (PLANNING, GENERATING, REVIEWING, REVISING).
 
 **Key behaviors:**
 - `validate()` is called during `initialize_run()` to fail fast before workflow starts
@@ -12,14 +12,14 @@ AI providers enable automated workflow execution by calling external AI services
 - `ProviderError` propagates to the orchestrator which sets ERROR status and emits WORKFLOW_FAILED event
 - Timeouts come from provider metadata (per-call overrides are out of scope per ADR-0007)
 
-## The AIProvider Interface
+## The ResponseProvider Interface
 
 ```python
 from abc import ABC, abstractmethod
 from typing import Any
 
 
-class AIProvider(ABC):
+class ResponseProvider(ABC):
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
         """Return provider metadata.
@@ -79,11 +79,11 @@ Here's a complete example of a custom provider:
 ```python
 from typing import Any
 
-from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.response_provider import ResponseProvider
 from aiwf.domain.errors import ProviderError
 
 
-class MyProvider(AIProvider):
+class MyProvider(ResponseProvider):
     """Custom provider that calls an external AI API."""
 
     def __init__(self, config: dict | None = None):
@@ -166,7 +166,7 @@ The orchestrator catches `ProviderError` in its `approve()` method and:
 For unit tests, use `FakeProvider` from `tests/conftest.py` or create test-specific providers:
 
 ```python
-class FailingProvider(AIProvider):
+class FailingProvider(ResponseProvider):
     """Provider that always fails validation."""
 
     def validate(self) -> None:

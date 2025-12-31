@@ -19,8 +19,8 @@ ai-workflow-engine/
 │   │   ├── profiles/            # Profile abstractions
 │   │   │   ├── workflow_profile.py  # WorkflowProfile ABC
 │   │   │   └── profile_factory.py   # ProfileFactory registry
-│   │   ├── providers/           # AI provider abstractions
-│   │   │   ├── ai_provider.py       # AIProvider ABC (validate, generate)
+│   │   ├── providers/           # Response provider abstractions
+│   │   │   ├── response_provider.py # ResponseProvider ABC (validate, generate)
 │   │   │   ├── provider_factory.py  # ProviderFactory registry
 │   │   │   └── manual_provider.py   # ManualProvider (returns None)
 │   │   ├── errors.py            # ProviderError exception
@@ -219,7 +219,7 @@ Architecture decisions in `docs/adr/`:
 |--------|----------|---------|
 | CLI command | `cli.py`, `output_models.py` | Click command + Pydantic output model |
 | Workflow profile | `profiles/` directory | Implement `WorkflowProfile` ABC, register in factory |
-| AI provider | `domain/providers/` | Implement `AIProvider` ABC, register in factory |
+| Response provider | `domain/providers/` | Implement `ResponseProvider` ABC, register in factory |
 | Standards provider | Profile-specific | Implement provider interface per profile needs |
 
 See [docs/provider-implementation-guide.md](docs/provider-implementation-guide.md) for AI provider details.

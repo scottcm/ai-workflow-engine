@@ -5,7 +5,7 @@ import pytest
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import WorkflowStatus
-from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.response_provider import ResponseProvider
 from aiwf.domain.providers.provider_factory import ProviderFactory
 
 
@@ -63,7 +63,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AIWF_SESSIONS_ROOT", raising=False)
 
 
-class FakeProvider(AIProvider):
+class FakeProvider(ResponseProvider):
     """Fake provider for testing - validates successfully and returns None."""
 
     @classmethod

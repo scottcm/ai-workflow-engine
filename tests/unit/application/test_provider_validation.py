@@ -8,11 +8,11 @@ import pytest
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
 from aiwf.domain.errors import ProviderError
 from aiwf.domain.persistence.session_store import SessionStore
-from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.response_provider import ResponseProvider
 from aiwf.domain.providers.provider_factory import ProviderFactory
 
 
-class ValidatingProvider(AIProvider):
+class ValidatingProvider(ResponseProvider):
     """Provider that tracks validation calls."""
 
     validation_calls: list[str] = []
@@ -38,7 +38,7 @@ class ValidatingProvider(AIProvider):
         return None
 
 
-class FailingValidationProvider(AIProvider):
+class FailingValidationProvider(ResponseProvider):
     """Provider whose validate() always fails."""
 
     @classmethod
