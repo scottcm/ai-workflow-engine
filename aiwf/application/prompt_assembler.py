@@ -147,9 +147,9 @@ class PromptAssembler:
 
         # Plan (for generation, review, revision phases)
         if self.state.phase in (
-            WorkflowPhase.GENERATING,
-            WorkflowPhase.REVIEWING,
-            WorkflowPhase.REVISING,
+            WorkflowPhase.GENERATE,
+            WorkflowPhase.REVIEW,
+            WorkflowPhase.REVISE,
         ):
             plan_content = self._get_artifact_content("plan.md", use_file_refs)
             if plan_content:
@@ -171,16 +171,16 @@ class PromptAssembler:
 
         # Plan (for generation, review, revision phases)
         if self.state.phase in (
-            WorkflowPhase.GENERATING,
-            WorkflowPhase.REVIEWING,
-            WorkflowPhase.REVISING,
+            WorkflowPhase.GENERATE,
+            WorkflowPhase.REVIEW,
+            WorkflowPhase.REVISE,
         ):
             plan_content = self._get_artifact_content("plan.md", use_file_refs)
             if plan_content:
                 sections.append(f"## Approved Plan\n\n{plan_content}")
 
         # Previous code (for review and revision phases)
-        if self.state.phase in (WorkflowPhase.REVIEWING, WorkflowPhase.REVISING):
+        if self.state.phase in (WorkflowPhase.REVIEW, WorkflowPhase.REVISE):
             code_section = self._build_code_section(use_file_refs)
             if code_section:
                 sections.append(code_section)
@@ -201,10 +201,10 @@ class PromptAssembler:
     def _build_code_section(self, use_file_refs: bool) -> str:
         """Build the previous code section for review/revision."""
         # Determine which iteration's code to include
-        if self.state.phase == WorkflowPhase.REVIEWING:
+        if self.state.phase == WorkflowPhase.REVIEW:
             code_iteration = self.state.current_iteration
-        else:  # REVISING - code is from previous iteration
-            # Guard: REVISING should only occur in iteration 2+
+        else:  # REVISE - code is from previous iteration
+            # Guard: REVISE should only occur in iteration 2+
             if self.state.current_iteration <= 1:
                 return ""  # No previous iteration to revise
             code_iteration = self.state.current_iteration - 1

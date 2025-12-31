@@ -25,7 +25,6 @@ from aiwf.interface.cli.output_models import (
     ValidationResult,
 )
 from aiwf.application.config_loader import load_config
-from aiwf.application.approval_specs import ING_APPROVAL_SPECS
 
 
 # Patched by tests where the CLI reads it.
@@ -57,35 +56,6 @@ def _emit_progress(state) -> None:
     """Emit progress messages to stderr."""
     for msg in getattr(state, "messages", []):
         click.echo(msg, err=True)
-
-
-def _awaiting_paths_for_state(session_id: str, state) -> tuple[bool, list[str]]:
-    """
-    Manual-workflow inference (Slice C): prompt exists + response missing => awaiting response.
-    Returns (awaiting, [prompt_path, response_path]) for mapped phases; otherwise (False, []).
-    """
-    if state.phase not in ING_APPROVAL_SPECS:
-        return False, []
-
-    spec = ING_APPROVAL_SPECS[state.phase]
-    
-    # Resolve templates
-    prompt_rel = spec.prompt_relpath_template
-    response_rel = spec.response_relpath_template
-    
-    iteration = getattr(state, "current_iteration", 1)
-    
-    if "{N}" in prompt_rel:
-        prompt_rel = prompt_rel.format(N=iteration)
-    if "{N}" in response_rel:
-        response_rel = response_rel.format(N=iteration)
-
-    session_dir = DEFAULT_SESSIONS_ROOT / session_id
-    prompt_path = session_dir / prompt_rel
-    response_path = session_dir / response_rel
-
-    awaiting = prompt_path.exists() and not response_path.exists()
-    return awaiting, [str(prompt_path), str(response_path)]
 
 
 @click.group(help="AI Workflow Engine CLI.")
@@ -231,14 +201,11 @@ def step_cmd(ctx: click.Context, session_id: str, events: bool) -> None:
         phase = state.phase.name
         status = state.status.name
         iteration = getattr(state, "current_iteration", None)
-
-        awaiting, paths = _awaiting_paths_for_state(session_id, state)
+        stage = state.stage.value if state.stage else None
 
         exit_code = 0
         if state.status == WorkflowStatus.CANCELLED:
             exit_code = 3
-        elif awaiting:
-            exit_code = 2
 
         last_error = state.last_error
 
@@ -250,28 +217,20 @@ def step_cmd(ctx: click.Context, session_id: str, events: bool) -> None:
                     phase=phase,
                     status=status,
                     iteration=iteration,
-                    noop_awaiting_artifact=awaiting,
-                    awaiting_paths=paths if awaiting else [],
+                    noop_awaiting_artifact=False,
+                    awaiting_paths=[],
                     last_error=last_error,
                 )
             )
             raise click.exceptions.Exit(exit_code)
 
-        header = (
-            f"phase={phase} "
-            f"status={status} "
-            f"iteration={iteration} "
-            f"noop_awaiting_artifact={'true' if awaiting else 'false'}"
-        )
+        header = f"phase={phase} status={status} iteration={iteration}"
+        if stage:
+            header += f" stage={stage}"
         click.echo(header)
 
         if last_error:
             click.echo(f"error: {last_error}")
-
-        if awaiting:
-            for p in paths:
-                click.echo(p)
-            raise click.exceptions.Exit(2)
 
         if exit_code == 3:
             raise click.exceptions.Exit(3)

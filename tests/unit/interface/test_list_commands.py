@@ -58,7 +58,7 @@ class TestProfilesCommand:
             "description": "JPA Multi-Tier profile",
             "target_stack": "Java/Spring Boot",
             "scopes": ["domain", "application", "infrastructure"],
-            "phases": ["PLANNING", "GENERATING", "REVIEWING", "REVISING"],
+            "phases": ["PLAN", "GENERATE", "REVIEW", "REVISE"],
             "requires_config": True,
             "config_keys": ["standards.root"],
         }
