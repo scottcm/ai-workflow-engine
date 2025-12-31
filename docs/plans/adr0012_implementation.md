@@ -16,15 +16,15 @@
 |-------|--------|--------|-------|
 | 0. Cleanup | DONE | 1d4b23b | Deleted 42 test files, 441 remain |
 | 1. Models | DONE | e0ca08d | New enums, ApprovalResult, stage field added |
-| 2. State Machine | DONE | - | TransitionTable, 58 tests, Action enum |
-| 3. Approval Providers | NOT STARTED | - | |
+| 2. State Machine | DONE | - | TransitionTable, 68 tests, Action enum |
+| 3. Approval Providers | DONE | - | ApprovalProvider ABC, Skip/Manual/AI providers, 35 tests |
 | 4. Provider Factory | NOT STARTED | - | |
 | 5. Orchestrator | NOT STARTED | - | |
 | 6. CLI | NOT STARTED | - | |
 | 7. Final Cleanup | NOT STARTED | - | |
 
-**Current Phase:** 3 (Approval Providers)
-**Next Action:** Implement ApprovalProvider ABC and built-in providers
+**Current Phase:** 4 (Provider Factory)
+**Next Action:** Implement ApprovalProviderFactory with registration
 
 ---
 
