@@ -45,7 +45,7 @@ class TestApprovalProviderFactoryAIFallback:
         mock_response_provider = Mock(spec=ResponseProvider)
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ProviderFactory"
+            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 
@@ -55,12 +55,12 @@ class TestApprovalProviderFactoryAIFallback:
             mock_factory.create.assert_called_once_with("claude", None)
 
     def test_ai_fallback_passes_config_to_provider_factory(self) -> None:
-        """AI fallback passes config to ProviderFactory.create."""
+        """AI fallback passes config to ResponseProviderFactory.create."""
         mock_response_provider = Mock(spec=ResponseProvider)
         config = {"api_key": "test-key", "model": "claude-3"}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ProviderFactory"
+            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 
@@ -69,9 +69,9 @@ class TestApprovalProviderFactoryAIFallback:
             mock_factory.create.assert_called_once_with("claude", config)
 
     def test_ai_fallback_propagates_provider_factory_errors(self) -> None:
-        """If ProviderFactory.create fails, error propagates."""
+        """If ResponseProviderFactory.create fails, error propagates."""
         with patch(
-            "aiwf.domain.providers.approval_factory.ProviderFactory"
+            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
         ) as mock_factory:
             mock_factory.create.side_effect = KeyError("Provider 'unknown' not found")
 
@@ -161,7 +161,7 @@ class TestApprovalProviderFactoryConfig:
         config = {"model": "gpt-4", "temperature": 0.7}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ProviderFactory"
+            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 

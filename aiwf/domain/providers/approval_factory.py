@@ -9,7 +9,7 @@ from aiwf.domain.providers.approval_provider import ApprovalProvider
 from aiwf.domain.providers.skip_approver import SkipApprovalProvider
 from aiwf.domain.providers.manual_approver import ManualApprovalProvider
 from aiwf.domain.providers.ai_approver import AIApprovalProvider
-from aiwf.domain.providers.provider_factory import ProviderFactory
+from aiwf.domain.providers.provider_factory import ResponseProviderFactory
 
 
 class ApprovalProviderFactory:
@@ -61,7 +61,7 @@ class ApprovalProviderFactory:
             return cls._registry[key]()
 
         # Fall back to creating AIApprovalProvider with response provider
-        response_provider = ProviderFactory.create(key, config)
+        response_provider = ResponseProviderFactory.create(key, config)
         return AIApprovalProvider(response_provider=response_provider)
 
     @classmethod
@@ -70,6 +70,6 @@ class ApprovalProviderFactory:
 
         Returns:
             List of built-in provider identifiers.
-            Note: AI provider keys are not listed (delegated to ProviderFactory).
+            Note: AI provider keys are not listed (delegated to ResponseProviderFactory).
         """
         return list(cls._registry.keys())

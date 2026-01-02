@@ -2,7 +2,7 @@ from typing import Any
 from .response_provider import ResponseProvider
 
 
-class ProviderFactory:
+class ResponseProviderFactory:
     """Factory for creating response provider instances (Factory pattern).
 
     Response providers generate responses to prompts. They may call AI APIs
@@ -85,3 +85,7 @@ class ProviderFactory:
         if provider_key not in cls._registry:
             return None
         return cls._registry[provider_key].get_metadata()
+
+
+# Backwards compatibility alias
+ProviderFactory = ResponseProviderFactory
