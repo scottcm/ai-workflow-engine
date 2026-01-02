@@ -25,7 +25,7 @@ from aiwf.domain.models.workflow_state import (
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.errors import ProviderError
 from aiwf.domain.profiles.profile_factory import ProfileFactory
-from aiwf.domain.providers.provider_factory import ProviderFactory
+from aiwf.domain.providers.provider_factory import ResponseProviderFactory
 from aiwf.domain.validation.path_validator import normalize_metadata_paths
 
 if TYPE_CHECKING:
@@ -410,7 +410,7 @@ class WorkflowOrchestrator:
         prompt_content = prompt_path.read_text(encoding="utf-8")
 
         # Create provider and call
-        provider = ProviderFactory.create(provider_key)
+        provider = ResponseProviderFactory.create(provider_key)
         context = self._build_context(state)
 
         try:
@@ -594,7 +594,7 @@ class WorkflowOrchestrator:
         # Validate all configured AI providers before continuing setup
         try:
             for role, provider_key in providers.items():
-                ai_provider = ProviderFactory.create(provider_key)
+                ai_provider = ResponseProviderFactory.create(provider_key)
                 ai_provider.validate()
         except (KeyError, ProviderError):
             shutil.rmtree(session_dir, ignore_errors=True)

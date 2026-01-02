@@ -1,4 +1,7 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from aiwf.domain.models.provider_result import ProviderResult
 
 from .response_provider import ResponseProvider
 
@@ -33,7 +36,7 @@ class ManualProvider(ResponseProvider):
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> str | None:
+    ) -> "ProviderResult | None":
         """Manual provider does not generate responses automatically.
 
         Returns None to signal that the response file should be

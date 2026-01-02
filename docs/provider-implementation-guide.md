@@ -8,9 +8,50 @@ Response providers enable automated workflow execution by calling external AI se
 
 **Key behaviors:**
 - `validate()` is called during `initialize_run()` to fail fast before workflow starts
-- `generate()` returns a response string, or `None` for manual mode (user provides response)
+- `generate()` returns a `ProviderResult`, or `None` for manual mode (user provides response)
 - `ProviderError` propagates to the orchestrator which sets ERROR status and emits WORKFLOW_FAILED event
 - Timeouts come from provider metadata (per-call overrides are out of scope per ADR-0007)
+
+## Provider Capabilities (fs_ability)
+
+Providers declare their file system access level via `fs_ability` metadata:
+
+| fs_ability | Can Read | Can Write | Examples |
+|------------|----------|-----------|----------|
+| `local-write` | Yes | Yes | Claude Code, Aider |
+| `local-read` | Yes | No | Standards providers |
+| `none` | No | No | API-only (Claude API, OpenAI) |
+
+**Local-write providers** write code files directly. The engine validates files exist after execution.
+
+**Non-writing providers** return file content in `ProviderResult.files`. The engine writes files.
+
+## The ProviderResult Model
+
+Providers return a `ProviderResult` that supports both file-writing and content-returning modes:
+
+```python
+from pydantic import BaseModel
+
+
+class ProviderResult(BaseModel):
+    """Result from AI provider execution."""
+
+    files: dict[str, str | None]  # {path: content or None if already written}
+    response: str | None = None   # Optional commentary for response file
+```
+
+**File handling:**
+- `files` dict keys are paths relative to `/code` directory
+- Value is file content (string) or `None` if provider wrote the file directly
+- Engine writes files where content is provided, validates existence where `None`
+- Engine warns (does not fail) if expected files are missing
+
+| Provider Type | `files` Values | Engine Action |
+|---------------|----------------|---------------|
+| Local-write (Claude Code, Aider) | `None` for all | Validate files exist |
+| Non-writing (web chat, API-only) | Content strings | Write files to `/code` |
+| Mixed | Some `None`, some content | Write where needed, validate rest |
 
 ## The ResponseProvider Interface
 
@@ -31,6 +72,8 @@ class ResponseProvider(ABC):
         - config_keys: List of required config keys (e.g., ["api_key"])
         - default_connection_timeout: Seconds to wait for connection (default: 10)
         - default_response_timeout: Seconds to wait for response (default: 300)
+        - fs_ability: File access level ("local-write", "local-read", "none")
+        - supports_system_prompt: Whether provider can use system prompts
         """
         return {
             "name": "unknown",
@@ -39,6 +82,8 @@ class ResponseProvider(ABC):
             "config_keys": [],
             "default_connection_timeout": 10,
             "default_response_timeout": 300,
+            "fs_ability": "local-write",
+            "supports_system_prompt": False,
         }
 
     @abstractmethod
@@ -55,36 +100,41 @@ class ResponseProvider(ABC):
         self,
         prompt: str,
         context: dict[str, Any] | None = None,
+        system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> str | None:
+    ) -> ProviderResult | None:
         """Generate AI response.
 
         Args:
             prompt: The prompt string to send to the AI
-            context: Optional context dict (reserved for future use)
+            context: Context dict with session_dir, project_root, etc.
+            system_prompt: Optional system prompt (if provider supports it)
             connection_timeout: Seconds to wait for connection
             response_timeout: Seconds to wait for response
 
         Returns:
-            Response string from the AI, or None for manual mode.
+            ProviderResult with files dict, or None for manual mode.
         """
         ...
 ```
 
-## Implementation Example
+## Implementation Examples
 
-Here's a complete example of a custom provider:
+### API Provider (Non-Writing)
+
+Returns file content for engine to write:
 
 ```python
 from typing import Any
 
 from aiwf.domain.providers.response_provider import ResponseProvider
+from aiwf.domain.models.provider_result import ProviderResult
 from aiwf.domain.errors import ProviderError
 
 
-class MyProvider(ResponseProvider):
-    """Custom provider that calls an external AI API."""
+class MyApiProvider(ResponseProvider):
+    """API-based provider - returns content, engine writes files."""
 
     def __init__(self, config: dict | None = None):
         self.config = config or {}
@@ -93,39 +143,80 @@ class MyProvider(ResponseProvider):
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
         return {
-            "name": "my-provider",
-            "description": "My custom AI provider",
+            "name": "my-api",
+            "description": "My API provider",
             "requires_config": True,
             "config_keys": ["api_key"],
             "default_connection_timeout": 10,
             "default_response_timeout": 300,
+            "fs_ability": "none",  # API-only, no file access
+            "supports_system_prompt": True,
         }
 
     def validate(self) -> None:
-        """Check that API key is configured and valid."""
         if not self._api_key:
-            raise ProviderError("API key not configured for my-provider")
-
-        # Optionally verify connectivity
-        # try:
-        #     self._client.ping()
-        # except ConnectionError as e:
-        #     raise ProviderError(f"Cannot connect to API: {e}")
+            raise ProviderError("API key not configured")
 
     def generate(
         self,
         prompt: str,
         context: dict[str, Any] | None = None,
+        system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> str:
-        """Call the external API and return the response."""
-        # Your API call here
-        response = self._call_api(
-            prompt=prompt,
-            timeout=(connection_timeout, response_timeout),
+    ) -> ProviderResult:
+        """Call API and return content for engine to write."""
+        response = self._call_api(prompt, system_prompt)
+
+        # Parse response to extract files
+        files = self._parse_code_blocks(response.text)
+
+        # Return content - engine will write files
+        return ProviderResult(
+            files=files,  # {"Entity.java": "package com...", ...}
+            response=response.text,  # Optional: full response for logging
         )
-        return response.text
+```
+
+### Local-Write Provider (Claude Code, Aider)
+
+Writes files directly, returns `None` values:
+
+```python
+class ClaudeCodeProvider(ResponseProvider):
+    """Local-write provider - writes files directly."""
+
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
+        return {
+            "name": "claude-code",
+            "description": "Claude Code CLI agent",
+            "requires_config": False,
+            "config_keys": [],
+            "default_connection_timeout": 30,
+            "default_response_timeout": 600,
+            "fs_ability": "local-write",  # Can write files directly
+            "supports_system_prompt": True,
+        }
+
+    def generate(
+        self,
+        prompt: str,
+        context: dict[str, Any] | None = None,
+        system_prompt: str | None = None,
+        connection_timeout: int | None = None,
+        response_timeout: int | None = None,
+    ) -> ProviderResult:
+        """Invoke CLI - it writes files directly."""
+        # Prompt tells Claude what files to create and where
+        self._invoke_claude_cli(prompt, context)
+
+        # Return None values - engine validates files exist
+        expected_files = context.get("expected_outputs", [])
+        return ProviderResult(
+            files={f: None for f in expected_files},  # None = already written
+            response=None,  # Response file also written by Claude
+        )
 ```
 
 ## Registration
