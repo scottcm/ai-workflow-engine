@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
+from aiwf.application.approval_config import ApprovalConfig
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 from aiwf.domain.models.write_plan import WriteOp, WritePlan
@@ -184,10 +185,14 @@ def session_store(sessions_root: Path) -> SessionStore:
 
 @pytest.fixture
 def orchestrator(sessions_root: Path, session_store: SessionStore) -> WorkflowOrchestrator:
-    """Create orchestrator for integration tests."""
+    """Create orchestrator for integration tests.
+
+    Uses skip approval config to test workflow transitions without approval gates.
+    """
     return WorkflowOrchestrator(
         session_store=session_store,
         sessions_root=sessions_root,
+        approval_config=ApprovalConfig(default_approver="skip"),
     )
 
 

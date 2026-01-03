@@ -17,6 +17,12 @@ from aiwf.domain.models.workflow_state import (
 )
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
+from aiwf.application.approval_config import ApprovalConfig
+
+
+def _skip_approval_config() -> ApprovalConfig:
+    """Create an ApprovalConfig that skips all approval gates."""
+    return ApprovalConfig(default_approver="skip")
 
 
 def _make_state(
@@ -88,6 +94,7 @@ class TestOrchestratorApprove:
         orchestrator = WorkflowOrchestrator(
             session_store=store,
             sessions_root=Path("/tmp/sessions"),
+            approval_config=_skip_approval_config(),
         )
 
         with patch.object(orchestrator, "_execute_action"):
@@ -113,6 +120,7 @@ class TestOrchestratorApprove:
         orchestrator = WorkflowOrchestrator(
             session_store=store,
             sessions_root=tmp_path,
+            approval_config=_skip_approval_config(),
         )
 
         with patch.object(orchestrator, "_execute_action"):
@@ -372,6 +380,7 @@ class TestTerminalStatusUpdates:
         orchestrator = WorkflowOrchestrator(
             session_store=store,
             sessions_root=Path("/tmp/sessions"),
+            approval_config=_skip_approval_config(),
         )
 
         # Mock the action, pre-transition approval, and transition to COMPLETE
@@ -390,3 +399,143 @@ class TestTerminalStatusUpdates:
 
         assert result.phase == WorkflowPhase.COMPLETE
         assert result.status == WorkflowStatus.SUCCESS
+
+
+class TestPromptRejectionHandling:
+    """Tests for PROMPT stage rejection behavior (ADR-0015)."""
+
+    def test_prompt_rejection_skips_retry_loop(self, tmp_path: Path) -> None:
+        """PROMPT rejection does not enter retry loop."""
+        from aiwf.domain.models.approval_result import ApprovalResult, ApprovalDecision
+        from aiwf.domain.providers.ai_approval_provider import AIApprovalProvider
+        from aiwf.domain.profiles.profile_factory import ProfileFactory
+
+        store = Mock(spec=SessionStore)
+        state = _make_state(phase=WorkflowPhase.PLAN, stage=WorkflowStage.PROMPT)
+        store.load.return_value = state
+
+        # Create prompt file
+        session_dir = tmp_path / "test-session"
+        iteration_dir = session_dir / "iteration-1"
+        iteration_dir.mkdir(parents=True)
+        (iteration_dir / "planning-prompt.md").write_text("# Original prompt")
+
+        # Configure AI approver that rejects
+        config = ApprovalConfig(
+            default_approver="claude-code",
+            default_max_retries=3,  # Would normally retry
+        )
+
+        orchestrator = WorkflowOrchestrator(
+            session_store=store,
+            sessions_root=tmp_path,
+            approval_config=config,
+        )
+
+        # Mock profile that doesn't support prompt regeneration
+        mock_profile = Mock()
+        mock_profile.get_metadata.return_value = {"can_regenerate_prompts": False}
+
+        # Mock the approval gate to return rejection
+        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+            with patch.object(ProfileFactory, "create", return_value=mock_profile):
+                mock_gate.return_value = ApprovalResult(
+                    decision=ApprovalDecision.REJECTED,
+                    feedback="Prompt needs more detail",
+                )
+
+                result = orchestrator.approve("test-session")
+
+        # Should NOT have called _action_retry (that's for RESPONSE stage)
+        # Should pause workflow with feedback
+        assert result.approval_feedback == "Prompt needs more detail"
+        assert result.retry_count == 1
+        # Should NOT be in ERROR state (retry loop wasn't entered)
+        assert result.status != WorkflowStatus.ERROR
+
+    def test_prompt_rejection_applies_suggested_content(self, tmp_path: Path) -> None:
+        """PROMPT rejection with allow_rewrite applies suggested content to file."""
+        from aiwf.domain.models.approval_result import ApprovalResult, ApprovalDecision
+
+        store = Mock(spec=SessionStore)
+        state = _make_state(phase=WorkflowPhase.PLAN, stage=WorkflowStage.PROMPT)
+        store.load.return_value = state
+
+        # Create prompt file
+        session_dir = tmp_path / "test-session"
+        iteration_dir = session_dir / "iteration-1"
+        iteration_dir.mkdir(parents=True)
+        prompt_path = iteration_dir / "planning-prompt.md"
+        prompt_path.write_text("# Original prompt")
+
+        # Configure with allow_rewrite
+        config = ApprovalConfig(
+            stages={
+                "plan.prompt": {
+                    "approver": "claude-code",
+                    "allow_rewrite": True,
+                },
+            }
+        )
+
+        orchestrator = WorkflowOrchestrator(
+            session_store=store,
+            sessions_root=tmp_path,
+            approval_config=config,
+        )
+
+        # Mock the approval gate to return rejection with suggested content
+        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+            mock_gate.return_value = ApprovalResult(
+                decision=ApprovalDecision.REJECTED,
+                feedback="Prompt needs more detail",
+                suggested_content="# Improved prompt\n\nWith better details.",
+            )
+
+            orchestrator.approve("test-session")
+
+        # Verify suggested content was written to file
+        assert prompt_path.read_text() == "# Improved prompt\n\nWith better details."
+
+    def test_prompt_rejection_without_allow_rewrite_preserves_file(self, tmp_path: Path) -> None:
+        """PROMPT rejection without allow_rewrite does not modify file."""
+        from aiwf.domain.models.approval_result import ApprovalResult, ApprovalDecision
+        from aiwf.domain.profiles.profile_factory import ProfileFactory
+
+        store = Mock(spec=SessionStore)
+        state = _make_state(phase=WorkflowPhase.PLAN, stage=WorkflowStage.PROMPT)
+        store.load.return_value = state
+
+        # Create prompt file
+        session_dir = tmp_path / "test-session"
+        iteration_dir = session_dir / "iteration-1"
+        iteration_dir.mkdir(parents=True)
+        prompt_path = iteration_dir / "planning-prompt.md"
+        prompt_path.write_text("# Original prompt")
+
+        # Configure without allow_rewrite (default is False)
+        config = ApprovalConfig(default_approver="claude-code")
+
+        orchestrator = WorkflowOrchestrator(
+            session_store=store,
+            sessions_root=tmp_path,
+            approval_config=config,
+        )
+
+        # Mock profile that doesn't support prompt regeneration
+        mock_profile = Mock()
+        mock_profile.get_metadata.return_value = {"can_regenerate_prompts": False}
+
+        # Mock the approval gate to return rejection with suggested content
+        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+            with patch.object(ProfileFactory, "create", return_value=mock_profile):
+                mock_gate.return_value = ApprovalResult(
+                    decision=ApprovalDecision.REJECTED,
+                    feedback="Prompt needs more detail",
+                    suggested_content="# This should NOT be applied",
+                )
+
+                orchestrator.approve("test-session")
+
+        # File should be unchanged
+        assert prompt_path.read_text() == "# Original prompt"

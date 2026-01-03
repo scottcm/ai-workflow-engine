@@ -73,6 +73,7 @@ class GeminiCliProvider(ResponseProvider):
         self._allowed_tools: list[str] | None = self.config.get("allowed_tools")
         self._working_dir = self.config.get("working_dir")
         self._timeout = self.config.get("timeout", DEFAULT_TIMEOUT)
+        self._cli_path: str | None = None  # Set in validate()
 
     def _validate_config(self) -> None:
         """Validate configuration and warn on unknown keys.
@@ -138,11 +139,14 @@ class GeminiCliProvider(ResponseProvider):
         Raises:
             ProviderError: If Gemini CLI is not installed
         """
-        if shutil.which("gemini") is None:
+        cli_path = shutil.which("gemini")
+        if cli_path is None:
             raise ProviderError(
                 "Gemini CLI not found. "
                 "Install from: https://github.com/google-gemini/gemini-cli"
             )
+        # Store full path for cross-platform subprocess compatibility (Windows needs .cmd)
+        self._cli_path = cli_path
 
     def generate(
         self,
@@ -201,8 +205,10 @@ class GeminiCliProvider(ResponseProvider):
             logger.debug("Using direct prompt via -p flag")
 
         try:
+            # Use stored CLI path for cross-platform compatibility
+            cli_cmd = self._cli_path or shutil.which("gemini") or "gemini"
             process = await asyncio.create_subprocess_exec(
-                "gemini",
+                cli_cmd,
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
