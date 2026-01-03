@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] - 2026-01-02
+
+### Summary
+
+Major release introducing automated AI providers and approval gates. The engine now supports fully automated workflows with Claude Code and Gemini CLI, plus configurable approval gates at each workflow stage.
+
+---
+
+### Added
+
+#### AI Response Providers
+
+**Claude Code Provider (ADR-0013)**
+- SDK-based integration using `claude-agent-sdk`
+- Async wrapper for sync `generate()` interface
+- File write tracking via `ToolUseBlock` parsing
+- Config validation with granular error handling
+- `fs_ability: local-write` for direct file operations
+
+**Gemini CLI Provider (ADR-0014)**
+- Subprocess-based integration with NDJSON streaming
+- Tracks both `write_file` and `replace` tool calls
+- File-based prompt delivery (preferred) with stdin fallback
+- Config validation for enum and list types
+- Windows compatibility via `shutil.which()` path resolution
+
+#### Approval Provider System (ADR-0015)
+
+**Core Components**
+- `ApprovalProvider` ABC with `evaluate()` method
+- `SkipApprovalProvider` - Auto-approve (no gate)
+- `ManualApprovalProvider` - User's `approve` command IS the decision
+- `AIApprovalProvider` - Adapter wrapping any `ResponseProvider`
+- `ApprovalProviderFactory` with fallback to wrapped response providers
+
+**Behavioral Contracts**
+- Approval gate runs BEFORE artifact hashing
+- `retry_count` resets on stage change
+- Lenient response parsing with rejection fallback
+- `IN_PROGRESS` status on max retries (workflow paused, not failed)
+- `suggested_content` passed as hint to provider on retry
+
+**Configuration**
+- Per-stage approver configuration
+- `max_retries` and `allow_rewrite` options
+- Simple and full YAML formats supported
+
+#### State Fields
+
+- `approval_feedback: str | None` - Feedback from last rejection
+- `suggested_content: str | None` - Suggested content from approver
+- `retry_count: int` - Retry attempts in current stage
+
+---
+
+### Changed
+
+#### Breaking Changes
+
+**Approval Configuration Format**
+- New approval config structure required for AI approvers
+- Default approver changed from none to `skip`
+
+**Provider Factory Rename**
+- `ProviderFactory` renamed to `ResponseProviderFactory`
+- Backward compatibility alias maintained
+
+#### Non-Breaking Changes
+
+- Error handling for approval gate failures (keeps workflow `IN_PROGRESS`)
+- Context builder pattern for shared keys between providers and approvers
+
+---
+
+### Documentation
+
+- ADR-0013: Claude Code Response Provider (Accepted)
+- ADR-0014: Gemini CLI Response Provider (Accepted)
+- ADR-0015: Approval Provider Implementation (Accepted)
+- Implementation plans converted to specs in `docs/plans/`
+- README updated with Approval Providers section
+
+---
+
+### Testing
+
+- 817 unit and integration tests passing
+- 12-scenario integration test matrix for approval flows
+- Behavioral contract tests for all approval gate behaviors
+- Error path tests for provider exceptions and timeouts
+
+---
+
 ## [1.0.0] - 2024-12-24
 
 ### Summary
@@ -338,7 +431,5 @@ MIT License - See LICENSE file for details
 
 ### Under Consideration
 - IDE extension integration (VS Code, IntelliJ)
-- Automated AI provider support (Claude CLI, Gemini CLI)
-- Additional generation profiles
-- Chain of Responsibility refactor for approval handling (ADR-0005)
-- Observer pattern for workflow events (ADR-0006)
+- Additional generation profiles beyond jpa-mt
+- OpenAI API response provider

@@ -9,31 +9,78 @@ AI agent guide for the AI Workflow Engine codebase.
 - **Run tests:** `poetry run pytest tests/unit/ -v`
 - **Run CLI:** `poetry run aiwf <command>`
 
-## Context Recovery
+## Context Recovery and Working Documents
 
-**After context compression, ALWAYS read `claude-code-provider-work.md` first.**
+**After context compression, ALWAYS read the active working document first.**
 
-This working document tracks in-progress implementation state that would otherwise be lost during compression. It contains:
-- Current implementation phase and status
-- Key decisions made during implementation
-- Files changed and why
-- Next steps if work continues
+Working documents (e.g., `claude-code-provider-work.md`) preserve implementation state across context boundaries. They are critical for maintaining continuity.
+
+### Working Document Structure
+
+| Section | Purpose |
+|---------|---------|
+| **Current Status** | Quick scan of what's done vs in-progress |
+| **Implementation Summary** | Files changed, with descriptions |
+| **Code Review Findings** | What was reviewed, what was fixed |
+| **Design Rationale** | WHY decisions were made, including rejected alternatives |
+| **Next Steps** | Pending work items |
+
+### How to Use Working Documents
+
+1. **Read first** - Before any implementation work, read the working document to recover context
+2. **Check Design Rationale** - Before proposing changes, verify you're not re-proposing rejected approaches
+3. **Update as you work** - Add new decisions, bug fixes, and rationale as work progresses
+4. **Include "why"** - For each decision, capture the reasoning; for rejected alternatives, note `(rejected: reason)`
+5. **Keep current** - Mark completed items, update test counts, note pending work
+
+### Design Rationale Format
+
+Use this table format to preserve decision context:
+
+```markdown
+| Decision | Why |
+|----------|-----|
+| Gate before hash | Content must be approved before becoming immutable (rejected: hash-then-approve) |
+| Skip retry for PROMPT | Prompts are profile-generated, not AI-generated (rejected: profile regeneration) |
+```
+
+The `(rejected: X)` suffix prevents re-proposing dismissed approaches after context compression.
 
 ## Quick Reference
 
-```
-# Run all unit tests
-poetry run pytest tests/unit/ -v
+```bash
+# Run all unit tests (before commit only)
+poetry run pytest tests/unit/ -q --tb=no
 
-# Run specific test file
+# Run specific test file (after editing a file)
 poetry run pytest tests/unit/domain/providers/test_claude_code_provider.py -v
 
-# Skip integration tests requiring Claude CLI
-poetry run pytest -m "not claude_code"
+# Run tests matching keyword
+poetry run pytest -k "approval" -v
 
-# Check git status
-git status
+# Skip integration tests requiring external CLIs
+poetry run pytest -m "not claude_code and not gemini_cli"
 ```
+
+## Test Strategy
+
+**Do NOT run the full test suite after every change.** This wastes time and context.
+
+| When | What to Run | Why |
+|------|-------------|-----|
+| After editing a file | Matching test file only | Fast feedback, minimal context |
+| After changing orchestrator | `tests/unit/application/` | Tests related subsystem |
+| After changing a provider | `tests/unit/domain/providers/test_<provider>.py` | Targeted validation |
+| Before commit | `pytest tests/unit/ -q --tb=no` | Full validation, minimal output |
+| Integration tests | Only when explicitly requested | Require external CLIs |
+
+**Output guidelines:**
+- Use `-q` (quiet) to reduce output
+- Use `--tb=no` for pass/fail only (no tracebacks unless debugging)
+- Report counts: "45 passed, 2 failed" not full test output
+- Show full output only for failures
+
+**Rationale:** Full suite is 777+ tests. Running all after every edit consumes context and time. Targeted tests catch issues faster. (rejected: running full suite after every change)
 
 ## Project Overview
 

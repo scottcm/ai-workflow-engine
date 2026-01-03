@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> **Production Status:** v0.9.0 - Core workflow complete, extended CLI commands planned for 1.0.0
+> **Production Status:** v2.0.0 - Full workflow with automated AI providers and approval gates
 
 A stateful, resumable workflow engine that orchestrates multi-phase AI-assisted code generation with explicit approval gates, artifact tracking, and iteration management. Built to demonstrate enterprise architecture patterns while solving real-world development challenges.
 
@@ -117,8 +117,10 @@ Creating a new profile means implementing the `WorkflowProfile` interface and re
 - Authentication and configuration
 - Response streaming and parsing
 
-**Current provider:**
-- `manual` - Human-in-the-loop mode
+**Available providers:**
+- `manual` - Human-in-the-loop mode (copy/paste between web interfaces)
+- `claude-code` - Automated via Claude Code CLI (uses Claude Agent SDK)
+- `gemini-cli` - Automated via Gemini CLI (subprocess with NDJSON streaming)
 
 **How `manual` provider works:**
 1. Engine writes prompt to `.md` file (e.g., `planning-prompt.md`)
@@ -128,19 +130,59 @@ Creating a new profile means implementing the `WorkflowProfile` interface and re
 
 This approach:
 - Works with **free AI web interfaces** (ChatGPT.com, Claude.ai, Gemini)
-- Works with **CLI agents** (Claude Desktop, Gemini CLI)
 - Gives you **full control** over prompt editing before submission
 - Provides complete **audit trail** (all prompts/responses saved as files)
 - **No API costs** - use whatever AI subscription you already have
 
-**Future providers** (planned):
-- `claude-cli` - Automated via Claude Desktop agent
-- `gemini-cli` - Automated via Gemini CLI agent
-- `openai-api` - Automated via OpenAI API
+**How automated providers work:**
+- Engine writes prompt file, provider invokes CLI agent
+- CLI agent reads prompt, generates response, writes code files directly
+- Engine tracks written files and updates workflow state
+- Works with `claude-code` (Claude Desktop) or `gemini-cli` (Gemini CLI)
 
 ---
 
-### 4. Standards Providers (How Coding Standards are Retrieved)
+### 4. Approval Providers (Automated Quality Gates)
+
+**Approval Providers** implement automated quality gates at each stage of the workflow. They evaluate prompts and responses, deciding whether to approve, reject, or request changes.
+
+**Available approval providers:**
+- `skip` - Auto-approve everything (fastest, no gates)
+- `manual` - User's `approve` command IS the decision
+- `claude-code` - Claude evaluates content and decides (requires criteria file)
+- `gemini-cli` - Gemini evaluates content and decides (requires criteria file)
+
+**How approval gates work:**
+1. Content is created (prompt or response)
+2. Approval provider evaluates content against criteria
+3. If approved: hash computed, workflow advances
+4. If rejected: feedback provided, content remains editable
+
+**Configuration example:**
+```yaml
+# In approval config
+default_approver: manual
+stages:
+  plan.response:
+    approver: claude-code
+    max_retries: 3
+  generate.response:
+    approver: skip  # Trust the generation
+  review.response:
+    approver: manual  # Human reviews the review
+```
+
+**Key features:**
+- Configurable per phase/stage
+- AI approvers can suggest changes
+- Retry logic with configurable limits
+- `IN_PROGRESS` status on max retries (workflow paused, not failed)
+
+See [ADR-0015](docs/adr/0015-approval-provider-implementation.md) for design details.
+
+---
+
+### 5. Standards Providers (How Coding Standards are Retrieved)
 
 **Standards Providers** are profile-specific extensions that retrieve and bundle coding standards for a session. They answer the question: "What coding rules should AI follow?"
 

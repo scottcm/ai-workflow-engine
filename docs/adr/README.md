@@ -29,6 +29,9 @@ ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design
 | [0010](0010-profile-provider-access.md) | Proposed | Profile Provider Access | Future - Multi-pass generation |
 | [0011](0011-prompt-builder-api.md) | Draft | Prompt Builder API | Valid - PromptSections design |
 | [0012](0012-workflow-phases-stages-approval-providers.md) | **Accepted** | Phases, Stages, Approval Providers | **Current architecture** |
+| [0013](0013-claude-code-provider.md) | Accepted | Claude Code Response Provider | SDK-based provider |
+| [0014](0014-gemini-cli-provider.md) | Accepted | Gemini CLI Response Provider | Subprocess-based provider |
+| [0015](0015-approval-provider-implementation.md) | **Accepted** | Approval Provider Implementation | Approval gates system |
 
 ---
 
@@ -39,7 +42,8 @@ ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design
 1. **[ADR-0001](0001-architecture-overview.md)** - Architecture overview (start here)
 2. **[ADR-0012](0012-workflow-phases-stages-approval-providers.md)** - Phase+Stage model details
 3. **[ADR-0007](0007-plugin-architecture.md)** - How providers work
-4. **[ADR-0002](0002-template-layering-system.md)** - Profile template system
+4. **[ADR-0015](0015-approval-provider-implementation.md)** - Approval provider system
+5. **[ADR-0002](0002-template-layering-system.md)** - Profile template system
 
 ### For Understanding History
 
@@ -68,7 +72,7 @@ The following draft ADRs may need updates:
 
 ## Creating New ADRs
 
-Use the next available number (currently 0013). Follow the format:
+Use the next available number (currently 0016). Follow the format:
 
 ```markdown
 # ADR-NNNN: Title
