@@ -26,7 +26,16 @@ from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.errors import ProviderError
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 from aiwf.domain.providers.provider_factory import ResponseProviderFactory
+from aiwf.domain.providers.approval_provider import (
+    ApprovalProvider,
+    SkipApprovalProvider,
+    ManualApprovalProvider,
+)
+from aiwf.domain.providers.approval_factory import ApprovalProviderFactory
+from aiwf.domain.models.approval_result import ApprovalResult, ApprovalDecision
+from aiwf.application.approval_config import ApprovalConfig
 from aiwf.domain.validation.path_validator import normalize_metadata_paths
+from aiwf.domain.models.prompt_sections import PromptSections
 
 if TYPE_CHECKING:
     from aiwf.domain.events.emitter import WorkflowEventEmitter
@@ -55,11 +64,13 @@ class WorkflowOrchestrator:
     processing LLM responses; the orchestrator decides what happens next.
 
     ADR-0012: Uses TransitionTable for explicit, table-driven state machine.
+    ADR-0015: Integrates ApprovalProvider system for approval gates.
     """
 
     session_store: SessionStore
     sessions_root: Path
     event_emitter: "WorkflowEventEmitter | None" = None
+    approval_config: ApprovalConfig = field(default_factory=ApprovalConfig)
 
     def __post_init__(self) -> None:
         if self.event_emitter is None:
@@ -244,9 +255,49 @@ class WorkflowOrchestrator:
         if transition is None:
             raise InvalidCommand(command, state.phase, state.stage)
 
-        # Pre-transition approval logic: hash and set flags BEFORE state change
+        # ADR-0015: Run approval gate BEFORE hashing (gate must approve first)
         if command == "approve":
-            self._handle_pre_transition_approval(state, session_dir)
+            # Check if this is a manual approver - user's approve command IS the approval
+            approver = self._get_approver(state.phase, state.stage) if state.stage else None
+            is_manual = isinstance(approver, ManualApprovalProvider)
+
+            if is_manual:
+                # Manual approval: user's approve command is the decision
+                # No gate needed - clear state and proceed with transition
+                self._clear_approval_state(state)
+                self._handle_pre_transition_approval(state, session_dir)
+            else:
+                # AI/Skip approvers: run the gate
+                try:
+                    approval_result = self._run_approval_gate(state, session_dir)
+                except (ProviderError, TimeoutError) as e:
+                    # Approval gate failed - keep workflow recoverable
+                    state.last_error = f"Approval gate error: {e}"
+                    self._add_message(state, f"Approval failed: {e}. Retry with 'approve' or cancel.")
+                    self.session_store.save(state)
+                    return state
+
+                if approval_result is None:
+                    # This shouldn't happen for non-manual approvers, but handle gracefully
+                    logger.warning("Non-manual approver returned None - treating as rejection")
+                    self._add_message(state, "Approval provider returned no decision")
+                    self.session_store.save(state)
+                    return state
+
+                if approval_result.decision == ApprovalDecision.REJECTED:
+                    # Handle rejection (may retry for AI approvers)
+                    # Returns None if retry succeeded (proceed with transition)
+                    # Returns state if workflow should pause
+                    rejection_result = self._handle_approval_rejection(state, session_dir, approval_result)
+                    if rejection_result is not None:
+                        return rejection_result
+                    # Retry succeeded - fall through to continue with transition
+
+                # Approved - clear any previous rejection state
+                self._clear_approval_state(state)
+
+                # Now hash and set flags AFTER approval gate passes
+                self._handle_pre_transition_approval(state, session_dir)
 
         # Update state BEFORE action - work happens AFTER entering new state (ADR-0012)
         state.phase = transition.phase
@@ -320,7 +371,7 @@ class WorkflowOrchestrator:
         profile = ProfileFactory.create(state.profile)
 
         # Build context from state
-        context = self._build_context(state)
+        context = self._build_provider_context(state)
 
         # Get phase-specific prompt from profile
         phase_prompt_methods = {
@@ -411,7 +462,7 @@ class WorkflowOrchestrator:
 
         # Create provider and call
         provider = ResponseProviderFactory.create(provider_key)
-        context = self._build_context(state)
+        context = self._build_provider_context(state)
 
         try:
             response = provider.generate(prompt_content, context=context)
@@ -624,7 +675,7 @@ class WorkflowOrchestrator:
             shutil.rmtree(session_dir, ignore_errors=True)
             raise
 
-        standards_context = self._build_context(state)
+        standards_context = self._build_provider_context(state)
         bundle_hash = materialize_standards(
             session_dir=session_dir,
             context=standards_context,
@@ -814,12 +865,27 @@ class WorkflowOrchestrator:
         """Add a progress message to the state."""
         state.messages.append(message)
 
-    def _build_context(self, state: WorkflowState) -> dict[str, Any]:
-        """Extract context dict from workflow state for providers."""
-        return {
+    def _build_base_context(self, state: WorkflowState) -> dict[str, Any]:
+        """Base context shared by providers and approvers.
+
+        ADR-0015: Single source of truth for shared context keys.
+        """
+        ctx = {
             **state.context,
+            "session_id": state.session_id,
+            "iteration": state.current_iteration,
             "metadata": state.metadata,
         }
+        # Retry-related fields - always included when present
+        if state.approval_feedback:
+            ctx["approval_feedback"] = state.approval_feedback
+        if state.suggested_content:
+            ctx["suggested_content"] = state.suggested_content
+        return ctx
+
+    def _build_provider_context(self, state: WorkflowState) -> dict[str, Any]:
+        """Context for response providers."""
+        return self._build_base_context(state)
 
     def _emit(
         self,
@@ -840,6 +906,361 @@ class WorkflowOrchestrator:
                 **kwargs,
             )
         )
+
+    # ========================================================================
+    # Approval Gate Methods (ADR-0015)
+    # ========================================================================
+
+    def _get_approver(
+        self,
+        phase: WorkflowPhase,
+        stage: WorkflowStage,
+    ) -> ApprovalProvider:
+        """Get approval provider for the given phase/stage.
+
+        Args:
+            phase: Workflow phase
+            stage: Workflow stage
+
+        Returns:
+            ApprovalProvider instance
+        """
+        stage_config = self.approval_config.get_stage_config(phase.value, stage.value)
+        return ApprovalProviderFactory.create(stage_config.approver)
+
+    def _build_approval_files(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+    ) -> dict[str, str | None]:
+        """Build files dict for approval evaluation.
+
+        Returns dict of filepath -> content for files relevant to approval.
+        Content is None if provider should read file directly (local-read capable).
+        """
+        files: dict[str, str | None] = {}
+
+        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
+
+        # Map phase/stage to relevant files
+        phase_files = {
+            (WorkflowPhase.PLAN, WorkflowStage.PROMPT): ["planning-prompt.md"],
+            (WorkflowPhase.PLAN, WorkflowStage.RESPONSE): ["planning-response.md"],
+            (WorkflowPhase.GENERATE, WorkflowStage.PROMPT): ["generation-prompt.md"],
+            (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE): ["generation-response.md"],
+            (WorkflowPhase.REVIEW, WorkflowStage.PROMPT): ["review-prompt.md"],
+            (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE): ["review-response.md"],
+            (WorkflowPhase.REVISE, WorkflowStage.PROMPT): ["revision-prompt.md"],
+            (WorkflowPhase.REVISE, WorkflowStage.RESPONSE): ["revision-response.md", "revision-issues.md"],
+        }
+
+        file_names = phase_files.get((state.phase, state.stage), [])
+
+        for name in file_names:
+            file_path = iteration_dir / name
+            if file_path.exists():
+                # Read content for the approver
+                files[str(file_path)] = file_path.read_text(encoding="utf-8")
+            else:
+                files[str(file_path)] = None
+
+        # Add code files for GENERATE[RESPONSE] and REVISE[RESPONSE]
+        if state.stage == WorkflowStage.RESPONSE and state.phase in (
+            WorkflowPhase.GENERATE,
+            WorkflowPhase.REVISE,
+        ):
+            code_dir = iteration_dir / "code"
+            if code_dir.exists():
+                for code_file in code_dir.rglob("*"):
+                    if code_file.is_file():
+                        files[str(code_file)] = code_file.read_text(encoding="utf-8")
+
+        # Add plan.md for GENERATE and REVIEW phases
+        if state.phase in (WorkflowPhase.GENERATE, WorkflowPhase.REVIEW):
+            plan_path = session_dir / "plan.md"
+            if plan_path.exists():
+                files[str(plan_path)] = plan_path.read_text(encoding="utf-8")
+
+        return files
+
+    def _build_approval_context(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+    ) -> dict[str, Any]:
+        """Context for approval providers - extends base with approval-specific keys.
+
+        ADR-0015: Uses base context builder to prevent drift.
+        """
+        ctx = self._build_base_context(state)
+        stage_config = self.approval_config.get_stage_config(
+            state.phase.value, state.stage.value if state.stage else "prompt"
+        )
+        ctx.update({
+            "allow_rewrite": stage_config.allow_rewrite,
+            "session_dir": str(session_dir),
+            "plan_file": str(session_dir / "plan.md"),
+        })
+        return ctx
+
+    def _run_approval_gate(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+    ) -> ApprovalResult | None:
+        """Run approval gate for current phase/stage.
+
+        Args:
+            state: Current workflow state
+            session_dir: Session directory path
+
+        Returns:
+            ApprovalResult if decision made, None if paused for manual approval
+        """
+        if state.stage is None:
+            return ApprovalResult(decision=ApprovalDecision.APPROVED)
+
+        approver = self._get_approver(state.phase, state.stage)
+
+        # Build files and context
+        files = self._build_approval_files(state, session_dir)
+        context = self._build_approval_context(state, session_dir)
+
+        # Run approval
+        result = approver.evaluate(
+            phase=state.phase,
+            stage=state.stage,
+            files=files,
+            context=context,
+        )
+
+        return result
+
+    def _handle_approval_rejection(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+        result: ApprovalResult,
+    ) -> WorkflowState | None:
+        """Handle approval rejection with iterative retry logic.
+
+        Returns None if retry succeeded (caller should proceed with transition).
+        Returns state if workflow should pause.
+
+        For PROMPT stages: apply suggested_content if allow_rewrite, pause for user
+        For RESPONSE stages with AI approvers: auto-retry up to max_retries
+        For manual: store feedback, keep workflow paused
+
+        Args:
+            state: Current workflow state
+            session_dir: Session directory
+            result: The rejection result
+
+        Returns:
+            Updated workflow state
+        """
+        stage_config = self.approval_config.get_stage_config(
+            state.phase.value, state.stage.value if state.stage else "prompt"
+        )
+
+        # Store rejection info in state
+        state.approval_feedback = result.feedback
+        state.retry_count += 1
+
+        # PROMPT stage: handle differently based on profile capability
+        # ADR-0015: Check if profile can regenerate prompts on rejection
+        if state.stage == WorkflowStage.PROMPT:
+            # First, try suggested_content if available
+            if result.suggested_content and stage_config.allow_rewrite:
+                self._apply_suggested_content_to_prompt(state, session_dir, result.suggested_content)
+                self._add_message(state, "Suggested content applied to prompt file")
+                self.session_store.save(state)
+                return state
+
+            # Check if profile supports prompt regeneration
+            profile = ProfileFactory.create(state.profile)
+            profile_meta = profile.get_metadata()
+
+            if profile_meta.get("can_regenerate_prompts", False):
+                # Profile can regenerate prompts - attempt regeneration with feedback
+                try:
+                    context = self._build_provider_context(state)
+                    new_prompt = profile.regenerate_prompt(
+                        state.phase,
+                        result.feedback or "",
+                        context,
+                    )
+
+                    # Write regenerated prompt
+                    self._write_regenerated_prompt(state, session_dir, new_prompt)
+                    self._add_message(state, f"Prompt regenerated based on feedback")
+
+                    # Re-run approval gate
+                    new_result = self._run_approval_gate(state, session_dir)
+
+                    if new_result is None:
+                        # Manual approval pause
+                        self.session_store.save(state)
+                        return state
+
+                    if new_result.decision == ApprovalDecision.APPROVED:
+                        # Retry succeeded - return None to signal "proceed with transition"
+                        # Don't save state here; caller will handle transition and save
+                        return None
+
+                    # Still rejected - continue with same handling (recursive call)
+                    return self._handle_approval_rejection(state, session_dir, new_result)
+
+                except NotImplementedError:
+                    # Profile declared capability but didn't implement method
+                    self._add_message(state, f"Prompt rejected: {result.feedback or 'no feedback'}")
+            else:
+                # Profile cannot regenerate - stay IN_PROGRESS for user
+                self._add_message(state, f"Prompt rejected: {result.feedback or 'no feedback'}")
+
+            # Pause for user to review/edit and re-approve
+            self.session_store.save(state)
+            return state
+
+        # RESPONSE stage: handle suggested_content if allow_rewrite
+        if result.suggested_content and stage_config.allow_rewrite:
+            state.suggested_content = result.suggested_content
+            # TODO: Apply suggestion to response file
+            self._add_message(state, "Suggested content available (not auto-applied yet)")
+
+        # Check if AI approver
+        approver = self._get_approver(state.phase, state.stage)
+        is_ai_approver = not isinstance(approver, (SkipApprovalProvider, ManualApprovalProvider))
+
+        if is_ai_approver:
+            # Iterative retry loop for AI approvers (RESPONSE stage only)
+            while state.retry_count <= stage_config.max_retries:
+                # Regenerate content with feedback
+                self._add_message(
+                    state,
+                    f"Retry {state.retry_count}/{stage_config.max_retries}: regenerating with feedback"
+                )
+
+                # Store feedback for provider context and regenerate
+                self._action_retry(state, session_dir)
+
+                # Re-run approval gate
+                new_result = self._run_approval_gate(state, session_dir)
+
+                if new_result is None:
+                    # Manual approval pause (shouldn't happen for AI approver)
+                    break
+
+                if new_result.decision == ApprovalDecision.APPROVED:
+                    # Retry succeeded - return None to signal "proceed with transition"
+                    # Don't save state here; caller will handle transition and save
+                    return None
+
+                # Still rejected - update state and continue loop
+                state.approval_feedback = new_result.feedback
+                state.retry_count += 1
+
+            # Max retries exceeded - stay IN_PROGRESS for user intervention (ADR-0015)
+            state.last_error = f"Approval rejected after {state.retry_count} attempts. Review feedback and retry manually or cancel."
+            self._add_message(state, "Approval failed: max retries exceeded. Review feedback and retry or cancel.")
+
+        # For manual approver or failed AI, save state and return
+        self.session_store.save(state)
+        return state
+
+    def _clear_approval_state(self, state: WorkflowState) -> None:
+        """Clear approval tracking fields after successful approval."""
+        state.approval_feedback = None
+        state.suggested_content = None
+        state.retry_count = 0
+
+    def _apply_suggested_content_to_prompt(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+        suggested_content: str,
+    ) -> None:
+        """Apply suggested content to the prompt file.
+
+        Called when a PROMPT stage is rejected with allow_rewrite=true
+        and the approver provides suggested_content.
+
+        Args:
+            state: Current workflow state
+            session_dir: Session directory
+            suggested_content: The suggested prompt content to apply
+        """
+        # Map phase to prompt filename
+        phase_prompt_map = {
+            WorkflowPhase.PLAN: "planning-prompt.md",
+            WorkflowPhase.GENERATE: "generation-prompt.md",
+            WorkflowPhase.REVIEW: "review-prompt.md",
+            WorkflowPhase.REVISE: "revision-prompt.md",
+        }
+
+        prompt_filename = phase_prompt_map.get(state.phase)
+        if not prompt_filename:
+            return
+
+        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
+        prompt_path = iteration_dir / prompt_filename
+
+        if prompt_path.exists():
+            prompt_path.write_text(suggested_content, encoding="utf-8")
+
+    def _write_regenerated_prompt(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+        prompt_content: str | PromptSections,
+    ) -> None:
+        """Write regenerated prompt content to prompt file.
+
+        ADR-0015: Called when a profile regenerates a prompt based on rejection feedback.
+
+        Args:
+            state: Current workflow state
+            session_dir: Session directory
+            prompt_content: Regenerated prompt (string or PromptSections)
+        """
+        from aiwf.application.prompt_assembler import PromptAssembler
+
+        # Map phase to filenames
+        phase_file_map = {
+            WorkflowPhase.PLAN: ("planning-prompt.md", "planning-response.md"),
+            WorkflowPhase.GENERATE: ("generation-prompt.md", "generation-response.md"),
+            WorkflowPhase.REVIEW: ("review-prompt.md", "review-response.md"),
+            WorkflowPhase.REVISE: ("revision-prompt.md", "revision-response.md"),
+        }
+
+        prompt_filename, response_filename = phase_file_map.get(
+            state.phase, ("prompt.md", "response.md")
+        )
+
+        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
+        iteration_dir.mkdir(parents=True, exist_ok=True)
+
+        # Construct workspace-relative response path for output instructions
+        response_relpath = (
+            f".aiwf/sessions/{state.session_id}/"
+            f"iteration-{state.current_iteration}/{response_filename}"
+        )
+
+        # Assemble prompt if it's PromptSections, otherwise use directly
+        if isinstance(prompt_content, PromptSections):
+            assembler = PromptAssembler(session_dir, state)
+            assembled = assembler.assemble(
+                prompt_content,
+                fs_ability="local-write",
+                response_relpath=response_relpath,
+            )
+            final_content = assembled["user_prompt"]
+        else:
+            final_content = prompt_content
+
+        # Write prompt file
+        prompt_path = iteration_dir / prompt_filename
+        prompt_path.write_text(final_content, encoding="utf-8")
 
 
 def _build_initial_state(

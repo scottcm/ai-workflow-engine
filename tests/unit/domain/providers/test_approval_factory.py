@@ -43,6 +43,7 @@ class TestApprovalProviderFactoryAIFallback:
     def test_unknown_key_creates_ai_approval_provider(self) -> None:
         """Unknown key creates AIApprovalProvider wrapping response provider."""
         mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider.get_metadata.return_value = {"fs_ability": "local-read"}
 
         with patch(
             "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
@@ -57,6 +58,7 @@ class TestApprovalProviderFactoryAIFallback:
     def test_ai_fallback_passes_config_to_provider_factory(self) -> None:
         """AI fallback passes config to ResponseProviderFactory.create."""
         mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider.get_metadata.return_value = {"fs_ability": "local-write"}
         config = {"api_key": "test-key", "model": "claude-3"}
 
         with patch(
@@ -89,10 +91,6 @@ class TestApprovalProviderFactoryRegistration:
             def evaluate(self, **kwargs):
                 pass
 
-            @property
-            def requires_user_input(self) -> bool:
-                return False
-
         ApprovalProviderFactory.register("custom", CustomApprover)
 
         provider = ApprovalProviderFactory.create("custom")
@@ -107,10 +105,6 @@ class TestApprovalProviderFactoryRegistration:
         class CustomSkip(ApprovalProvider):
             def evaluate(self, **kwargs):
                 pass
-
-            @property
-            def requires_user_input(self) -> bool:
-                return False
 
         # Save original
         original = ApprovalProviderFactory._registry.get("skip")
@@ -158,6 +152,7 @@ class TestApprovalProviderFactoryConfig:
     def test_ai_provider_receives_config(self) -> None:
         """Response provider creation receives config."""
         mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider.get_metadata.return_value = {"fs_ability": "local-read"}
         config = {"model": "gpt-4", "temperature": 0.7}
 
         with patch(
@@ -168,3 +163,64 @@ class TestApprovalProviderFactoryConfig:
             ApprovalProviderFactory.create("gpt", config=config)
 
             mock_factory.create.assert_called_once_with("gpt", config)
+
+
+class TestApprovalProviderFactoryFsAbilityValidation:
+    """Tests for fs_ability validation on wrapped providers."""
+
+    def test_rejects_provider_with_no_fs_ability(self) -> None:
+        """Factory rejects response providers with fs_ability='none'."""
+        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider.get_metadata.return_value = {"fs_ability": "none"}
+
+        with patch(
+            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+        ) as mock_factory:
+            mock_factory.create.return_value = mock_response_provider
+
+            with pytest.raises(ValueError) as exc_info:
+                ApprovalProviderFactory.create("api-only")
+
+            assert "fs_ability='none'" in str(exc_info.value)
+            assert "cannot be used for approval" in str(exc_info.value)
+
+    def test_accepts_provider_with_local_read(self) -> None:
+        """Factory accepts response providers with fs_ability='local-read'."""
+        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider.get_metadata.return_value = {"fs_ability": "local-read"}
+
+        with patch(
+            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+        ) as mock_factory:
+            mock_factory.create.return_value = mock_response_provider
+
+            provider = ApprovalProviderFactory.create("local-reader")
+            assert isinstance(provider, AIApprovalProvider)
+
+    def test_accepts_provider_with_local_write(self) -> None:
+        """Factory accepts response providers with fs_ability='local-write'."""
+        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider.get_metadata.return_value = {"fs_ability": "local-write"}
+
+        with patch(
+            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+        ) as mock_factory:
+            mock_factory.create.return_value = mock_response_provider
+
+            provider = ApprovalProviderFactory.create("local-writer")
+            assert isinstance(provider, AIApprovalProvider)
+
+    def test_defaults_to_none_when_metadata_missing_fs_ability(self) -> None:
+        """Provider without fs_ability in metadata defaults to 'none' (rejected)."""
+        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider.get_metadata.return_value = {"name": "no-fs-provider"}
+
+        with patch(
+            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+        ) as mock_factory:
+            mock_factory.create.return_value = mock_response_provider
+
+            with pytest.raises(ValueError) as exc_info:
+                ApprovalProviderFactory.create("no-fs")
+
+            assert "fs_ability='none'" in str(exc_info.value)

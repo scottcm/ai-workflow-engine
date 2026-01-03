@@ -4,6 +4,7 @@ from typing import Any
 
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.prompt_sections import PromptSections
+from aiwf.domain.models.workflow_state import WorkflowPhase
 
 # Type alias for prompt generation return type
 # Profiles can return either a raw string (pass-through) or structured sections
@@ -28,6 +29,7 @@ class WorkflowProfile(ABC):
             "requires_config": False,
             "config_keys": [],
             "context_schema": {},  # Schema for validating context dict
+            "can_regenerate_prompts": False,  # ADR-0015: Enable prompt regeneration on rejection
         }
 
     def validate_metadata(self, metadata: dict[str, Any] | None) -> None:
@@ -70,6 +72,30 @@ class WorkflowProfile(ABC):
             Configuration dict with provider-specific settings
         """
         return {}
+
+    def regenerate_prompt(
+        self,
+        phase: WorkflowPhase,
+        feedback: str,
+        context: dict[str, Any],
+    ) -> PromptResult:
+        """Regenerate prompt based on rejection feedback.
+
+        ADR-0015: Only called if get_metadata()["can_regenerate_prompts"] is True.
+        Profiles that support prompt regeneration should override this method.
+
+        Args:
+            phase: Current workflow phase (PLAN, GENERATE, REVIEW, REVISE)
+            feedback: Rejection feedback from the approver
+            context: Template context with workflow metadata
+
+        Returns:
+            Regenerated prompt content as string or PromptSections
+
+        Raises:
+            NotImplementedError: If profile does not support prompt regeneration
+        """
+        raise NotImplementedError("Profile does not support prompt regeneration")
 
     @abstractmethod
     def generate_planning_prompt(self, context: dict) -> PromptResult:

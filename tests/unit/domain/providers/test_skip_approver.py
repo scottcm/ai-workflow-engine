@@ -1,14 +1,13 @@
 """Tests for SkipApprovalProvider.
 
-TDD Tests for ADR-0012 Phase 3.
+ADR-0015: Tests for auto-approve provider.
 """
 
 import pytest
 
 from aiwf.domain.models.approval_result import ApprovalDecision, ApprovalResult
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
-from aiwf.domain.providers.approval_provider import ApprovalProvider
-from aiwf.domain.providers.skip_approver import SkipApprovalProvider
+from aiwf.domain.providers.approval_provider import ApprovalProvider, SkipApprovalProvider
 
 
 class TestSkipApprovalProvider:
@@ -22,11 +21,6 @@ class TestSkipApprovalProvider:
         """SkipApprovalProvider can be instantiated without arguments."""
         provider = SkipApprovalProvider()
         assert provider is not None
-
-    def test_skip_approver_requires_no_user_input(self) -> None:
-        """SkipApprovalProvider.requires_user_input is False."""
-        provider = SkipApprovalProvider()
-        assert provider.requires_user_input is False
 
     def test_skip_approver_always_approves(self) -> None:
         """SkipApprovalProvider.evaluate always returns APPROVED."""
@@ -54,6 +48,12 @@ class TestSkipApprovalProvider:
         )
 
         assert result.feedback is None
+
+    def test_skip_approver_metadata(self) -> None:
+        """SkipApprovalProvider has correct metadata."""
+        metadata = SkipApprovalProvider.get_metadata()
+        assert metadata["name"] == "skip"
+        assert "auto" in metadata["description"].lower()
 
     @pytest.mark.parametrize(
         "phase,stage",

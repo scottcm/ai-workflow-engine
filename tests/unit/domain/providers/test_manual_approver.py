@@ -1,13 +1,12 @@
 """Tests for ManualApprovalProvider.
 
-TDD Tests for ADR-0012 Phase 3.
+ADR-0015: Tests for manual approval provider (returns None to pause).
 """
 
 import pytest
 
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
-from aiwf.domain.providers.approval_provider import ApprovalProvider
-from aiwf.domain.providers.manual_approver import ManualApprovalProvider
+from aiwf.domain.providers.approval_provider import ApprovalProvider, ManualApprovalProvider
 
 
 class TestManualApprovalProvider:
@@ -22,25 +21,49 @@ class TestManualApprovalProvider:
         provider = ManualApprovalProvider()
         assert provider is not None
 
-    def test_manual_approver_requires_user_input(self) -> None:
-        """ManualApprovalProvider.requires_user_input is True."""
-        provider = ManualApprovalProvider()
-        assert provider.requires_user_input is True
+    def test_manual_approver_evaluate_returns_none(self) -> None:
+        """ManualApprovalProvider.evaluate returns None to signal pause.
 
-    def test_manual_approver_evaluate_raises_runtime_error(self) -> None:
-        """ManualApprovalProvider.evaluate raises RuntimeError.
-
-        The evaluate method should never be called for manual approval.
-        Approval comes from CLI commands (approve/reject), not from evaluate().
+        ADR-0015: Manual approval returns None to indicate the workflow
+        should pause and wait for user input (approve/reject command).
         """
         provider = ManualApprovalProvider()
 
-        with pytest.raises(RuntimeError) as exc_info:
-            provider.evaluate(
-                phase=WorkflowPhase.PLAN,
-                stage=WorkflowStage.RESPONSE,
-                files={},
-                context={},
-            )
+        result = provider.evaluate(
+            phase=WorkflowPhase.PLAN,
+            stage=WorkflowStage.RESPONSE,
+            files={},
+            context={},
+        )
 
-        assert "should not be called" in str(exc_info.value).lower()
+        assert result is None
+
+    def test_manual_approver_metadata(self) -> None:
+        """ManualApprovalProvider has correct metadata."""
+        metadata = ManualApprovalProvider.get_metadata()
+        assert metadata["name"] == "manual"
+        assert "pause" in metadata["description"].lower()
+
+    @pytest.mark.parametrize(
+        "phase,stage",
+        [
+            (WorkflowPhase.PLAN, WorkflowStage.PROMPT),
+            (WorkflowPhase.PLAN, WorkflowStage.RESPONSE),
+            (WorkflowPhase.GENERATE, WorkflowStage.PROMPT),
+            (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE),
+        ],
+    )
+    def test_manual_approver_returns_none_for_all_phases(
+        self, phase: WorkflowPhase, stage: WorkflowStage
+    ) -> None:
+        """ManualApprovalProvider returns None regardless of phase/stage."""
+        provider = ManualApprovalProvider()
+
+        result = provider.evaluate(
+            phase=phase,
+            stage=stage,
+            files={},
+            context={},
+        )
+
+        assert result is None

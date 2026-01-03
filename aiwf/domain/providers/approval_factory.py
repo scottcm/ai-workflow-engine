@@ -1,14 +1,16 @@
 """Factory for creating approval providers.
 
-ADR-0012 Phase 4: Registry pattern for approval provider instantiation.
+ADR-0015: Registry pattern for approval provider instantiation.
 """
 
 from typing import Any
 
-from aiwf.domain.providers.approval_provider import ApprovalProvider
-from aiwf.domain.providers.skip_approver import SkipApprovalProvider
-from aiwf.domain.providers.manual_approver import ManualApprovalProvider
-from aiwf.domain.providers.ai_approver import AIApprovalProvider
+from aiwf.domain.providers.approval_provider import (
+    ApprovalProvider,
+    SkipApprovalProvider,
+    ManualApprovalProvider,
+)
+from aiwf.domain.providers.ai_approval_provider import AIApprovalProvider
 from aiwf.domain.providers.provider_factory import ResponseProviderFactory
 
 
@@ -17,7 +19,7 @@ class ApprovalProviderFactory:
 
     Built-in providers:
     - "skip": SkipApprovalProvider (auto-approve)
-    - "manual": ManualApprovalProvider (requires CLI command)
+    - "manual": ManualApprovalProvider (pause for user)
 
     Unknown keys are treated as response provider keys and create
     AIApprovalProvider wrapping the corresponding ResponseProvider.
@@ -60,16 +62,39 @@ class ApprovalProviderFactory:
         if key in cls._registry:
             return cls._registry[key]()
 
-        # Fall back to creating AIApprovalProvider with response provider
-        response_provider = ResponseProviderFactory.create(key, config)
-        return AIApprovalProvider(response_provider=response_provider)
+        # Fall back to creating AIApprovalProvider wrapping a response provider
+        try:
+            response_provider = ResponseProviderFactory.create(key, config)
+
+            # Validate fs_ability - approval providers need file access
+            metadata = response_provider.get_metadata()
+            fs_ability = metadata.get("fs_ability", "none")
+
+            if fs_ability == "none":
+                raise ValueError(
+                    f"Provider {key!r} has fs_ability='none' and cannot be used for approval. "
+                    f"Approval providers must be able to read files (fs_ability='local-read' or 'local-write') "
+                    f"to evaluate artifacts. Use 'manual' for API-only approvals."
+                )
+
+            return AIApprovalProvider(response_provider=response_provider)
+        except KeyError:
+            builtin_keys = list(cls._registry.keys())
+            response_keys = ResponseProviderFactory.list_providers()
+            raise KeyError(
+                f"Unknown approval provider: {key!r}. "
+                f"Valid options: {builtin_keys} or any ResponseProvider: {response_keys}"
+            )
 
     @classmethod
     def list_providers(cls) -> list[str]:
-        """Get list of registered provider keys.
+        """Get list of available approval provider keys.
 
         Returns:
-            List of built-in provider identifiers.
-            Note: AI provider keys are not listed (delegated to ResponseProviderFactory).
+            List of built-in provider identifiers plus AI-wrapped response providers.
         """
-        return list(cls._registry.keys())
+        builtin = list(cls._registry.keys())
+        response_providers = [
+            f"{k} (via AI)" for k in ResponseProviderFactory.list_providers()
+        ]
+        return builtin + response_providers

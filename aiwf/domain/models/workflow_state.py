@@ -160,8 +160,21 @@ class WorkflowState(BaseModel):
     # Error tracking
     last_error: str | None = None
 
-    # Approval feedback (reject/retry reasons - separate from operational errors)
-    approval_feedback: str | None = None
+    # Approval tracking (reject/retry state - separate from operational errors)
+    # Lifecycle: These fields are cleared by _clear_approval_state() on successful
+    # approval. retry_count also resets on stage/phase transitions.
+    approval_feedback: str | None = Field(
+        default=None,
+        description="Rejection feedback from approver. Cleared on successful approval or stage change.",
+    )
+    suggested_content: str | None = Field(
+        default=None,
+        description="Suggested rewrite from approver. Cleared on successful approval.",
+    )
+    retry_count: int = Field(
+        default=0,
+        description="Retry attempts in current stage. Reset to 0 on stage/phase transition or successful approval.",
+    )
 
     # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

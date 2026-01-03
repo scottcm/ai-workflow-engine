@@ -1,6 +1,6 @@
 """Tests for ApprovalProvider ABC.
 
-TDD Tests for ADR-0012 Phase 3.
+ADR-0015: Tests for approval provider abstract base class.
 """
 
 import pytest
@@ -26,10 +26,10 @@ class TestApprovalProviderABC:
         assert hasattr(ApprovalProvider, "evaluate")
         assert getattr(ApprovalProvider.evaluate, "__isabstractmethod__", False)
 
-    def test_approval_provider_has_requires_user_input_property(self) -> None:
-        """ApprovalProvider defines requires_user_input abstract property."""
-        assert hasattr(ApprovalProvider, "requires_user_input")
-        # Check it's an abstract property
-        assert isinstance(
-            getattr(ApprovalProvider, "requires_user_input"), property
-        )
+    def test_approval_provider_has_get_metadata_method(self) -> None:
+        """ApprovalProvider defines get_metadata class method."""
+        assert hasattr(ApprovalProvider, "get_metadata")
+        metadata = ApprovalProvider.get_metadata()
+        assert "name" in metadata
+        assert "description" in metadata
+        assert "fs_ability" in metadata
