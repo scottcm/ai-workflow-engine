@@ -1,4 +1,4 @@
-# ADR-0014: Gemini CLI Response Provider
+# ADR-0014: Gemini CLI AI Provider
 
 **Status:** Draft
 **Date:** January 2, 2025
@@ -235,7 +235,7 @@ async def _async_generate(self, prompt: str, ...) -> ProviderResult:
     if parse_errors:
         logger.warning(f"Malformed JSON lines: {parse_errors}")
 
-    return ProviderResult(response=response_text, files=files_written)
+    return AIProviderResult(response=response_text, files=files_written)
 ```
 
 **Rationale:**
@@ -250,7 +250,7 @@ async def _async_generate(self, prompt: str, ...) -> ProviderResult:
 Same pattern as Claude Code provider - wrap async with `asyncio.run()`:
 
 ```python
-def generate(self, prompt: str, ...) -> ProviderResult:
+def generate(self, prompt: str, ...) -> AIProviderResult:
     return asyncio.run(self._async_generate(prompt, context, system_prompt))
 ```
 
@@ -259,8 +259,8 @@ def generate(self, prompt: str, ...) -> ProviderResult:
 ## Provider Interface
 
 ```python
-class GeminiCliProvider(ResponseProvider):
-    """Gemini CLI response provider using subprocess."""
+class GeminiCliAIProvider(AIProvider):
+    """Gemini CLI AI provider using subprocess."""
 
     def __init__(self, config: dict[str, Any] | None = None):
         """Initialize with optional configuration."""
@@ -268,7 +268,7 @@ class GeminiCliProvider(ResponseProvider):
     def validate(self) -> None:
         """Verify Gemini CLI is available."""
 
-    def generate(self, prompt: str, context: dict[str, Any] | None = None) -> ProviderResult:
+    def generate(self, prompt: str, context: dict[str, Any] | None = None) -> AIProviderResult:
         """Generate response using Gemini CLI subprocess."""
 
     @classmethod
@@ -365,7 +365,7 @@ $ gemini -o stream-json "What is 2+2?"
 | Verify success via `tool_result.status` | High | Only track successful writes |
 | Capture stderr for debugging | Medium | Log even on success |
 | Create unit tests | High | Mock subprocess |
-| Register provider in factory | Medium | ResponseProviderFactory |
+| Register provider in factory | Medium | AIProviderFactory |
 | Create integration tests | Medium | Real CLI invocation |
 | Add pytest marker | Low | `gemini_cli` marker |
 

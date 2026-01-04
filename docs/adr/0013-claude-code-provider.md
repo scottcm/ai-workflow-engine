@@ -1,4 +1,4 @@
-# ADR-0013: Claude Code Response Provider
+# ADR-0013: Claude Code AI Provider
 
 **Status:** Draft
 **Date:** January 2, 2025
@@ -211,12 +211,12 @@ Orchestrator passes phase-specific config to factory at provider creation time.
 
 ### Integration with Approval Providers
 
-`ClaudeCodeProvider` implements `ResponseProvider` only. For approval use, wrap with `AIApprovalProvider`.
+`ClaudeCodeAIProvider` implements `AIProvider` only. For approval use, wrap with `AIApprovalProvider`.
 
-This follows the existing Adapter pattern where `AIApprovalProvider` wraps any `ResponseProvider`:
+This follows the existing Adapter pattern where `AIApprovalProvider` wraps any `AIProvider`:
 
 ```
-ClaudeCodeProvider (ResponseProvider)
+ClaudeCodeAIProvider (AIProvider)
         │
         │ wrapped by
         ▼
@@ -235,7 +235,7 @@ The `ApprovalProviderFactory` handles this automatically for non-builtin provide
 ## Provider Interface
 
 ```python
-class ClaudeCodeProvider(ResponseProvider):
+class ClaudeCodeAIProvider(AIProvider):
     """Claude Code AI provider using the Agent SDK."""
 
     def __init__(self, config: dict[str, Any] | None = None):
@@ -272,7 +272,7 @@ class ClaudeCodeProvider(ResponseProvider):
 
 ### File Write Tracking
 
-Claude Code writes files directly to disk via its `Write` tool. To track these for `ProviderResult.files`:
+Claude Code writes files directly to disk via its `Write` tool. To track these for `AIProviderResult.files`:
 
 1. Parse `ToolUseBlock` messages where `name == "Write"`
 2. Extract `file_path` from tool input
@@ -291,7 +291,7 @@ async for message in query(prompt=prompt, options=options):
                 if file_path:
                     files_written[file_path] = None
 
-return ProviderResult(response=response_text, files=files_written)
+return AIProviderResult(response=response_text, files=files_written)
 ```
 
 ---
@@ -327,10 +327,10 @@ return ProviderResult(response=response_text, files=files_written)
 | Task | Priority | Notes |
 |------|----------|-------|
 | Add `claude-agent-sdk` to dependencies | High | pyproject.toml |
-| Implement `ClaudeCodeProvider` with SDK | High | SDK-based implementation |
+| Implement `ClaudeCodeAIProvider` with SDK | High | SDK-based implementation |
 | Add config options (tokens, budget, thinking) | High | Verify SDK parameter names |
 | Create unit tests | High | Mock SDK calls |
-| Register provider in factory | Medium | ResponseProviderFactory |
+| Register provider in factory | Medium | AIProviderFactory |
 | Create integration tests | Medium | Real SDK invocation |
 
 ---

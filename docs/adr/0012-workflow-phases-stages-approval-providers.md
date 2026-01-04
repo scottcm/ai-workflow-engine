@@ -99,7 +99,7 @@ Two distinct provider types:
 ```python
 class AIProvider(ABC):
     @abstractmethod
-    def generate(self, prompt: str, **kwargs) -> ProviderResult | None:
+    def generate(self, prompt: str, **kwargs) -> AIProviderResult | None:
         """Generate content from prompt."""
         ...
 ```

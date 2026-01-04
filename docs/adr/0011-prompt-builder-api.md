@@ -144,7 +144,7 @@ Engine adds to the assembled prompt:
 Providers return a structured result that supports multiple output files:
 
 ```python
-class ProviderResult(BaseModel):
+class AIProviderResult(BaseModel):
     """Result from AI provider execution."""
     files: dict[str, str | None]  # {path: content or None if already written}
     response: str | None = None   # Optional commentary for response file
@@ -190,7 +190,7 @@ class ProviderResult(BaseModel):
 
 - Two code paths to test (structured vs pass-through)
 - Profiles must choose which mode to use
-- Provider interface change from `str | None` to `ProviderResult`
+- Provider interface change from `str | None` to `AIProviderResult`
 
 ---
 
