@@ -1,0 +1,301 @@
+"""YAML Rules-based Standards Provider for JPA-MT Profile.
+
+Reads YAML rules files and produces a markdown standards bundle
+filtered by scope.
+"""
+
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from aiwf.domain.errors import ProviderError
+
+
+# Scope to rule prefix mapping
+SCOPE_PREFIXES: dict[str, list[str]] = {
+    "domain": ["JV-", "JPA-", "PKG-", "DOM-", "NAM-", "MT-"],
+    "service": ["JV-", "JPA-", "PKG-", "DOM-", "NAM-", "MT-", "SVC-"],
+    "api": [
+        "JV-", "JPA-", "PKG-", "DOM-", "NAM-", "MT-",
+        "SVC-", "CTL-", "DTO-", "MAP-", "API-",
+    ],
+    "full": [],  # Empty means all rules
+}
+
+
+class JpaMtStandardsProvider:
+    """Standards provider that reads YAML rules files.
+
+    Parses YAML files with hierarchical rule definitions and produces
+    a markdown standards bundle filtered by scope.
+
+    Config structure:
+        {
+            "rules_path": "/path/to/rules"  # Directory containing *.rules.yml files
+        }
+    """
+
+    def __init__(self, config: dict[str, Any]):
+        """Initialize provider with configuration.
+
+        Args:
+            config: Configuration dict with 'rules_path' key
+        """
+        self.config = config
+        rules_path = config.get("rules_path", "")
+        self.rules_path = Path(rules_path) if rules_path else None
+
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
+        """Return provider metadata for discovery commands.
+
+        Returns:
+            dict with provider metadata
+        """
+        return {
+            "name": "yaml-rules",
+            "description": "YAML rules-based standards provider for JPA-MT",
+            "requires_config": True,
+            "config_keys": ["rules_path"],
+            "default_connection_timeout": None,  # Local filesystem, no connection phase
+            "default_response_timeout": 10,  # Seconds to read all YAML files
+        }
+
+    def validate(self) -> None:
+        """Verify rules path exists and contains rules files.
+
+        Raises:
+            ProviderError: If rules_path is not configured or doesn't exist
+        """
+        if not self.rules_path:
+            raise ProviderError("rules_path not configured")
+
+        if not self.rules_path.exists():
+            raise ProviderError(f"Rules path not found: {self.rules_path}")
+
+        if not self.rules_path.is_dir():
+            raise ProviderError(f"Rules path is not a directory: {self.rules_path}")
+
+        # Check for at least one rules file
+        rules_files = list(self.rules_path.glob("*.rules.yml"))
+        if not rules_files:
+            raise ProviderError(f"No *.rules.yml files found in {self.rules_path}")
+
+    def create_bundle(
+        self,
+        context: dict[str, Any],
+        connection_timeout: int | None = None,
+        response_timeout: int | None = None,
+    ) -> str:
+        """Create standards bundle filtered by scope.
+
+        Args:
+            context: Workflow context with 'scope' key
+            connection_timeout: Ignored (filesystem provider)
+            response_timeout: Ignored for simplicity (fast local reads)
+
+        Returns:
+            Markdown-formatted standards bundle
+
+        Raises:
+            ProviderError: If bundle creation fails
+            ValueError: If scope is unknown
+        """
+        scope = context.get("scope") if isinstance(context, dict) else None
+
+        if not scope or scope not in SCOPE_PREFIXES:
+            raise ValueError(f"Unknown scope: {scope}")
+
+        # Load all rules from YAML files
+        all_rules = self._load_rules()
+
+        # Filter by scope
+        filtered_rules = self._filter_by_scope(all_rules, scope)
+
+        # Format as markdown
+        return self._format_bundle(filtered_rules, scope)
+
+    def _load_rules(self) -> dict[str, list[tuple[str, str, str]]]:
+        """Load rules from all YAML files.
+
+        Returns:
+            Dict mapping category names to list of (rule_id, severity, text) tuples
+        """
+        if not self.rules_path:
+            return {}
+
+        rules_by_category: dict[str, list[tuple[str, str, str]]] = {}
+        rules_files = sorted(self.rules_path.glob("*.rules.yml"))
+
+        for file_path in rules_files:
+            try:
+                category_name = self._file_to_category(file_path)
+                file_rules = self._parse_yaml_file(file_path)
+                if file_rules:
+                    rules_by_category[category_name] = file_rules
+            except yaml.YAMLError as e:
+                raise ProviderError(f"Failed to parse {file_path}: {e}")
+            except OSError as e:
+                raise ProviderError(f"Failed to read {file_path}: {e}")
+
+        return rules_by_category
+
+    def _file_to_category(self, file_path: Path) -> str:
+        """Convert file name to human-readable category name.
+
+        Args:
+            file_path: Path to rules file
+
+        Returns:
+            Category name (e.g., "JPA and Database Standards")
+        """
+        # Remove suffix and convert to title case
+        name = file_path.stem  # e.g., "JPA_AND_DATABASE-marked.rules"
+        name = name.replace(".rules", "")  # Remove .rules if present
+        name = name.replace("-marked", "")  # Remove -marked suffix
+        name = name.replace("_", " ").title()  # Convert to title case
+        return f"{name} Standards"
+
+    def _parse_yaml_file(self, file_path: Path) -> list[tuple[str, str, str]]:
+        """Parse a single YAML rules file.
+
+        Args:
+            file_path: Path to YAML file
+
+        Returns:
+            List of (rule_id, severity, text) tuples
+        """
+        content = file_path.read_text(encoding="utf-8")
+        data = yaml.safe_load(content)
+
+        if not data or not isinstance(data, dict):
+            return []
+
+        rules: list[tuple[str, str, str]] = []
+        self._extract_rules(data, rules)
+        return rules
+
+    def _extract_rules(
+        self, data: dict[str, Any], rules: list[tuple[str, str, str]]
+    ) -> None:
+        """Recursively extract rules from nested YAML structure.
+
+        Args:
+            data: YAML data (nested dicts)
+            rules: List to append rules to (modified in place)
+        """
+        for key, value in data.items():
+            if isinstance(value, dict):
+                # Check if this is a rules dict (keys look like rule IDs)
+                # Rule IDs have format: PREFIX-CODE-NNN
+                sample_key = next(iter(value.keys()), "")
+                if self._is_rule_id(sample_key):
+                    # This is a rules dict
+                    for rule_id, rule_text in value.items():
+                        if isinstance(rule_text, str):
+                            severity, text = self._parse_rule_text(rule_text)
+                            rules.append((rule_id, severity, text))
+                else:
+                    # Recurse into nested structure
+                    self._extract_rules(value, rules)
+
+    def _is_rule_id(self, key: str) -> bool:
+        """Check if a string looks like a rule ID.
+
+        Rule IDs have format like JPA-ENT-001, JV-DI-001, etc.
+
+        Args:
+            key: String to check
+
+        Returns:
+            True if key looks like a rule ID
+        """
+        if not key or "-" not in key:
+            return False
+        # Rule IDs typically have 2-3 parts separated by hyphens
+        # and end with digits
+        parts = key.split("-")
+        if len(parts) < 2:
+            return False
+        # Last part should be numeric (or mostly numeric)
+        last_part = parts[-1]
+        return any(c.isdigit() for c in last_part)
+
+    def _parse_rule_text(self, text: str) -> tuple[str, str]:
+        """Parse rule text to extract severity and description.
+
+        Format: "{severity}: {description}"
+        Severity: C (Critical), M (Major), m (minor)
+
+        Args:
+            text: Raw rule text
+
+        Returns:
+            Tuple of (severity, description)
+        """
+        if ": " in text:
+            severity_char, description = text.split(": ", 1)
+            severity_char = severity_char.strip()
+            if severity_char in ("C", "M", "m"):
+                return severity_char, description.strip()
+        # Default to no severity if format doesn't match
+        return "", text
+
+    def _filter_by_scope(
+        self, rules_by_category: dict[str, list[tuple[str, str, str]]], scope: str
+    ) -> dict[str, list[tuple[str, str, str]]]:
+        """Filter rules by scope.
+
+        Args:
+            rules_by_category: All rules grouped by category
+            scope: Scope name (domain, service, api, full)
+
+        Returns:
+            Filtered rules dict
+        """
+        prefixes = SCOPE_PREFIXES.get(scope, [])
+
+        # Empty prefixes means include all (full scope)
+        if not prefixes:
+            return rules_by_category
+
+        filtered: dict[str, list[tuple[str, str, str]]] = {}
+        for category, rules in rules_by_category.items():
+            matching_rules = [
+                (rule_id, severity, text)
+                for rule_id, severity, text in rules
+                if any(rule_id.startswith(prefix) for prefix in prefixes)
+            ]
+            if matching_rules:
+                filtered[category] = matching_rules
+
+        return filtered
+
+    def _format_bundle(
+        self, rules_by_category: dict[str, list[tuple[str, str, str]]], scope: str
+    ) -> str:
+        """Format rules as markdown bundle.
+
+        Args:
+            rules_by_category: Rules grouped by category
+            scope: Scope name for header
+
+        Returns:
+            Markdown-formatted standards bundle
+        """
+        lines = [f"# Standards Bundle ({scope} scope)", ""]
+
+        for category, rules in rules_by_category.items():
+            lines.append(f"## {category}")
+            lines.append("")
+
+            for rule_id, severity, text in rules:
+                if severity:
+                    lines.append(f"- **{rule_id}** ({severity}): {text}")
+                else:
+                    lines.append(f"- **{rule_id}**: {text}")
+
+            lines.append("")
+
+        return "\n".join(lines)
