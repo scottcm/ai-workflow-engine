@@ -156,6 +156,10 @@ class WorkflowState(BaseModel):
 
     # Interactive mode
     pending_action: str | None = None
+    pending_approval: bool = Field(
+        default=False,
+        description="True when workflow is paused waiting for manual approval decision.",
+    )
 
     # Error tracking
     last_error: str | None = None

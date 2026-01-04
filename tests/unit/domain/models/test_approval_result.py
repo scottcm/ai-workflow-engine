@@ -6,7 +6,11 @@ TDD Tests for ADR-0012 Phase 1.
 import pytest
 from pydantic import ValidationError
 
-from aiwf.domain.models.approval_result import ApprovalDecision, ApprovalResult
+from aiwf.domain.models.approval_result import (
+    ApprovalDecision,
+    ApprovalResult,
+    validate_approval_result,
+)
 
 
 class TestApprovalDecision:
@@ -17,13 +21,21 @@ class TestApprovalDecision:
         assert ApprovalDecision.APPROVED == "approved"
         assert ApprovalDecision.REJECTED == "rejected"
 
-    def test_decision_count_is_exactly_two(self) -> None:
-        """Exactly 2 decisions defined (binary choice)."""
-        assert len(ApprovalDecision) == 2
-
     def test_decision_is_str_enum(self) -> None:
         """ApprovalDecision is a string enum for JSON serialization."""
         assert isinstance(ApprovalDecision.APPROVED, str)
+
+    def test_pending_decision_exists(self) -> None:
+        """PENDING is a valid ApprovalDecision."""
+        assert ApprovalDecision.PENDING == "pending"
+
+    def test_approval_decision_has_three_values(self) -> None:
+        """ApprovalDecision has exactly three values."""
+        assert set(ApprovalDecision) == {
+            ApprovalDecision.APPROVED,
+            ApprovalDecision.REJECTED,
+            ApprovalDecision.PENDING,
+        }
 
 
 class TestApprovalResult:
@@ -72,6 +84,20 @@ class TestApprovalResult:
         with pytest.raises(ValidationError):
             ApprovalResult(decision=ApprovalDecision.REJECTED, feedback="   ")
 
+    def test_pending_result_no_feedback_required(self) -> None:
+        """PENDING decisions don't require feedback (unlike REJECTED)."""
+        result = ApprovalResult(decision=ApprovalDecision.PENDING)
+        assert result.decision == ApprovalDecision.PENDING
+        assert result.feedback is None
+
+    def test_pending_result_with_optional_feedback(self) -> None:
+        """PENDING can optionally include feedback."""
+        result = ApprovalResult(
+            decision=ApprovalDecision.PENDING,
+            feedback="Awaiting user review"
+        )
+        assert result.feedback == "Awaiting user review"
+
 
 class TestApprovalResultSerialization:
     """Tests for ApprovalResult JSON serialization."""
@@ -97,3 +123,26 @@ class TestApprovalResultSerialization:
         data = {"decision": "approved", "feedback": None}
         result = ApprovalResult.model_validate(data)
         assert result.decision == ApprovalDecision.APPROVED
+
+
+class TestValidateApprovalResult:
+    """Tests for validate_approval_result migration guard."""
+
+    def test_returns_valid_result(self) -> None:
+        """validate_approval_result returns a valid ApprovalResult unchanged."""
+        result = ApprovalResult(decision=ApprovalDecision.APPROVED)
+        validated = validate_approval_result(result)
+        assert validated is result
+
+    def test_raises_type_error_for_none(self) -> None:
+        """validate_approval_result raises TypeError for None (legacy pattern)."""
+        with pytest.raises(TypeError) as exc_info:
+            validate_approval_result(None)
+        assert "returned None" in str(exc_info.value)
+        assert "PENDING" in str(exc_info.value)
+
+    def test_error_message_provides_guidance(self) -> None:
+        """Error message guides developer to use PENDING instead."""
+        with pytest.raises(TypeError) as exc_info:
+            validate_approval_result(None)
+        assert "ApprovalResult(decision=PENDING)" in str(exc_info.value)

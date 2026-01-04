@@ -5,7 +5,13 @@ TDD Tests for ADR-0012 Phase 1.
 
 import pytest
 
-from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
+from aiwf.domain.models.workflow_state import (
+    ExecutionMode,
+    WorkflowPhase,
+    WorkflowStage,
+    WorkflowState,
+    WorkflowStatus,
+)
 
 
 class TestWorkflowPhase:
@@ -76,3 +82,42 @@ class TestPhaseStageSemantics:
         # RESPONSE = Prompt sent to AI, response created, editable, awaiting approval
         # Approve → transition to next phase
         assert WorkflowStage.RESPONSE.value == "response"
+
+
+def _minimal_workflow_state_kwargs() -> dict:
+    """Minimal kwargs to create a valid WorkflowState."""
+    return {
+        "session_id": "test",
+        "profile": "test",
+        "phase": WorkflowPhase.INIT,
+        "status": WorkflowStatus.IN_PROGRESS,
+        "execution_mode": ExecutionMode.INTERACTIVE,
+        "providers": {"planner": "manual"},
+        "standards_hash": "sha256:test",
+    }
+
+
+class TestPendingApprovalField:
+    """Tests for pending_approval field on WorkflowState."""
+
+    def test_pending_approval_defaults_false(self) -> None:
+        """pending_approval defaults to False."""
+        state = WorkflowState(**_minimal_workflow_state_kwargs())
+        assert state.pending_approval is False
+
+    def test_pending_approval_serializes(self) -> None:
+        """pending_approval included in JSON serialization."""
+        kwargs = _minimal_workflow_state_kwargs()
+        kwargs["pending_approval"] = True
+        state = WorkflowState(**kwargs)
+        data = state.model_dump()
+        assert data["pending_approval"] is True
+
+    def test_pending_approval_survives_round_trip(self) -> None:
+        """pending_approval preserved through save/load cycle."""
+        kwargs = _minimal_workflow_state_kwargs()
+        kwargs["pending_approval"] = True
+        state = WorkflowState(**kwargs)
+        json_str = state.model_dump_json()
+        loaded = WorkflowState.model_validate_json(json_str)
+        assert loaded.pending_approval is True

@@ -1,22 +1,25 @@
 """Approval decision and result models.
 
-ADR-0012: Binary approval decisions with mandatory feedback on rejection.
+ADR-0012: Three-state approval decisions with mandatory feedback on rejection.
 """
 
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class ApprovalDecision(str, Enum):
-    """Binary approval decision.
+    """Approval decision.
 
-    ADR-0012: Only two outcomes - approved or rejected.
+    ADR-0012: Three outcomes - approved, rejected, or pending.
     No "approved with changes" - that's a rejection with feedback.
+    PENDING means waiting for external input (manual approval).
     """
 
     APPROVED = "approved"
     REJECTED = "rejected"
+    PENDING = "pending"
 
 
 class ApprovalResult(BaseModel):
@@ -30,8 +33,8 @@ class ApprovalResult(BaseModel):
     provider output is surfaced early.
 
     Attributes:
-        decision: APPROVED or REJECTED
-        feedback: Explanation (required for rejections, optional for approvals)
+        decision: APPROVED, REJECTED, or PENDING
+        feedback: Explanation (required for rejections, optional for approvals/pending)
         suggested_content: Optional rewritten content if approver provides a fix.
             When present, the orchestrator may apply this content instead of
             or in addition to the feedback, depending on configuration.
@@ -55,21 +58,25 @@ class ApprovalResult(BaseModel):
         return self
 
 
-# Type alias for approval gate outcomes
-# None indicates manual approval (pause for user command)
-ApprovalOutcome = ApprovalResult | None
+def validate_approval_result(result: Any) -> ApprovalResult:
+    """Validate approval result, catching legacy None returns.
 
-
-def is_manual_pause(outcome: ApprovalOutcome) -> bool:
-    """Check if outcome indicates manual approval pause.
-
-    Manual approvers return None to signal the workflow should pause
-    and wait for the user's next command (approve/reject/retry).
+    Migration guard: Some legacy providers may still return None instead
+    of ApprovalResult(decision=PENDING). This function catches that and
+    provides a clear error message to guide the fix.
 
     Args:
-        outcome: Result from ApprovalProvider.evaluate()
+        result: Result from ApprovalProvider.evaluate()
 
     Returns:
-        True if the workflow should pause for manual approval
+        The validated ApprovalResult
+
+    Raises:
+        TypeError: If result is None (legacy provider not updated)
     """
-    return outcome is None
+    if result is None:
+        raise TypeError(
+            "ApprovalProvider.evaluate() returned None. "
+            "This is no longer supported. Return ApprovalResult(decision=PENDING) instead."
+        )
+    return result

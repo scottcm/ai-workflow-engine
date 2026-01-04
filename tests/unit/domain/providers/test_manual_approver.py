@@ -1,10 +1,11 @@
 """Tests for ManualApprovalProvider.
 
-ADR-0015: Tests for manual approval provider (returns None to pause).
+ADR-0015: Tests for manual approval provider (returns PENDING to pause).
 """
 
 import pytest
 
+from aiwf.domain.models.approval_result import ApprovalDecision, ApprovalResult
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
 from aiwf.domain.providers.approval_provider import ApprovalProvider, ManualApprovalProvider
 
@@ -21,28 +22,28 @@ class TestManualApprovalProvider:
         provider = ManualApprovalProvider()
         assert provider is not None
 
-    def test_manual_approver_evaluate_returns_none(self) -> None:
-        """ManualApprovalProvider.evaluate returns None to signal pause.
-
-        ADR-0015: Manual approval returns None to indicate the workflow
-        should pause and wait for user input (approve/reject command).
-        """
+    def test_evaluate_returns_pending(self) -> None:
+        """ManualApprovalProvider.evaluate() returns PENDING result."""
         provider = ManualApprovalProvider()
-
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
-            stage=WorkflowStage.RESPONSE,
+            stage=WorkflowStage.PROMPT,
             files={},
             context={},
         )
+        assert isinstance(result, ApprovalResult)
+        assert result.decision == ApprovalDecision.PENDING
+        assert result.feedback is not None  # Should have message
 
-        assert result is None
+    def test_metadata_fs_ability_local_write(self) -> None:
+        """Manual approver claims local-write (human has full access)."""
+        metadata = ManualApprovalProvider.get_metadata()
+        assert metadata["fs_ability"] == "local-write"
 
-    def test_manual_approver_metadata(self) -> None:
-        """ManualApprovalProvider has correct metadata."""
+    def test_metadata_name(self) -> None:
+        """Manual approver metadata has correct name."""
         metadata = ManualApprovalProvider.get_metadata()
         assert metadata["name"] == "manual"
-        assert "pause" in metadata["description"].lower()
 
     @pytest.mark.parametrize(
         "phase,stage",
@@ -53,10 +54,10 @@ class TestManualApprovalProvider:
             (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE),
         ],
     )
-    def test_manual_approver_returns_none_for_all_phases(
+    def test_manual_approver_returns_pending_for_all_phases(
         self, phase: WorkflowPhase, stage: WorkflowStage
     ) -> None:
-        """ManualApprovalProvider returns None regardless of phase/stage."""
+        """ManualApprovalProvider returns PENDING regardless of phase/stage."""
         provider = ManualApprovalProvider()
 
         result = provider.evaluate(
@@ -66,4 +67,5 @@ class TestManualApprovalProvider:
             context={},
         )
 
-        assert result is None
+        assert isinstance(result, ApprovalResult)
+        assert result.decision == ApprovalDecision.PENDING

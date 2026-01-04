@@ -66,15 +66,15 @@ class ApprovalProviderFactory:
         try:
             response_provider = ResponseProviderFactory.create(key, config)
 
-            # Validate fs_ability - approval providers need file access
+            # Validate fs_ability - approval providers must READ files to evaluate
             metadata = response_provider.get_metadata()
             fs_ability = metadata.get("fs_ability", "none")
 
-            if fs_ability == "none":
+            if fs_ability in ("none", "write-only"):
                 raise ValueError(
-                    f"Provider {key!r} has fs_ability='none' and cannot be used for approval. "
+                    f"Provider {key!r} has fs_ability={fs_ability!r} and cannot be used for approval. "
                     f"Approval providers must be able to read files (fs_ability='local-read' or 'local-write') "
-                    f"to evaluate artifacts. Use 'manual' for API-only approvals."
+                    f"to evaluate artifacts. Use 'manual' for human approval."
                 )
 
             return AIApprovalProvider(response_provider=response_provider)

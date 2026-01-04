@@ -166,10 +166,18 @@ class TestApprovalProviderFactoryConfig:
 
 
 class TestApprovalProviderFactoryFsAbilityValidation:
-    """Tests for fs_ability validation on wrapped providers."""
+    """Tests for fs_ability validation on wrapped providers.
+
+    Spec: Approval providers must be able to READ files to evaluate artifacts.
+    The files dict may contain None values (path only), requiring the provider
+    to read file content directly.
+
+    Valid for approval: local-write, local-read (can read)
+    Invalid for approval: none, write-only (cannot read)
+    """
 
     def test_rejects_provider_with_no_fs_ability(self) -> None:
-        """Factory rejects response providers with fs_ability='none'."""
+        """Factory rejects fs_ability='none' - cannot read files to evaluate."""
         mock_response_provider = Mock(spec=ResponseProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "none"}
 
@@ -184,8 +192,23 @@ class TestApprovalProviderFactoryFsAbilityValidation:
             assert "fs_ability='none'" in str(exc_info.value)
             assert "cannot be used for approval" in str(exc_info.value)
 
+    def test_rejects_provider_with_write_only(self) -> None:
+        """Factory rejects fs_ability='write-only' - cannot read files to evaluate."""
+        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider.get_metadata.return_value = {"fs_ability": "write-only"}
+
+        with patch(
+            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+        ) as mock_factory:
+            mock_factory.create.return_value = mock_response_provider
+
+            with pytest.raises(ValueError) as exc_info:
+                ApprovalProviderFactory.create("write-only-provider")
+
+            assert "cannot be used for approval" in str(exc_info.value)
+
     def test_accepts_provider_with_local_read(self) -> None:
-        """Factory accepts response providers with fs_ability='local-read'."""
+        """Factory accepts fs_ability='local-read' - can read files to evaluate."""
         mock_response_provider = Mock(spec=ResponseProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "local-read"}
 
@@ -198,7 +221,7 @@ class TestApprovalProviderFactoryFsAbilityValidation:
             assert isinstance(provider, AIApprovalProvider)
 
     def test_accepts_provider_with_local_write(self) -> None:
-        """Factory accepts response providers with fs_ability='local-write'."""
+        """Factory accepts fs_ability='local-write' - can read files to evaluate."""
         mock_response_provider = Mock(spec=ResponseProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "local-write"}
 

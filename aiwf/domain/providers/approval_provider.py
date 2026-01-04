@@ -15,12 +15,12 @@ class ApprovalProvider(ABC):
     """Abstract base class for approval providers.
 
     Approval providers evaluate content at workflow gates and return
-    APPROVED or REJECTED decisions. They are generic - they receive
+    APPROVED, REJECTED, or PENDING decisions. They are generic - they receive
     phase, stage, files, and context, and make decisions based on that.
 
     Built-in providers:
     - SkipApprovalProvider: Auto-approve (no gate)
-    - ManualApprovalProvider: Pause for user decision
+    - ManualApprovalProvider: Pause for user decision (returns PENDING)
 
     Any ResponseProvider can be used as an approver via AIApprovalProvider adapter.
     """
@@ -33,7 +33,7 @@ class ApprovalProvider(ABC):
         stage: WorkflowStage,
         files: dict[str, str | None],
         context: dict[str, Any],
-    ) -> ApprovalResult | None:
+    ) -> ApprovalResult:
         """Evaluate content and return approval decision.
 
         Args:
@@ -51,8 +51,10 @@ class ApprovalProvider(ABC):
                 - review_file: Path to review (for revise context)
 
         Returns:
-            ApprovalResult with decision, feedback, and optional suggested_content.
-            Returns None to signal workflow should pause for user input.
+            ApprovalResult with decision:
+            - APPROVED: Content passes, workflow advances automatically
+            - REJECTED: Content fails, needs correction
+            - PENDING: Awaiting external input (workflow pauses)
         """
         ...
 
@@ -96,7 +98,7 @@ class SkipApprovalProvider(ApprovalProvider):
 class ManualApprovalProvider(ApprovalProvider):
     """Manual approval provider. Pauses workflow for user decision.
 
-    Returns None to signal that the workflow should pause and wait
+    Returns PENDING to signal that the workflow should pause and wait
     for user input (approve/reject command).
     """
 
@@ -107,14 +109,17 @@ class ManualApprovalProvider(ApprovalProvider):
         stage: WorkflowStage,
         files: dict[str, str | None],
         context: dict[str, Any],
-    ) -> ApprovalResult | None:
-        """Return None to signal pause for user input."""
-        return None
+    ) -> ApprovalResult:
+        """Return PENDING to signal pause for user input."""
+        return ApprovalResult(
+            decision=ApprovalDecision.PENDING,
+            feedback="Awaiting manual approval. Review content and run 'approve' or 'reject'.",
+        )
 
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
         return {
             "name": "manual",
             "description": "Pause for user approval",
-            "fs_ability": "none",
+            "fs_ability": "local-write",  # Human has full access
         }

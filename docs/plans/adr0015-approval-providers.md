@@ -53,25 +53,48 @@ PLAN[PROMPT] retry_count=2 → approve → PLAN[RESPONSE] retry_count=0
 
 ### Manual Approver Behavior
 
-**Contract:** User's CLI `approve` command IS the approval decision for manual approvers.
+**Contract:** Gates run automatically; PENDING pauses workflow; user command resolves.
 
-The orchestrator detects ManualApprovalProvider and skips the gate evaluation entirely. The user's `approve` command constitutes the approval decision - no separate gate check needed.
+Approval gates run immediately after content creation (CREATE_PROMPT, CALL_AI actions).
+The engine calls `evaluate()` uniformly for all providers:
+
+| Result | Engine Behavior |
+|--------|-----------------|
+| APPROVED | Auto-continue to next stage |
+| REJECTED | Handle rejection (retry, suggested_content, halt) |
+| PENDING | Set `pending_approval=True`, save state, exit |
+
+For manual approvers:
+1. Gate runs after content is created
+2. `ManualApprovalProvider.evaluate()` returns `PENDING`
+3. Engine sets `pending_approval=True` and exits cleanly
+4. User reviews content
+5. User issues `approve` - resolves pending, workflow continues
+6. User issues `reject --feedback "..."` - stores feedback, workflow paused
 
 ```python
-# Orchestrator logic (on approve command)
-approver = self._get_approver(state.phase, state.stage)
-if isinstance(approver, ManualApprovalProvider):
-    # User's approve command IS the decision - no gate run
-    self._clear_approval_state(state)
-    self._handle_pre_transition_approval(state, session_dir)
-    # Proceed with stage transition immediately
-else:
-    # AI/Skip approvers: run the gate
-    result = self._run_approval_gate(state, session_dir)
-    # ... handle result
+# Orchestrator logic (after content creation)
+result = self._run_approval_gate(state, session_dir)
+
+if result.decision == ApprovalDecision.PENDING:
+    # Manual approval needed - pause workflow
+    state.pending_approval = True
+    self.session_store.save(state)
+    return  # Exit cleanly, wait for user command
+
+if result.decision == ApprovalDecision.APPROVED:
+    # Continue with stage transition
+    self._handle_approval_success(state, session_dir)
+
+if result.decision == ApprovalDecision.REJECTED:
+    # Handle rejection (retry logic, etc.)
+    self._handle_approval_rejection(state, session_dir, result)
 ```
 
-**Key insight:** For manual approvers, the user reviewing the artifact and issuing `approve` is semantically equivalent to the gate returning APPROVED.
+This design:
+- Eliminates `isinstance` checks
+- Treats all providers uniformly
+- Enables fully automated workflows (all skip/AI approvers)
 
 ### Response Parsing
 
@@ -219,17 +242,33 @@ class SkipApprovalProvider(ApprovalProvider):
     """Auto-approve provider. Always returns APPROVED."""
 
     def evaluate(self, *, phase, stage, files, context) -> ApprovalResult:
-        return ApprovalResult(decision="approved")
+        return ApprovalResult(decision=ApprovalDecision.APPROVED)
 ```
 
 ### ManualApprovalProvider
 
 ```python
 class ManualApprovalProvider(ApprovalProvider):
-    """Manual approval provider. User's approve command IS the decision."""
+    """Manual approval provider. Pauses workflow for user decision.
 
-    def evaluate(self, *, phase, stage, files, context) -> ApprovalResult | None:
-        return None  # Signals "pause for user" (bypassed by orchestrator)
+    Returns PENDING to signal that the workflow should pause and wait
+    for user input (approve/reject command).
+    """
+
+    def evaluate(self, *, phase, stage, files, context) -> ApprovalResult:
+        """Return PENDING to signal pause for user input."""
+        return ApprovalResult(
+            decision=ApprovalDecision.PENDING,
+            feedback="Awaiting manual approval. Review content and run 'approve' or 'reject'.",
+        )
+
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
+        return {
+            "name": "manual",
+            "description": "Pause for manual user approval",
+            "fs_ability": "local-write",  # User has full filesystem access
+        }
 ```
 
 ---

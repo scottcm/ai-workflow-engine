@@ -85,17 +85,41 @@ Profiles may declare `can_regenerate_prompts` capability to enable automatic pro
 
 ---
 
-### 5. Manual Approval = User Command
+### 5. Three-State Approval Decisions
 
-When approver is `manual`, the orchestrator saves state and returns. The user's next command (`approve`/`reject`/`retry`) IS the approval decision.
+Approval gates return one of three decisions:
 
-**Rationale:** Manual approval means user provides decision via CLI command. There's no AI evaluation to perform. The orchestrator doesn't "wait" - it completes and exits.
+| Decision | Meaning | Engine Behavior |
+|----------|---------|-----------------|
+| APPROVED | Content passes gate | Continue to next stage |
+| REJECTED | Content fails gate | Handle rejection (retry, suggested_content, halt) |
+| PENDING | Awaiting external input | Set `pending_approval=True`, save state, exit |
 
-**Rejected:** ManualApprovalProvider.evaluate() returning special value - Adds complexity; the command-based model is cleaner.
+**Rationale:** Three states cleanly separate "yes", "no", and "waiting". PENDING enables uniform treatment of all providers - no special-casing needed.
 
 ---
 
-### 6. max_retries Exhaustion Pauses (Not ERROR)
+### 6. Gates Run After Content Creation
+
+Approval gates run immediately after content is created (CREATE_PROMPT, CALL_AI actions), not when the user issues `approve`. The `approve` command resolves PENDING states only.
+
+**Flow:**
+1. Content created (prompt or response)
+2. Gate runs automatically
+3. If APPROVED: continue
+4. If REJECTED: handle rejection
+5. If PENDING: pause for user input
+6. User's `approve` command resolves PENDING, workflow continues
+
+**Rationale:** This design eliminates `isinstance` checks for ManualApprovalProvider. All providers are treated uniformly - they all return an ApprovalResult. This also enables fully automated workflows when all approvers are `skip` or AI-based.
+
+**Rejected:**
+- `approve` triggering gate evaluation - Required special-casing ManualApprovalProvider
+- ManualApprovalProvider.evaluate() returning None - Adds complexity; PENDING is cleaner
+
+---
+
+### 7. max_retries Exhaustion Pauses (Not ERROR)
 
 When `retry_count > max_retries`, workflow remains IN_PROGRESS (paused) for user intervention rather than setting ERROR status.
 
@@ -105,7 +129,7 @@ When `retry_count > max_retries`, workflow remains IN_PROGRESS (paused) for user
 
 ---
 
-### 7. suggested_content Is a Hint to Provider
+### 8. suggested_content Is a Hint to Provider
 
 When AI approver rejects RESPONSE with `suggested_content`, it's passed to the response provider in retry context as a hint. The approver never writes to files directly.
 
@@ -115,7 +139,7 @@ When AI approver rejects RESPONSE with `suggested_content`, it's passed to the r
 
 ---
 
-### 8. Review Issue Validation Inline with Revision
+### 9. Review Issue Validation Inline with Revision
 
 Reviews often flag false positives. Rather than adding a separate approval gate, validation happens **inline** with revision. The reviser assesses each issue, implements valid ones, and documents decisions in `revision-issues.md`.
 
@@ -125,13 +149,15 @@ Reviews often flag false positives. Rather than adding a separate approval gate,
 
 ---
 
-### 9. Built-in Approval Providers
+### 10. Built-in Approval Providers
 
-| Provider Key | Behavior |
-|--------------|----------|
-| `skip` | Auto-approve, no gate (workflow continues immediately) |
-| `manual` | Pause workflow, require user command |
-| Response provider key | Delegate to AI via `AIApprovalProvider` adapter |
+| Provider Key | Behavior | Returns |
+|--------------|----------|---------|
+| `skip` | Auto-approve, workflow continues immediately | APPROVED |
+| `manual` | Pause for user input via CLI command | PENDING |
+| Response provider key | Delegate to AI via `AIApprovalProvider` adapter | APPROVED or REJECTED |
+
+All providers return an `ApprovalResult` with a decision. The `manual` provider returns PENDING, which signals the orchestrator to pause and wait for user input.
 
 ---
 
@@ -156,6 +182,9 @@ See implementation plan for configuration format details.
 3. **Audit trail** - `revision-issues.md` documents all accept/reject decisions
 4. **Flexible** - Profiles can customize criteria without changing approver code
 5. **Manual parity** - Automated flow mirrors manual workflow
+6. **Uniform provider treatment** - No `isinstance` checks; all providers return ApprovalResult
+7. **Fully automated workflows** - Possible when all approvers are `skip` or AI-based
+8. **Clean three-state model** - APPROVED, REJECTED, PENDING clearly express all outcomes
 
 ### Negative
 

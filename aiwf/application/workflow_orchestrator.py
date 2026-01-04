@@ -26,13 +26,13 @@ from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.errors import ProviderError
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 from aiwf.domain.providers.provider_factory import ResponseProviderFactory
-from aiwf.domain.providers.approval_provider import (
-    ApprovalProvider,
-    SkipApprovalProvider,
-    ManualApprovalProvider,
-)
+from aiwf.domain.providers.approval_provider import ApprovalProvider
 from aiwf.domain.providers.approval_factory import ApprovalProviderFactory
-from aiwf.domain.models.approval_result import ApprovalResult, ApprovalDecision
+from aiwf.domain.models.approval_result import (
+    ApprovalDecision,
+    ApprovalResult,
+    validate_approval_result,
+)
 from aiwf.application.approval_config import ApprovalConfig
 from aiwf.domain.validation.path_validator import normalize_metadata_paths
 from aiwf.domain.models.prompt_sections import PromptSections
@@ -42,17 +42,30 @@ if TYPE_CHECKING:
     from aiwf.domain.events.event_types import WorkflowEventType
 
 
+class _RegenerationNotImplemented(Exception):
+    """Internal sentinel: profile declared can_regenerate_prompts but didn't implement."""
+
+
 class InvalidCommand(Exception):
     """Raised when a command is not valid for the current state."""
 
-    def __init__(self, command: str, phase: WorkflowPhase, stage: WorkflowStage | None):
+    def __init__(
+        self,
+        command: str,
+        phase: WorkflowPhase,
+        stage: WorkflowStage | None,
+        message: str | None = None,
+    ):
         self.command = command
         self.phase = phase
         self.stage = stage
-        stage_str = f"[{stage.value}]" if stage else ""
-        super().__init__(
-            f"Command '{command}' is not valid from {phase.value}{stage_str}"
-        )
+        if message:
+            super().__init__(message)
+        else:
+            stage_str = f"[{stage.value}]" if stage else ""
+            super().__init__(
+                f"Command '{command}' is not valid from {phase.value}{stage_str}"
+            )
 
 
 @dataclass
@@ -103,7 +116,11 @@ class WorkflowOrchestrator:
         hash_prompts: bool = False,
         fs_ability: str | None = None,
     ) -> WorkflowState:
-        """Approve current stage and advance workflow.
+        """Resolve a pending approval and continue workflow.
+
+        Only valid when:
+        - pending_approval is True (resolves the pending state)
+        - last_error is set (retries failed gate)
 
         Args:
             session_id: The session to approve
@@ -114,36 +131,70 @@ class WorkflowOrchestrator:
             Updated workflow state
 
         Raises:
-            InvalidCommand: If approve is not valid from current state
+            InvalidCommand: If no pending approval to resolve
         """
-        return self._execute_command(session_id, "approve")
+        state = self.session_store.load(session_id)
+        state.messages = []
+        session_dir = self.sessions_root / session_id
+
+        # Check if there's something to resolve
+        if not state.pending_approval and not state.last_error:
+            raise InvalidCommand(
+                "approve",
+                state.phase,
+                state.stage,
+                f"No pending approval to resolve. "
+                f"Current state: {state.phase.value}[{state.stage.value if state.stage else 'none'}]. "
+                f"Gates run automatically after content creation. "
+                f"Use 'status' to see current workflow state.",
+            )
+
+        # Clear error state if retrying after error
+        if state.last_error:
+            state.last_error = None
+            self._run_gate_after_action(state, session_dir)
+            return state
+
+        # Resolve pending approval
+        state.pending_approval = False
+        self._clear_approval_state(state)
+        self._handle_pre_transition_approval(state, session_dir)
+        self._auto_continue(state, session_dir)
+
+        return state
 
     def reject(self, session_id: str, feedback: str) -> WorkflowState:
-        """Reject current content with feedback.
+        """Reject pending approval with feedback.
 
-        Only valid from RESPONSE stages. Halts workflow until retry or cancel.
+        Only valid when pending_approval is True.
 
         Args:
             session_id: The session to reject
             feedback: Explanation of why content was rejected
 
         Returns:
-            Updated workflow state (unchanged phase/stage, stores feedback)
+            Updated workflow state with feedback stored
 
         Raises:
-            InvalidCommand: If reject is not valid from current state
+            InvalidCommand: If no pending approval to reject
         """
         state = self.session_store.load(session_id)
         state.messages = []
 
-        transition = TransitionTable.get_transition(state.phase, state.stage, "reject")
-        if transition is None:
-            raise InvalidCommand("reject", state.phase, state.stage)
+        if not state.pending_approval:
+            raise InvalidCommand(
+                "reject",
+                state.phase,
+                state.stage,
+                f"No pending approval to reject. "
+                f"Current state: {state.phase.value}[{state.stage.value if state.stage else 'none'}]. "
+                f"The 'reject' command is only valid when awaiting manual approval.",
+            )
 
-        # Store feedback for retrieval
+        state.pending_approval = False
         state.approval_feedback = feedback
+        self._add_message(state, f"Rejected: {feedback}")
 
-        # State stays the same (HALT action)
         self.session_store.save(state)
         return state
 
@@ -255,50 +306,6 @@ class WorkflowOrchestrator:
         if transition is None:
             raise InvalidCommand(command, state.phase, state.stage)
 
-        # ADR-0015: Run approval gate BEFORE hashing (gate must approve first)
-        if command == "approve":
-            # Check if this is a manual approver - user's approve command IS the approval
-            approver = self._get_approver(state.phase, state.stage) if state.stage else None
-            is_manual = isinstance(approver, ManualApprovalProvider)
-
-            if is_manual:
-                # Manual approval: user's approve command is the decision
-                # No gate needed - clear state and proceed with transition
-                self._clear_approval_state(state)
-                self._handle_pre_transition_approval(state, session_dir)
-            else:
-                # AI/Skip approvers: run the gate
-                try:
-                    approval_result = self._run_approval_gate(state, session_dir)
-                except (ProviderError, TimeoutError) as e:
-                    # Approval gate failed - keep workflow recoverable
-                    state.last_error = f"Approval gate error: {e}"
-                    self._add_message(state, f"Approval failed: {e}. Retry with 'approve' or cancel.")
-                    self.session_store.save(state)
-                    return state
-
-                if approval_result is None:
-                    # This shouldn't happen for non-manual approvers, but handle gracefully
-                    logger.warning("Non-manual approver returned None - treating as rejection")
-                    self._add_message(state, "Approval provider returned no decision")
-                    self.session_store.save(state)
-                    return state
-
-                if approval_result.decision == ApprovalDecision.REJECTED:
-                    # Handle rejection (may retry for AI approvers)
-                    # Returns None if retry succeeded (proceed with transition)
-                    # Returns state if workflow should pause
-                    rejection_result = self._handle_approval_rejection(state, session_dir, approval_result)
-                    if rejection_result is not None:
-                        return rejection_result
-                    # Retry succeeded - fall through to continue with transition
-
-                # Approved - clear any previous rejection state
-                self._clear_approval_state(state)
-
-                # Now hash and set flags AFTER approval gate passes
-                self._handle_pre_transition_approval(state, session_dir)
-
         # Update state BEFORE action - work happens AFTER entering new state (ADR-0012)
         state.phase = transition.phase
         state.stage = transition.stage
@@ -337,8 +344,10 @@ class WorkflowOrchestrator:
 
         if action == Action.CREATE_PROMPT:
             self._action_create_prompt(state, session_dir)
+            self._run_gate_after_action(state, session_dir)
         elif action == Action.CALL_AI:
             self._action_call_ai(state, session_dir)
+            self._run_gate_after_action(state, session_dir)
         elif action == Action.CHECK_VERDICT:
             self._action_check_verdict(state, session_dir)
         elif action == Action.FINALIZE:
@@ -1003,11 +1012,99 @@ class WorkflowOrchestrator:
         })
         return ctx
 
+    def _run_gate_after_action(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+    ) -> None:
+        """Run approval gate after content creation and handle result.
+
+        Called automatically after CREATE_PROMPT and CALL_AI actions.
+        Handles all three decision types:
+        - APPROVED: Auto-continue to next stage
+        - REJECTED: Trigger retry/rejection handling
+        - PENDING: Set flag and pause workflow
+
+        Args:
+            state: Current workflow state (modified in place)
+            session_dir: Session directory path
+        """
+        if state.stage is None:
+            return  # No gate for stageless states
+
+        try:
+            result = self._run_approval_gate(state, session_dir)
+            result = validate_approval_result(result)  # Catch legacy None
+        except (ProviderError, TimeoutError, TypeError) as e:
+            state.last_error = f"Approval gate error: {e}"
+            self._add_message(state, f"Approval failed: {e}. Run 'approve' to retry.")
+            self.session_store.save(state)
+            return
+
+        if result.decision == ApprovalDecision.PENDING:
+            # Manual approval needed - pause workflow
+            state.pending_approval = True
+            if result.feedback:
+                self._add_message(state, result.feedback)
+            self.session_store.save(state)
+            return
+
+        if result.decision == ApprovalDecision.REJECTED:
+            # Existing rejection handling (retry, suggested_content, etc.)
+            rejection_result = self._handle_approval_rejection(state, session_dir, result)
+            if rejection_result is not None:
+                # Workflow paused for user intervention
+                return
+            # Retry succeeded - fall through to auto-continue
+
+        # APPROVED (or retry succeeded) - auto-continue
+        self._clear_approval_state(state)
+        self._handle_pre_transition_approval(state, session_dir)
+        self._auto_continue(state, session_dir)
+
+    def _auto_continue(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+    ) -> None:
+        """Automatically continue to next stage after approval.
+
+        Performs the state transition and executes the next action.
+        If the next action also passes approval, continues recursively
+        (enabling fully automated workflows with skip/AI approvers).
+
+        Args:
+            state: Current workflow state
+            session_dir: Session directory path
+        """
+        # Get transition for approve command (same as manual approve)
+        transition = TransitionTable.get_transition(state.phase, state.stage, "approve")
+        if transition is None:
+            return  # No valid transition (shouldn't happen)
+
+        # Update state BEFORE action (ADR-0012)
+        state.phase = transition.phase
+        state.stage = transition.stage
+
+        # Update status for terminal states
+        if state.phase == WorkflowPhase.COMPLETE:
+            state.status = WorkflowStatus.SUCCESS
+        elif state.phase == WorkflowPhase.CANCELLED:
+            state.status = WorkflowStatus.CANCELLED
+        elif state.phase == WorkflowPhase.ERROR:
+            state.status = WorkflowStatus.ERROR
+
+        # Execute the action for new state
+        self._execute_action(state, transition.action, state.session_id)
+
+        # Save state
+        self.session_store.save(state)
+
     def _run_approval_gate(
         self,
         state: WorkflowState,
         session_dir: Path,
-    ) -> ApprovalResult | None:
+    ) -> ApprovalResult:
         """Run approval gate for current phase/stage.
 
         Args:
@@ -1015,7 +1112,7 @@ class WorkflowOrchestrator:
             session_dir: Session directory path
 
         Returns:
-            ApprovalResult if decision made, None if paused for manual approval
+            ApprovalResult (never None - PENDING replaces None for manual approval)
         """
         if state.stage is None:
             return ApprovalResult(decision=ApprovalDecision.APPROVED)
@@ -1042,14 +1139,10 @@ class WorkflowOrchestrator:
         session_dir: Path,
         result: ApprovalResult,
     ) -> WorkflowState | None:
-        """Handle approval rejection with iterative retry logic.
+        """Handle approval rejection by dispatching to stage-specific handler.
 
         Returns None if retry succeeded (caller should proceed with transition).
         Returns state if workflow should pause.
-
-        For PROMPT stages: apply suggested_content if allow_rewrite, pause for user
-        For RESPONSE stages with AI approvers: auto-retry up to max_retries
-        For manual: store feedback, keep workflow paused
 
         Args:
             state: Current workflow state
@@ -1057,114 +1150,151 @@ class WorkflowOrchestrator:
             result: The rejection result
 
         Returns:
-            Updated workflow state
+            Updated workflow state, or None if retry succeeded
+        """
+        # Store rejection info in state
+        state.approval_feedback = result.feedback
+        state.retry_count += 1
+
+        if state.stage == WorkflowStage.PROMPT:
+            return self._handle_prompt_rejection(state, session_dir, result)
+        else:
+            return self._handle_response_rejection(state, session_dir, result)
+
+    def _handle_prompt_rejection(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+        result: ApprovalResult,
+    ) -> WorkflowState | None:
+        """Handle rejection during PROMPT stage.
+
+        Attempts suggested_content application or profile regeneration.
+        Falls back to pausing for user review/edit.
+
+        Returns None if retry succeeded, state if paused.
         """
         stage_config = self.approval_config.get_stage_config(
             state.phase.value, state.stage.value if state.stage else "prompt"
         )
 
-        # Store rejection info in state
-        state.approval_feedback = result.feedback
-        state.retry_count += 1
-
-        # PROMPT stage: handle differently based on profile capability
-        # ADR-0015: Check if profile can regenerate prompts on rejection
-        if state.stage == WorkflowStage.PROMPT:
-            # First, try suggested_content if available
-            if result.suggested_content and stage_config.allow_rewrite:
-                self._apply_suggested_content_to_prompt(state, session_dir, result.suggested_content)
-                self._add_message(state, "Suggested content applied to prompt file")
-                self.session_store.save(state)
-                return state
-
-            # Check if profile supports prompt regeneration
-            profile = ProfileFactory.create(state.profile)
-            profile_meta = profile.get_metadata()
-
-            if profile_meta.get("can_regenerate_prompts", False):
-                # Profile can regenerate prompts - attempt regeneration with feedback
-                try:
-                    context = self._build_provider_context(state)
-                    new_prompt = profile.regenerate_prompt(
-                        state.phase,
-                        result.feedback or "",
-                        context,
-                    )
-
-                    # Write regenerated prompt
-                    self._write_regenerated_prompt(state, session_dir, new_prompt)
-                    self._add_message(state, f"Prompt regenerated based on feedback")
-
-                    # Re-run approval gate
-                    new_result = self._run_approval_gate(state, session_dir)
-
-                    if new_result is None:
-                        # Manual approval pause
-                        self.session_store.save(state)
-                        return state
-
-                    if new_result.decision == ApprovalDecision.APPROVED:
-                        # Retry succeeded - return None to signal "proceed with transition"
-                        # Don't save state here; caller will handle transition and save
-                        return None
-
-                    # Still rejected - continue with same handling (recursive call)
-                    return self._handle_approval_rejection(state, session_dir, new_result)
-
-                except NotImplementedError:
-                    # Profile declared capability but didn't implement method
-                    self._add_message(state, f"Prompt rejected: {result.feedback or 'no feedback'}")
-            else:
-                # Profile cannot regenerate - stay IN_PROGRESS for user
-                self._add_message(state, f"Prompt rejected: {result.feedback or 'no feedback'}")
-
-            # Pause for user to review/edit and re-approve
+        # Try suggested_content if available and allowed
+        if result.suggested_content and stage_config.allow_rewrite:
+            self._apply_suggested_content_to_prompt(state, session_dir, result.suggested_content)
+            self._add_message(state, "Suggested content applied to prompt file")
             self.session_store.save(state)
             return state
 
-        # RESPONSE stage: handle suggested_content if allow_rewrite
+        # Try profile regeneration if supported
+        profile = ProfileFactory.create(state.profile)
+        if profile.get_metadata().get("can_regenerate_prompts", False):
+            try:
+                regeneration_result = self._try_prompt_regeneration(state, session_dir, result)
+                # None means success (proceed with transition) or NotImplementedError (fall through)
+                # state means paused (pending or rejected after retry)
+                return regeneration_result
+            except _RegenerationNotImplemented:
+                pass  # Fall through to user pause
+
+        # Pause for user to review/edit and re-approve
+        self._add_message(state, f"Prompt rejected: {result.feedback or 'no feedback'}")
+        self.session_store.save(state)
+        return state
+
+    def _try_prompt_regeneration(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+        result: ApprovalResult,
+    ) -> WorkflowState | None:
+        """Attempt to regenerate prompt using profile capability.
+
+        Returns:
+            None if regeneration approved (caller proceeds with transition)
+            state if paused (pending or rejected)
+            None if NotImplementedError (caller falls through to user pause)
+        """
+        profile = ProfileFactory.create(state.profile)
+        try:
+            context = self._build_provider_context(state)
+            new_prompt = profile.regenerate_prompt(
+                state.phase,
+                result.feedback or "",
+                context,
+            )
+
+            self._write_regenerated_prompt(state, session_dir, new_prompt)
+            self._add_message(state, "Prompt regenerated based on feedback")
+
+            new_result = self._run_approval_gate(state, session_dir)
+
+            if new_result.decision == ApprovalDecision.PENDING:
+                state.pending_approval = True
+                self.session_store.save(state)
+                return state
+
+            if new_result.decision == ApprovalDecision.APPROVED:
+                return None  # Proceed with transition
+
+            # Still rejected - recurse
+            return self._handle_approval_rejection(state, session_dir, new_result)
+
+        except NotImplementedError:
+            # Profile declared capability but didn't implement
+            raise _RegenerationNotImplemented()
+
+    def _handle_response_rejection(
+        self,
+        state: WorkflowState,
+        session_dir: Path,
+        result: ApprovalResult,
+    ) -> WorkflowState | None:
+        """Handle rejection during RESPONSE stage with retry loop.
+
+        Auto-retries up to max_retries using AI regeneration.
+        Returns None if retry succeeded, state if paused.
+        """
+        stage_config = self.approval_config.get_stage_config(
+            state.phase.value, state.stage.value if state.stage else "prompt"
+        )
+
+        # Store suggested_content if available
         if result.suggested_content and stage_config.allow_rewrite:
             state.suggested_content = result.suggested_content
-            # TODO: Apply suggestion to response file
             self._add_message(state, "Suggested content available (not auto-applied yet)")
 
-        # Check if AI approver
-        approver = self._get_approver(state.phase, state.stage)
-        is_ai_approver = not isinstance(approver, (SkipApprovalProvider, ManualApprovalProvider))
+        # Retry loop - only for stages with max_retries > 0
+        while state.retry_count <= stage_config.max_retries and stage_config.max_retries > 0:
+            self._add_message(
+                state,
+                f"Retry {state.retry_count}/{stage_config.max_retries}: regenerating with feedback"
+            )
 
-        if is_ai_approver:
-            # Iterative retry loop for AI approvers (RESPONSE stage only)
-            while state.retry_count <= stage_config.max_retries:
-                # Regenerate content with feedback
-                self._add_message(
-                    state,
-                    f"Retry {state.retry_count}/{stage_config.max_retries}: regenerating with feedback"
-                )
+            self._action_retry(state, session_dir)
+            new_result = self._run_approval_gate(state, session_dir)
 
-                # Store feedback for provider context and regenerate
-                self._action_retry(state, session_dir)
+            if new_result.decision == ApprovalDecision.PENDING:
+                state.pending_approval = True
+                self.session_store.save(state)
+                return state
 
-                # Re-run approval gate
-                new_result = self._run_approval_gate(state, session_dir)
+            if new_result.decision == ApprovalDecision.APPROVED:
+                return None  # Proceed with transition
 
-                if new_result is None:
-                    # Manual approval pause (shouldn't happen for AI approver)
-                    break
+            # Still rejected - update and continue loop
+            state.approval_feedback = new_result.feedback
+            state.retry_count += 1
 
-                if new_result.decision == ApprovalDecision.APPROVED:
-                    # Retry succeeded - return None to signal "proceed with transition"
-                    # Don't save state here; caller will handle transition and save
-                    return None
+        # Max retries exceeded
+        if state.retry_count > stage_config.max_retries and stage_config.max_retries > 0:
+            state.last_error = (
+                f"Approval rejected after {state.retry_count} attempts. "
+                "Review feedback and retry manually or cancel."
+            )
+            self._add_message(
+                state, "Approval failed: max retries exceeded. Review feedback and retry or cancel."
+            )
 
-                # Still rejected - update state and continue loop
-                state.approval_feedback = new_result.feedback
-                state.retry_count += 1
-
-            # Max retries exceeded - stay IN_PROGRESS for user intervention (ADR-0015)
-            state.last_error = f"Approval rejected after {state.retry_count} attempts. Review feedback and retry manually or cancel."
-            self._add_message(state, "Approval failed: max retries exceeded. Review feedback and retry or cancel.")
-
-        # For manual approver or failed AI, save state and return
         self.session_store.save(state)
         return state
 
