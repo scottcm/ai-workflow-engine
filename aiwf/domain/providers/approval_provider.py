@@ -22,7 +22,7 @@ class ApprovalProvider(ABC):
     - SkipApprovalProvider: Auto-approve (no gate)
     - ManualApprovalProvider: Pause for user decision (returns PENDING)
 
-    Any ResponseProvider can be used as an approver via AIApprovalProvider adapter.
+    Any AIProvider can be used as an approver via AIApprovalProvider adapter.
     """
 
     @abstractmethod

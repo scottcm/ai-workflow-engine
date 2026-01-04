@@ -1,4 +1,4 @@
-"""Claude Code response provider using the Claude Agent SDK.
+"""Claude Code AI provider using the Claude Agent SDK.
 
 Uses the official claude-agent-sdk package for OS-agnostic Claude Code integration.
 This eliminates platform-specific code and aligns with Anthropic's recommended
@@ -14,16 +14,16 @@ import warnings
 from typing import Any
 
 from aiwf.domain.errors import ProviderError
-from aiwf.domain.models.provider_result import ProviderResult
-from aiwf.domain.providers.response_provider import ResponseProvider
+from aiwf.domain.models.ai_provider_result import AIProviderResult
+from aiwf.domain.providers.ai_provider import AIProvider
 
 
 # Default tools for Claude Code - includes Write for file creation
 DEFAULT_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Write"]
 
 
-class ClaudeCodeProvider(ResponseProvider):
-    """Response provider using Claude Agent SDK.
+class ClaudeCodeAIProvider(AIProvider):
+    """AI provider using Claude Agent SDK.
 
     Uses the official claude-agent-sdk package for cross-platform Claude Code
     integration. The SDK handles platform differences internally.
@@ -48,7 +48,7 @@ class ClaudeCodeProvider(ResponseProvider):
         - max_budget_usd: Cost limit per invocation
 
     Example:
-        provider = ClaudeCodeProvider({
+        provider = ClaudeCodeAIProvider({
             "model": "sonnet",
             "max_budget_usd": 1.00,
             "max_thinking_tokens": 5000,
@@ -98,7 +98,7 @@ class ClaudeCodeProvider(ResponseProvider):
         unknown_keys = set(self.config.keys()) - known_keys
         if unknown_keys:
             warnings.warn(
-                f"Unknown ClaudeCodeProvider config keys ignored: {sorted(unknown_keys)}",
+                f"Unknown ClaudeCodeAIProvider config keys ignored: {sorted(unknown_keys)}",
                 UserWarning,
                 stacklevel=3,
             )
@@ -174,7 +174,7 @@ class ClaudeCodeProvider(ResponseProvider):
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> ProviderResult:
+    ) -> AIProviderResult:
         """Generate response using Claude Agent SDK.
 
         Uses asyncio.run() to wrap the async SDK in a sync interface.
@@ -189,7 +189,7 @@ class ClaudeCodeProvider(ResponseProvider):
             response_timeout: Not used (SDK handles via max_turns)
 
         Returns:
-            ProviderResult with:
+            AIProviderResult with:
                 - response: Text response from Claude
                 - files: Dict of files written (path -> None for SDK-written files)
 
@@ -203,7 +203,7 @@ class ClaudeCodeProvider(ResponseProvider):
         prompt: str,
         context: dict[str, Any] | None,
         system_prompt: str | None,
-    ) -> ProviderResult:
+    ) -> AIProviderResult:
         """Async implementation using Claude Agent SDK.
 
         Args:
@@ -212,7 +212,7 @@ class ClaudeCodeProvider(ResponseProvider):
             system_prompt: Optional system prompt
 
         Returns:
-            ProviderResult with response and files written
+            AIProviderResult with response and files written
         """
         try:
             from claude_agent_sdk import query, ClaudeAgentOptions
@@ -246,7 +246,7 @@ class ClaudeCodeProvider(ResponseProvider):
             # Handle known SDK exceptions with actionable messages
             raise self._wrap_sdk_error(e)
 
-        return ProviderResult(response=response_text, files=files_written)
+        return AIProviderResult(response=response_text, files=files_written)
 
     def _build_options(
         self,

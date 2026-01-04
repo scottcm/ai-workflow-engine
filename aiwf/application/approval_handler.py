@@ -5,7 +5,7 @@ This module retains run_provider() for AI provider invocation.
 """
 
 from aiwf.domain.providers.capabilities import ProviderCapabilities  # noqa: F401 - re-export for compatibility
-from aiwf.domain.providers.provider_factory import ResponseProviderFactory
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 
 
 def run_provider(
@@ -27,7 +27,7 @@ def run_provider(
         ProviderError: If provider fails (network, auth, timeout, etc.)
         KeyError: If provider_key is not registered
     """
-    provider = ResponseProviderFactory.create(provider_key)
+    provider = AIProviderFactory.create(provider_key)
     metadata = provider.get_metadata()
     connection_timeout = metadata.get("default_connection_timeout")
     response_timeout = metadata.get("default_response_timeout")

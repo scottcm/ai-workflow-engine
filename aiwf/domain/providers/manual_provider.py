@@ -1,13 +1,13 @@
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from aiwf.domain.models.provider_result import ProviderResult
+    from aiwf.domain.models.ai_provider_result import AIProviderResult
 
-from .response_provider import ResponseProvider
+from .ai_provider import AIProvider
 
 
-class ManualProvider(ResponseProvider):
-    """Human-in-the-loop provider (prompts written to disk)."""
+class ManualAIProvider(AIProvider):
+    """Human-in-the-loop AI provider (prompts written to disk)."""
 
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
@@ -19,7 +19,7 @@ class ManualProvider(ResponseProvider):
             "config_keys": [],
             "default_connection_timeout": None,  # No timeout for manual
             "default_response_timeout": None,
-            # ManualProvider: no inherent capability, user specifies via CLI/config
+            # ManualAIProvider: no inherent capability, user specifies via CLI/config
             "fs_ability": None,  # Must be specified by user or use default
             "supports_system_prompt": False,
             "supports_file_attachments": False,
@@ -36,7 +36,7 @@ class ManualProvider(ResponseProvider):
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> "ProviderResult | None":
+    ) -> "AIProviderResult | None":
         """Manual provider does not generate responses automatically.
 
         Returns None to signal that the response file should be

@@ -1,4 +1,4 @@
-"""Gemini CLI response provider using subprocess.
+"""Gemini CLI AI provider using subprocess.
 
 Uses Gemini CLI with stream-json output format for structured parsing.
 Tracks file writes via tool_use/tool_result events.
@@ -15,8 +15,8 @@ import warnings
 from typing import Any
 
 from aiwf.domain.errors import ProviderError
-from aiwf.domain.models.provider_result import ProviderResult
-from aiwf.domain.providers.response_provider import ResponseProvider
+from aiwf.domain.models.ai_provider_result import AIProviderResult
+from aiwf.domain.providers.ai_provider import AIProvider
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,8 @@ VALID_APPROVAL_MODES = {"default", "auto_edit", "yolo"}
 DEFAULT_TIMEOUT = 600
 
 
-class GeminiCliProvider(ResponseProvider):
-    """Gemini CLI response provider using subprocess.
+class GeminiCliAIProvider(AIProvider):
+    """Gemini CLI AI provider using subprocess.
 
     Uses Gemini CLI with stream-json output format for structured parsing.
     Tracks file writes via tool_use/tool_result events.
@@ -89,7 +89,7 @@ class GeminiCliProvider(ResponseProvider):
         unknown_keys = set(self.config.keys()) - known_keys
         if unknown_keys:
             warnings.warn(
-                f"Unknown GeminiCliProvider config keys ignored: {sorted(unknown_keys)}",
+                f"Unknown GeminiCliAIProvider config keys ignored: {sorted(unknown_keys)}",
                 UserWarning,
                 stacklevel=3,
             )
@@ -155,7 +155,7 @@ class GeminiCliProvider(ResponseProvider):
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> ProviderResult:
+    ) -> AIProviderResult:
         """Generate response using Gemini CLI subprocess.
 
         Args:
@@ -168,7 +168,7 @@ class GeminiCliProvider(ResponseProvider):
             response_timeout: Unused (uses config timeout)
 
         Returns:
-            ProviderResult with response text and files written
+            AIProviderResult with response text and files written
         """
         return asyncio.run(self._async_generate(prompt, context, system_prompt))
 
@@ -177,7 +177,7 @@ class GeminiCliProvider(ResponseProvider):
         prompt: str,
         context: dict[str, Any] | None,
         system_prompt: str | None,
-    ) -> ProviderResult:
+    ) -> AIProviderResult:
         """Async implementation using subprocess."""
         args = self._build_args(context)
 
@@ -248,7 +248,7 @@ class GeminiCliProvider(ResponseProvider):
         # Parse NDJSON output
         response_text, files_written = self._parse_ndjson_stream(stdout_data)
 
-        return ProviderResult(response=response_text, files=files_written)
+        return AIProviderResult(response=response_text, files=files_written)
 
     def _build_args(self, context: dict[str, Any] | None) -> list[str]:
         """Build CLI arguments from config.

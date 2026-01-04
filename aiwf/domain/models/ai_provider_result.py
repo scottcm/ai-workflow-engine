@@ -1,9 +1,9 @@
-"""Provider result model for AI provider responses."""
+"""AI provider result model for AI provider responses."""
 
 from pydantic import BaseModel, Field
 
 
-class ProviderResult(BaseModel):
+class AIProviderResult(BaseModel):
     """Result from AI provider execution.
 
     Supports multiple output files with flexible handling:

@@ -58,25 +58,25 @@ Both can appear in the same response. `error` indicates the current command fail
 
 ## Implemented Commands
 
-### 1. `aiwf init`
+### 1. `aiwf <profile> init`
 
-Initialize a new workflow session.
+Initialize a new workflow session. The `init` command is profile-specific—each profile defines its own required context parameters.
 
-**Syntax:**
+**Syntax (jpa-mt profile):**
 ```bash
-aiwf init --scope <scope> --entity <entity> --table <table> --bounded-context <context> [options]
+aiwf jpa-mt init --scope <scope> --entity <entity> --table <table> --bounded-context <context> --schema-file <path> [options]
 ```
 
-**Required Arguments:**
-- `--scope <scope>` - Generation scope (e.g., `domain`, `vertical`)
+**Required Arguments (jpa-mt):**
+- `--scope <scope>` - Generation scope (`domain` or `vertical`)
 - `--entity <entity>` - Entity name in PascalCase (e.g., `Product`)
 - `--table <table>` - Database table name (e.g., `app.products`)
 - `--bounded-context <context>` - Domain context (e.g., `catalog`)
+- `--schema-file <path>` - Path to DDL schema file
 
-**Optional Arguments:**
+**Optional Arguments (jpa-mt):**
 - `--dev <n>` - Developer identifier
 - `--task-id <id>` - External task/ticket reference
-- `--schema-file <path>` - Path to DDL schema file (required by jpa-mt profile)
 
 **Global Options:**
 - `--json` - Emit machine-readable JSON output
@@ -697,9 +697,9 @@ async function execAiwf(args: string[]): Promise<AiwfResult> {
   return JSON.parse(result.stdout);
 }
 
-// Initialize session
+// Initialize session (jpa-mt profile)
 const init = await execAiwf([
-  'init',
+  'jpa-mt', 'init',
   '--scope', 'domain',
   '--entity', 'Product',
   '--table', 'app.products',

@@ -680,13 +680,13 @@ def providers_cmd(ctx: click.Context, provider_name: str | None) -> None:
     """List available AI providers or show details for a specific provider."""
     try:
         # Import providers to ensure registration
-        from aiwf.domain.providers import ProviderFactory  # noqa: F401
+        from aiwf.domain.providers import AIProviderFactory  # noqa: F401
 
         if provider_name:
             # Single provider detail view
-            metadata = ProviderFactory.get_metadata(provider_name)
+            metadata = AIProviderFactory.get_metadata(provider_name)
             if metadata is None:
-                available = ", ".join(ProviderFactory.list_providers())
+                available = ", ".join(AIProviderFactory.list_providers())
                 error_msg = f"Provider '{provider_name}' not found. Available: {available}"
                 if _get_json_mode(ctx):
                     _json_emit(
@@ -722,7 +722,7 @@ def providers_cmd(ctx: click.Context, provider_name: str | None) -> None:
 
         else:
             # List all providers
-            all_metadata = ProviderFactory.get_all_metadata()
+            all_metadata = AIProviderFactory.get_all_metadata()
             providers_list = [
                 ProviderSummary(
                     name=m["name"],
@@ -766,11 +766,11 @@ def providers_cmd(ctx: click.Context, provider_name: str | None) -> None:
 
 def _validate_ai_provider(key: str) -> list[ValidationResult]:
     """Validate a single AI provider."""
-    from aiwf.domain.providers.provider_factory import ProviderFactory
+    from aiwf.domain.providers.provider_factory import AIProviderFactory
     from aiwf.domain.errors import ProviderError
 
     try:
-        provider = ProviderFactory.create(key)
+        provider = AIProviderFactory.create(key)
         provider.validate()
         return [ValidationResult(provider_type="ai", provider_key=key, passed=True)]
     except ProviderError as e:
@@ -903,7 +903,7 @@ def validate_cmd(
     """
     try:
         # Import to ensure registration
-        from aiwf.domain.providers import ProviderFactory
+        from aiwf.domain.providers import AIProviderFactory
         from aiwf.domain.standards import StandardsProviderFactory
         import profiles.jpa_mt  # noqa: F401
 
@@ -915,7 +915,7 @@ def validate_cmd(
                 results.extend(_validate_ai_provider(provider_key))
             else:
                 # Validate all AI providers
-                for key in ProviderFactory.list_providers():
+                for key in AIProviderFactory.list_providers():
                     results.extend(_validate_ai_provider(key))
 
         if provider_type in ("standards", "all"):

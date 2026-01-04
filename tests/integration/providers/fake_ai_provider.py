@@ -1,11 +1,11 @@
-"""Fake response provider that returns configurable deterministic responses.
+"""Fake AI provider that returns configurable deterministic responses.
 
 Used for integration testing to simulate AI responses without making actual API calls.
 """
 
 from typing import Any, Callable
 
-from aiwf.domain.providers.response_provider import ResponseProvider
+from aiwf.domain.providers.ai_provider import AIProvider
 from aiwf.domain.models.workflow_state import WorkflowPhase
 
 
@@ -13,19 +13,19 @@ from aiwf.domain.models.workflow_state import WorkflowPhase
 ResponseGenerator = Callable[[str, dict[str, Any] | None], str]
 
 
-class FakeResponseProvider(ResponseProvider):
+class FakeAIProvider(AIProvider):
     """Configurable fake provider for integration testing.
 
-    Unlike ManualProvider (which returns None), this provider returns
+    Unlike ManualAIProvider (which returns None), this provider returns
     deterministic responses that can be configured per-phase or with
     custom generators.
 
     Usage:
         # Simple: same response for all prompts
-        provider = FakeResponseProvider("# Response content")
+        provider = FakeAIProvider("# Response content")
 
         # Per-phase responses
-        provider = FakeResponseProvider(
+        provider = FakeAIProvider(
             phase_responses={
                 WorkflowPhase.PLAN: "# Planning response...",
                 WorkflowPhase.GENERATE: "```java\\npublic class Foo {}\\n```",
@@ -36,7 +36,7 @@ class FakeResponseProvider(ResponseProvider):
         # Custom generator for dynamic responses
         def my_generator(prompt: str, context: dict | None) -> str:
             return f"Response to: {prompt[:50]}..."
-        provider = FakeResponseProvider(generator=my_generator)
+        provider = FakeAIProvider(generator=my_generator)
     """
 
     # Reasonable defaults for testing

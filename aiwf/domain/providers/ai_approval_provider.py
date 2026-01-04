@@ -1,6 +1,6 @@
 """AI-powered approval provider adapter.
 
-ADR-0015: Wraps any ResponseProvider to function as an ApprovalProvider.
+ADR-0015: Wraps any AIProvider to function as an ApprovalProvider.
 Uses standardized prompt templates per phase/stage.
 """
 
@@ -12,7 +12,7 @@ from typing import Any
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
 from aiwf.domain.models.approval_result import ApprovalResult, ApprovalDecision
 from aiwf.domain.providers.approval_provider import ApprovalProvider
-from aiwf.domain.providers.response_provider import ResponseProvider
+from aiwf.domain.providers.ai_provider import AIProvider
 
 
 logger = logging.getLogger(__name__)
@@ -126,19 +126,19 @@ FEEDBACK: [Your feedback if rejected, or "None" if approved]
 
 
 class AIApprovalProvider(ApprovalProvider):
-    """Wraps a ResponseProvider to function as an ApprovalProvider.
+    """Wraps an AIProvider to function as an ApprovalProvider.
 
     Uses standardized prompt templates per phase/stage to get consistent
     approval decisions from any AI provider.
     """
 
-    def __init__(self, response_provider: ResponseProvider):
-        """Initialize with a response provider to wrap.
+    def __init__(self, ai_provider: AIProvider):
+        """Initialize with an AI provider to wrap.
 
         Args:
-            response_provider: The underlying provider to use for evaluation
+            ai_provider: The underlying provider to use for evaluation
         """
-        self._provider = response_provider
+        self._provider = ai_provider
 
     def evaluate(
         self,
@@ -171,7 +171,7 @@ class AIApprovalProvider(ApprovalProvider):
             )
 
         if result.response is None:
-            # Provider returned ProviderResult with no response text
+            # Provider returned AIProviderResult with no response text
             # (e.g., file-only provider that writes but doesn't return text)
             logger.warning("Wrapped provider returned result with no response text - rejecting")
             return ApprovalResult(
@@ -398,6 +398,6 @@ class AIApprovalProvider(ApprovalProvider):
         """Return provider metadata."""
         return {
             "name": "ai-approval",
-            "description": "AI-powered approval via ResponseProvider",
+            "description": "AI-powered approval via AIProvider",
             "fs_ability": "varies",  # Depends on wrapped provider
         }

@@ -431,8 +431,8 @@ This example uses the **manual provider** (default), which means you'll copy pro
 - Complete audit trail (all files preserved)
 
 ```bash
-# 1. Initialize a session
-poetry run aiwf init \
+# 1. Initialize a session (jpa-mt profile)
+poetry run aiwf jpa-mt init \
   --scope domain \
   --entity Product \
   --table app.products \
@@ -511,7 +511,7 @@ This project showcases enterprise-grade software engineering practices appropria
   - `WorkflowProfile` - Different domain/framework implementations (JPA, React, etc.)
   - `AIProvider` - Different AI backends (Claude CLI, Gemini CLI, manual mode)
   - `StandardsProvider` - Different standards retrieval strategies (file-based, RAG, API, Git)
-- **Factory Pattern**: `ProfileFactory` and `ProviderFactory` with registration system for dynamic plugin loading
+- **Factory Pattern**: `ProfileFactory` and `AIProviderFactory` with registration system for dynamic plugin loading
 - **Repository Pattern**: `SessionStore` abstracts persistence layer (filesystem, future: database)
 - **State Pattern**: Procedural implementation via `WorkflowPhase` enum with phase-specific handlers
 
@@ -566,7 +566,7 @@ This project showcases enterprise-grade software engineering practices appropria
 ├─────────────────────────────────────────────┤
 │  Infrastructure Layer (Implementations)     │
 │  - SessionStore (persistence)               │
-│  - ProfileFactory, ProviderFactory          │
+│  - ProfileFactory, AIProviderFactory        │
 │  - PathValidator (security)                 │
 └─────────────────────────────────────────────┘
 ```
@@ -626,22 +626,24 @@ This separation enables:
 
 ### Commands
 
-#### `aiwf init`
+#### `aiwf <profile> init`
 
-Initialize a new workflow session.
+Initialize a new workflow session. The `init` command is profile-specific—each profile defines its own required context parameters.
+
+**For jpa-mt profile:**
 
 ```bash
-aiwf init --scope <scope> --entity <entity> --table <table> --bounded-context <context> [options]
+aiwf jpa-mt init --scope <scope> --entity <entity> --table <table> --bounded-context <context> [options]
 ```
 
-**Required:**
-- `--scope` - Generation scope (`domain` or `vertical` for jpa-mt profile)
+**Required (jpa-mt):**
+- `--scope` - Generation scope (`domain` or `vertical`)
 - `--entity` - Entity name in PascalCase (e.g., `Product`)
 - `--table` - Database table name (e.g., `app.products`)
 - `--bounded-context` - Domain context (e.g., `catalog`)
+- `--schema-file` - Path to DDL schema file
 
-**Optional:**
-- `--schema-file` - Path to DDL schema file (required for jpa-mt profile)
+**Optional (jpa-mt):**
 - `--dev` - Developer identifier
 - `--task-id` - External task/ticket reference
 
@@ -652,7 +654,7 @@ aiwf init --scope <scope> --entity <entity> --table <table> --bounded-context <c
 
 **Example:**
 ```bash
-aiwf init \
+aiwf jpa-mt init \
   --scope domain \
   --entity Product \
   --table app.products \
@@ -770,7 +772,7 @@ aiwf status <session-id> --json
 #### Step 1: Initialize Session
 
 ```bash
-aiwf init \
+aiwf jpa-mt init \
   --scope domain \
   --entity Product \
   --table app.products \
@@ -1116,7 +1118,7 @@ Generates domain layer only:
 
 **Command:**
 ```bash
-aiwf init --scope domain --entity Product --table app.products --bounded-context product
+aiwf jpa-mt init --scope domain --entity Product --table app.products --bounded-context product --schema-file schema.sql
 ```
 
 #### Vertical Scope
@@ -1130,7 +1132,7 @@ Generates complete feature implementation:
 
 **Command:**
 ```bash
-aiwf init --scope vertical --entity Product --table app.products --bounded-context product
+aiwf jpa-mt init --scope vertical --entity Product --table app.products --bounded-context product --schema-file schema.sql
 ```
 
 ### Template System
@@ -1338,8 +1340,8 @@ class ClaudeCliProvider(AIProvider):
         return result.stdout
 
 # Register in infrastructure/providers/__init__.py
-from aiwf.domain.providers.provider_factory import ProviderFactory
-ProviderFactory.register('claude-cli', ClaudeCliProvider)
+from aiwf.domain.providers.provider_factory import AIProviderFactory
+AIProviderFactory.register('claude-cli', ClaudeCliProvider)
 ```
 
 **Configuration:**

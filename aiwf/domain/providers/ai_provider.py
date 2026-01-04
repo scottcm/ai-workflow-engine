@@ -2,13 +2,13 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from aiwf.domain.models.provider_result import ProviderResult
+    from aiwf.domain.models.ai_provider_result import AIProviderResult
 
 
-class ResponseProvider(ABC):
-    """Abstract interface for response providers (Strategy pattern).
+class AIProvider(ABC):
+    """Abstract interface for AI providers (Strategy pattern).
 
-    Response providers generate responses to prompts. They may call AI APIs
+    AI providers generate responses to prompts. They may call AI APIs
     (Claude, Gemini) or signal manual mode where the user provides the response.
 
     This is distinct from:
@@ -61,7 +61,7 @@ class ResponseProvider(ABC):
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> "ProviderResult | None":
+    ) -> "AIProviderResult | None":
         """Generate response for the given prompt.
 
         Args:
@@ -75,7 +75,7 @@ class ResponseProvider(ABC):
             response_timeout: Timeout for receiving response (None = use default)
 
         Returns:
-            ProviderResult with files dict, or None for ManualProvider.
+            AIProviderResult with files dict, or None for ManualAIProvider.
             For local-write providers: files dict values are None (already written).
             For API providers: files dict values are content strings.
 
@@ -83,7 +83,3 @@ class ResponseProvider(ABC):
             ProviderError: If the provider call fails (network, auth, timeout, etc.)
         """
         ...
-
-
-# Backwards compatibility alias
-AIProvider = ResponseProvider

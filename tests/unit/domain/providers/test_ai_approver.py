@@ -8,16 +8,16 @@ from unittest.mock import Mock
 import pytest
 
 from aiwf.domain.models.approval_result import ApprovalDecision, ApprovalResult
-from aiwf.domain.models.provider_result import ProviderResult
+from aiwf.domain.models.ai_provider_result import AIProviderResult
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
-from aiwf.domain.providers.response_provider import ResponseProvider
+from aiwf.domain.providers.ai_provider import AIProvider
 from aiwf.domain.providers.approval_provider import ApprovalProvider
 from aiwf.domain.providers.ai_approval_provider import AIApprovalProvider
 
 
-def _mock_provider_result(response: str) -> ProviderResult:
-    """Create a ProviderResult with the given response."""
-    return ProviderResult(response=response, files={})
+def _mock_provider_result(response: str) -> AIProviderResult:
+    """Create an AIProviderResult with the given response."""
+    return AIProviderResult(response=response, files={})
 
 
 class TestAIApprovalProvider:
@@ -27,10 +27,10 @@ class TestAIApprovalProvider:
         """AIApprovalProvider implements ApprovalProvider."""
         assert issubclass(AIApprovalProvider, ApprovalProvider)
 
-    def test_ai_approver_requires_response_provider(self) -> None:
-        """AIApprovalProvider requires a ResponseProvider instance."""
-        mock_provider = Mock(spec=ResponseProvider)
-        provider = AIApprovalProvider(response_provider=mock_provider)
+    def test_ai_approver_requires_ai_provider(self) -> None:
+        """AIApprovalProvider requires an AIProvider instance."""
+        mock_provider = Mock(spec=AIProvider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
         assert provider is not None
 
     def test_ai_approver_metadata(self) -> None:
@@ -43,11 +43,11 @@ class TestAIApprovalProvider:
 class TestAIApprovalProviderEvaluation:
     """Tests for AIApprovalProvider.evaluate behavior."""
 
-    def test_ai_approver_calls_response_provider_generate(self) -> None:
-        """evaluate() calls response provider's generate method."""
-        mock_provider = Mock(spec=ResponseProvider)
+    def test_ai_approver_calls_ai_provider_generate(self) -> None:
+        """evaluate() calls AI provider's generate method."""
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("DECISION: APPROVED\nFEEDBACK: None")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -60,9 +60,9 @@ class TestAIApprovalProviderEvaluation:
 
     def test_ai_approver_returns_approved_on_approved_response(self) -> None:
         """evaluate() returns APPROVED when AI says APPROVED."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("DECISION: APPROVED\nFEEDBACK: None")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -75,11 +75,11 @@ class TestAIApprovalProviderEvaluation:
 
     def test_ai_approver_returns_rejected_on_rejected_response(self) -> None:
         """evaluate() returns REJECTED when AI says REJECTED."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result(
             "DECISION: REJECTED\nFEEDBACK: The plan lacks detail"
         )
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -93,11 +93,11 @@ class TestAIApprovalProviderEvaluation:
 
     def test_ai_approver_extracts_feedback_from_rejection(self) -> None:
         """evaluate() extracts feedback from REJECTED response."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result(
             "DECISION: REJECTED\nFEEDBACK: Missing error handling"
         )
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -110,11 +110,11 @@ class TestAIApprovalProviderEvaluation:
 
     def test_ai_approver_handles_approved_with_comments(self) -> None:
         """evaluate() handles APPROVED with optional comments."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result(
             "DECISION: APPROVED\nFEEDBACK: Looks good overall"
         )
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -131,9 +131,9 @@ class TestAIApprovalProviderPromptBuilding:
 
     def test_ai_approver_includes_files_in_prompt(self) -> None:
         """evaluate() includes file contents in prompt."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("DECISION: APPROVED\nFEEDBACK: None")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         provider.evaluate(
             phase=WorkflowPhase.GENERATE,
@@ -148,9 +148,9 @@ class TestAIApprovalProviderPromptBuilding:
 
     def test_ai_approver_includes_phase_context_in_prompt(self) -> None:
         """evaluate() includes phase context in prompt."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("DECISION: APPROVED\nFEEDBACK: None")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         provider.evaluate(
             phase=WorkflowPhase.REVIEW,
@@ -170,9 +170,9 @@ class TestAIApprovalProviderEdgeCases:
 
     def test_ai_approver_handles_none_response(self) -> None:
         """evaluate() handles None response from provider."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = None
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -185,13 +185,13 @@ class TestAIApprovalProviderEdgeCases:
         assert result.feedback is not None
 
     def test_ai_approver_handles_result_with_none_response_text(self) -> None:
-        """evaluate() handles ProviderResult with response=None."""
-        mock_provider = Mock(spec=ResponseProvider)
-        # ProviderResult with files but no response text
-        mock_provider.generate.return_value = ProviderResult(
+        """evaluate() handles AIProviderResult with response=None."""
+        mock_provider = Mock(spec=AIProvider)
+        # AIProviderResult with files but no response text
+        mock_provider.generate.return_value = AIProviderResult(
             response=None, files={"output.txt": "some file content"}
         )
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -205,9 +205,9 @@ class TestAIApprovalProviderEdgeCases:
 
     def test_ai_approver_handles_empty_response(self) -> None:
         """evaluate() handles empty response gracefully."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -221,11 +221,11 @@ class TestAIApprovalProviderEdgeCases:
 
     def test_ai_approver_handles_ambiguous_response(self) -> None:
         """evaluate() handles ambiguous response as rejection."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result(
             "The code looks okay but has some issues"
         )
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -239,9 +239,9 @@ class TestAIApprovalProviderEdgeCases:
 
     def test_ai_approver_case_insensitive_approved(self) -> None:
         """evaluate() handles case-insensitive APPROVED."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("decision: approved\nfeedback: none")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -254,11 +254,11 @@ class TestAIApprovalProviderEdgeCases:
 
     def test_ai_approver_case_insensitive_rejected(self) -> None:
         """evaluate() handles case-insensitive REJECTED."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result(
             "decision: rejected\nfeedback: needs more tests"
         )
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -271,9 +271,9 @@ class TestAIApprovalProviderEdgeCases:
 
     def test_ai_approver_context_does_not_affect_parsing(self) -> None:
         """Context parameter is accepted but doesn't change parsing logic."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("DECISION: APPROVED\nFEEDBACK: None")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result1 = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -296,9 +296,9 @@ class TestAIApprovalProviderFileFormatting:
 
     def test_ai_approver_formats_multiline_file_content(self) -> None:
         """Large multiline file content is formatted correctly in prompt."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("DECISION: APPROVED\nFEEDBACK: None")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         multiline_content = """def complex_function():
     '''A function with multiple lines.'''
@@ -322,9 +322,9 @@ class TestAIApprovalProviderFileFormatting:
 
     def test_ai_approver_formats_multiple_files(self) -> None:
         """Multiple files are all included in the prompt."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("DECISION: APPROVED\nFEEDBACK: None")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         provider.evaluate(
             phase=WorkflowPhase.GENERATE,
@@ -345,9 +345,9 @@ class TestAIApprovalProviderFileFormatting:
 
     def test_ai_approver_formats_missing_file_marker(self) -> None:
         """None file content shows appropriate marker."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result("DECISION: APPROVED\nFEEDBACK: None")
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         provider.evaluate(
             phase=WorkflowPhase.GENERATE,
@@ -368,11 +368,11 @@ class TestAIApprovalProviderSuggestedContent:
 
     def test_ai_approver_extracts_suggested_content_when_allowed(self) -> None:
         """Extracts SUGGESTED_CONTENT when allow_rewrite is True."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result(
             "DECISION: REJECTED\nFEEDBACK: Fix formatting\nSUGGESTED_CONTENT: # Fixed content"
         )
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,
@@ -387,11 +387,11 @@ class TestAIApprovalProviderSuggestedContent:
 
     def test_ai_approver_ignores_suggested_content_when_not_allowed(self) -> None:
         """Ignores SUGGESTED_CONTENT when allow_rewrite is False."""
-        mock_provider = Mock(spec=ResponseProvider)
+        mock_provider = Mock(spec=AIProvider)
         mock_provider.generate.return_value = _mock_provider_result(
             "DECISION: REJECTED\nFEEDBACK: Fix formatting\nSUGGESTED_CONTENT: # Fixed content"
         )
-        provider = AIApprovalProvider(response_provider=mock_provider)
+        provider = AIApprovalProvider(ai_provider=mock_provider)
 
         result = provider.evaluate(
             phase=WorkflowPhase.PLAN,

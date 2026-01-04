@@ -14,11 +14,11 @@ from typing import Any
 from unittest.mock import patch, MagicMock
 
 from aiwf.interface.cli.cli import cli
-from aiwf.domain.providers.provider_factory import ProviderFactory
-from aiwf.domain.providers.response_provider import ResponseProvider
+from aiwf.domain.providers.provider_factory import AIProviderFactory
+from aiwf.domain.providers.ai_provider import AIProvider
 
 
-class MockTestProvider(ResponseProvider):
+class MockTestProvider(AIProvider):
     """Test provider for list command tests."""
 
     def __init__(self, config: dict[str, Any] | None = None):
@@ -154,11 +154,11 @@ class TestProvidersCommand:
     @pytest.fixture
     def register_test_provider(self):
         """Register test provider and clean up after."""
-        original_registry = dict(ProviderFactory._registry)
-        ProviderFactory.register("test-provider", MockTestProvider)
+        original_registry = dict(AIProviderFactory._registry)
+        AIProviderFactory.register("test-provider", MockTestProvider)
         yield
-        ProviderFactory._registry.clear()
-        ProviderFactory._registry.update(original_registry)
+        AIProviderFactory._registry.clear()
+        AIProviderFactory._registry.update(original_registry)
 
     def test_providers_lists_registered_providers(self, runner):
         """providers command lists registered providers."""
@@ -234,8 +234,8 @@ class TestProvidersCommand:
     def test_providers_empty_shows_message(self, runner):
         """providers with no registrations shows appropriate message."""
         # Save and clear registry
-        original_registry = dict(ProviderFactory._registry)
-        ProviderFactory._registry.clear()
+        original_registry = dict(AIProviderFactory._registry)
+        AIProviderFactory._registry.clear()
 
         try:
             result = runner.invoke(cli, ["providers"])
@@ -243,14 +243,14 @@ class TestProvidersCommand:
             assert result.exit_code == 0
             assert "no providers registered" in result.output.lower()
         finally:
-            ProviderFactory._registry.clear()
-            ProviderFactory._registry.update(original_registry)
+            AIProviderFactory._registry.clear()
+            AIProviderFactory._registry.update(original_registry)
 
     def test_providers_empty_json_returns_empty_list(self, runner):
         """providers --json with no registrations returns empty list."""
         # Save and clear registry
-        original_registry = dict(ProviderFactory._registry)
-        ProviderFactory._registry.clear()
+        original_registry = dict(AIProviderFactory._registry)
+        AIProviderFactory._registry.clear()
 
         try:
             result = runner.invoke(cli, ["--json", "providers"])
@@ -259,8 +259,8 @@ class TestProvidersCommand:
             output = json.loads(result.output)
             assert output["providers"] == []
         finally:
-            ProviderFactory._registry.clear()
-            ProviderFactory._registry.update(original_registry)
+            AIProviderFactory._registry.clear()
+            AIProviderFactory._registry.update(original_registry)
 
 
 class TestProvidersCommandWithManual:

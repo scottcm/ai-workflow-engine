@@ -14,11 +14,11 @@ from unittest.mock import patch
 import pytest
 
 from aiwf.application.approval_handler import run_provider
-from aiwf.domain.providers.response_provider import ResponseProvider
-from aiwf.domain.providers.provider_factory import ProviderFactory
+from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 
 
-class TimeoutTrackingProvider(ResponseProvider):
+class TimeoutTrackingProvider(AIProvider):
     """Provider that records timeout values passed to generate()."""
 
     # Class-level storage to track calls across instances
@@ -56,7 +56,7 @@ class TimeoutTrackingProvider(ResponseProvider):
         return "response"
 
 
-class NoneTimeoutProvider(ResponseProvider):
+class NoneTimeoutProvider(AIProvider):
     """Provider with None timeout defaults (meaning no timeout)."""
 
     last_call_timeouts: dict[str, Any] = {}
@@ -93,7 +93,7 @@ class NoneTimeoutProvider(ResponseProvider):
         return "response"
 
 
-class ZeroTimeoutProvider(ResponseProvider):
+class ZeroTimeoutProvider(AIProvider):
     """Provider with zero timeout defaults (meaning no timeout per ADR-0007)."""
 
     last_call_timeouts: dict[str, Any] = {}
@@ -133,10 +133,10 @@ class ZeroTimeoutProvider(ResponseProvider):
 @pytest.fixture
 def register_timeout_providers():
     """Register timeout tracking providers and clean up after."""
-    original_registry = dict(ProviderFactory._registry)
-    ProviderFactory.register("timeout-tracker", TimeoutTrackingProvider)
-    ProviderFactory.register("none-timeout", NoneTimeoutProvider)
-    ProviderFactory.register("zero-timeout", ZeroTimeoutProvider)
+    original_registry = dict(AIProviderFactory._registry)
+    AIProviderFactory.register("timeout-tracker", TimeoutTrackingProvider)
+    AIProviderFactory.register("none-timeout", NoneTimeoutProvider)
+    AIProviderFactory.register("zero-timeout", ZeroTimeoutProvider)
 
     # Reset tracking state
     TimeoutTrackingProvider.last_call_timeouts = {}
@@ -145,8 +145,8 @@ def register_timeout_providers():
 
     yield
 
-    ProviderFactory._registry.clear()
-    ProviderFactory._registry.update(original_registry)
+    AIProviderFactory._registry.clear()
+    AIProviderFactory._registry.update(original_registry)
 
 
 class TestTimeoutDefaults:
@@ -219,8 +219,8 @@ class TestProviderMetadataTimeouts:
     """Tests for various provider timeout metadata configurations."""
 
     def test_response_provider_default_metadata_has_timeouts(self):
-        """ResponseProvider base class provides default timeout values."""
-        metadata = ResponseProvider.get_metadata()
+        """AIProvider base class provides default timeout values."""
+        metadata = AIProvider.get_metadata()
 
         assert "default_connection_timeout" in metadata
         assert "default_response_timeout" in metadata
@@ -228,10 +228,10 @@ class TestProviderMetadataTimeouts:
         assert metadata["default_response_timeout"] == 300  # 5 minutes
 
     def test_manual_provider_metadata_timeouts(self):
-        """ManualProvider has appropriate timeout metadata."""
-        from aiwf.domain.providers.manual_provider import ManualProvider
+        """ManualAIProvider has appropriate timeout metadata."""
+        from aiwf.domain.providers.manual_provider import ManualAIProvider
 
-        metadata = ManualProvider.get_metadata()
+        metadata = ManualAIProvider.get_metadata()
 
         # Manual provider doesn't make network calls, but should still have metadata
         assert "default_connection_timeout" in metadata

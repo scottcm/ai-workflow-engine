@@ -1,4 +1,4 @@
-"""Integration tests for GeminiCliProvider.
+"""Integration tests for GeminiCliAIProvider.
 
 These tests require the Gemini CLI to be installed and authenticated.
 They are skipped if the CLI is not available.
@@ -9,7 +9,7 @@ import shutil
 import pytest
 
 from aiwf.domain.errors import ProviderError
-from aiwf.domain.providers.gemini_cli_provider import GeminiCliProvider
+from aiwf.domain.providers.gemini_cli_provider import GeminiCliAIProvider
 
 # Check if Gemini CLI is available
 GEMINI_AVAILABLE = shutil.which("gemini") is not None
@@ -22,7 +22,7 @@ class TestGeminiCliIntegration:
 
     def test_simple_prompt_returns_response(self):
         """Basic prompt gets a response."""
-        provider = GeminiCliProvider({"timeout": 60})
+        provider = GeminiCliAIProvider({"timeout": 60})
         provider.validate()
         result = provider.generate("Say 'hello' and nothing else.")
 
@@ -32,8 +32,8 @@ class TestGeminiCliIntegration:
         assert "hello" in result.response.lower()
 
     def test_file_write_tracked_in_result(self, tmp_path):
-        """File writes appear in ProviderResult.files."""
-        provider = GeminiCliProvider({
+        """File writes appear in AIProviderResult.files."""
+        provider = GeminiCliAIProvider({
             "working_dir": str(tmp_path),
             "approval_mode": "yolo",
             "timeout": 120,
@@ -54,12 +54,12 @@ class TestGeminiCliIntegration:
         assert any("test_output.txt" in f for f in result.files.keys())
 
     def test_file_edit_tracked_via_replace(self, tmp_path):
-        """File edits via replace tool appear in ProviderResult.files."""
+        """File edits via replace tool appear in AIProviderResult.files."""
         # Create initial file
         test_file = tmp_path / "edit_me.txt"
         test_file.write_text("old content here")
 
-        provider = GeminiCliProvider({
+        provider = GeminiCliAIProvider({
             "working_dir": str(tmp_path),
             "approval_mode": "yolo",
             "timeout": 120,
@@ -79,7 +79,7 @@ class TestGeminiCliIntegration:
 
     def test_model_config_applied(self):
         """Model config is passed to CLI."""
-        provider = GeminiCliProvider({
+        provider = GeminiCliAIProvider({
             "model": "gemini-2.5-flash",
             "timeout": 60,
         })
@@ -90,7 +90,7 @@ class TestGeminiCliIntegration:
 
     def test_timeout_config_works(self):
         """timeout config limits execution time."""
-        provider = GeminiCliProvider({"timeout": 1})  # 1 second
+        provider = GeminiCliAIProvider({"timeout": 1})  # 1 second
         provider.validate()
 
         # Very short timeout should fail on any real prompt
@@ -106,7 +106,7 @@ class TestGeminiCliIntegration:
         prompt_file = tmp_path / "test-prompt.md"
         prompt_file.write_text("Say 'file prompt works' and nothing else.")
 
-        provider = GeminiCliProvider({
+        provider = GeminiCliAIProvider({
             "working_dir": str(tmp_path),
             "approval_mode": "yolo",
             "timeout": 60,
@@ -124,7 +124,7 @@ class TestGeminiCliIntegration:
     @pytest.mark.skip(reason="Gemini CLI sandbox mode issue - not our code")
     def test_sandbox_mode(self, tmp_path):
         """Sandbox mode can be enabled."""
-        provider = GeminiCliProvider({
+        provider = GeminiCliAIProvider({
             "sandbox": True,
             "working_dir": str(tmp_path),
             "timeout": 60,
@@ -136,7 +136,7 @@ class TestGeminiCliIntegration:
 
     def test_empty_response_handling(self):
         """Empty or minimal responses are handled gracefully."""
-        provider = GeminiCliProvider({"timeout": 60})
+        provider = GeminiCliAIProvider({"timeout": 60})
         provider.validate()
 
         # Even if response is minimal, should not crash
@@ -146,7 +146,7 @@ class TestGeminiCliIntegration:
 
     def test_multiple_file_operations(self, tmp_path):
         """Multiple file operations in one session are tracked."""
-        provider = GeminiCliProvider({
+        provider = GeminiCliAIProvider({
             "working_dir": str(tmp_path),
             "approval_mode": "yolo",
             "timeout": 180,

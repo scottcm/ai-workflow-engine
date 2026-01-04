@@ -1,4 +1,4 @@
-"""Unit tests for ClaudeCodeProvider.
+"""Unit tests for ClaudeCodeAIProvider.
 
 Tests use mocked claude-agent-sdk to avoid requiring Claude Code CLI.
 """
@@ -10,16 +10,16 @@ import asyncio
 import pytest
 
 from aiwf.domain.errors import ProviderError
-from aiwf.domain.models.provider_result import ProviderResult
-from aiwf.domain.providers.claude_code_provider import ClaudeCodeProvider, DEFAULT_ALLOWED_TOOLS
+from aiwf.domain.models.ai_provider_result import AIProviderResult
+from aiwf.domain.providers.claude_code_provider import ClaudeCodeAIProvider, DEFAULT_ALLOWED_TOOLS
 
 
-class TestClaudeCodeProviderMetadata:
+class TestClaudeCodeAIProviderMetadata:
     """Tests for provider metadata."""
 
     def test_metadata_has_required_fields(self):
         """Provider metadata includes all required fields."""
-        metadata = ClaudeCodeProvider.get_metadata()
+        metadata = ClaudeCodeAIProvider.get_metadata()
 
         assert metadata["name"] == "claude-code"
         assert "description" in metadata
@@ -30,14 +30,14 @@ class TestClaudeCodeProviderMetadata:
 
     def test_metadata_has_capability_fields(self):
         """Provider metadata includes capability fields."""
-        metadata = ClaudeCodeProvider.get_metadata()
+        metadata = ClaudeCodeAIProvider.get_metadata()
 
         assert metadata["supports_system_prompt"] is True
         assert metadata["fs_ability"] == "local-write"
 
     def test_metadata_includes_all_config_keys(self):
         """Provider metadata lists all supported config keys."""
-        metadata = ClaudeCodeProvider.get_metadata()
+        metadata = ClaudeCodeAIProvider.get_metadata()
         config_keys = metadata["config_keys"]
 
         # Direct SDK parameters
@@ -56,7 +56,7 @@ class TestClaudeCodeProviderMetadata:
         assert "max_budget_usd" in config_keys
 
 
-class TestClaudeCodeProviderValidation:
+class TestClaudeCodeAIProviderValidation:
     """Tests for validate() method."""
 
     @patch("aiwf.domain.providers.claude_code_provider.shutil.which")
@@ -64,7 +64,7 @@ class TestClaudeCodeProviderValidation:
         """validate() passes when SDK importable and CLI in PATH."""
         mock_which.return_value = "/usr/local/bin/claude"
 
-        provider = ClaudeCodeProvider()
+        provider = ClaudeCodeAIProvider()
         provider.validate()  # Should not raise
 
         mock_which.assert_called_once_with("claude")
@@ -74,7 +74,7 @@ class TestClaudeCodeProviderValidation:
         """validate() raises ProviderError when CLI not in PATH."""
         mock_which.return_value = None
 
-        provider = ClaudeCodeProvider()
+        provider = ClaudeCodeAIProvider()
 
         with pytest.raises(ProviderError) as exc_info:
             provider.validate()
@@ -82,12 +82,12 @@ class TestClaudeCodeProviderValidation:
         assert "Claude Code CLI not found" in str(exc_info.value)
 
 
-class TestClaudeCodeProviderConfig:
+class TestClaudeCodeAIProviderConfig:
     """Tests for provider configuration."""
 
     def test_default_config(self):
         """Provider works with default configuration."""
-        provider = ClaudeCodeProvider()
+        provider = ClaudeCodeAIProvider()
 
         assert provider._model is None
         assert provider._allowed_tools == DEFAULT_ALLOWED_TOOLS
@@ -106,7 +106,7 @@ class TestClaudeCodeProviderConfig:
             "max_thinking_tokens": 5000,
             "max_budget_usd": 1.50,
         }
-        provider = ClaudeCodeProvider(config)
+        provider = ClaudeCodeAIProvider(config)
 
         assert provider._model == "sonnet"
         assert provider._allowed_tools == ["Read", "Write"]
@@ -125,8 +125,8 @@ class TestClaudeCodeProviderConfig:
             "another_unknown": 123,
         }
 
-        with pytest.warns(UserWarning, match="Unknown ClaudeCodeProvider config keys"):
-            provider = ClaudeCodeProvider(config)
+        with pytest.warns(UserWarning, match="Unknown ClaudeCodeAIProvider config keys"):
+            provider = ClaudeCodeAIProvider(config)
 
         # Known keys still work
         assert provider._model == "sonnet"
@@ -134,69 +134,69 @@ class TestClaudeCodeProviderConfig:
     def test_invalid_max_turns_raises_value_error(self):
         """max_turns < 1 raises ValueError."""
         with pytest.raises(ValueError, match="max_turns must be >= 1"):
-            ClaudeCodeProvider({"max_turns": 0})
+            ClaudeCodeAIProvider({"max_turns": 0})
 
         with pytest.raises(ValueError, match="max_turns must be >= 1"):
-            ClaudeCodeProvider({"max_turns": -5})
+            ClaudeCodeAIProvider({"max_turns": -5})
 
     def test_invalid_max_budget_raises_value_error(self):
         """max_budget_usd <= 0 raises ValueError."""
         with pytest.raises(ValueError, match="max_budget_usd must be > 0"):
-            ClaudeCodeProvider({"max_budget_usd": 0})
+            ClaudeCodeAIProvider({"max_budget_usd": 0})
 
         with pytest.raises(ValueError, match="max_budget_usd must be > 0"):
-            ClaudeCodeProvider({"max_budget_usd": -1.0})
+            ClaudeCodeAIProvider({"max_budget_usd": -1.0})
 
     def test_invalid_max_output_tokens_raises_value_error(self):
         """max_output_tokens < 1 raises ValueError."""
         with pytest.raises(ValueError, match="max_output_tokens must be >= 1"):
-            ClaudeCodeProvider({"max_output_tokens": 0})
+            ClaudeCodeAIProvider({"max_output_tokens": 0})
 
     def test_invalid_max_thinking_tokens_raises_value_error(self):
         """max_thinking_tokens < 0 raises ValueError."""
         with pytest.raises(ValueError, match="max_thinking_tokens must be >= 0"):
-            ClaudeCodeProvider({"max_thinking_tokens": -1})
+            ClaudeCodeAIProvider({"max_thinking_tokens": -1})
 
     def test_max_thinking_tokens_zero_is_valid(self):
         """max_thinking_tokens = 0 is valid (disables thinking)."""
-        provider = ClaudeCodeProvider({"max_thinking_tokens": 0})
+        provider = ClaudeCodeAIProvider({"max_thinking_tokens": 0})
         assert provider._max_thinking_tokens == 0
 
 
-class TestClaudeCodeProviderBuildOptions:
+class TestClaudeCodeAIProviderBuildOptions:
     """Tests for _build_options() method - SDK options configuration."""
 
     def test_build_options_maps_model(self):
         """model config maps to ClaudeAgentOptions.model."""
-        provider = ClaudeCodeProvider({"model": "opus"})
+        provider = ClaudeCodeAIProvider({"model": "opus"})
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.model == "opus"
 
     def test_build_options_maps_allowed_tools(self):
         """allowed_tools config maps to ClaudeAgentOptions.allowed_tools."""
-        provider = ClaudeCodeProvider({"allowed_tools": ["Read", "Write", "Bash"]})
+        provider = ClaudeCodeAIProvider({"allowed_tools": ["Read", "Write", "Bash"]})
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.allowed_tools == ["Read", "Write", "Bash"]
 
     def test_build_options_maps_permission_mode(self):
         """permission_mode maps to ClaudeAgentOptions.permission_mode."""
-        provider = ClaudeCodeProvider({"permission_mode": "bypassPermissions"})
+        provider = ClaudeCodeAIProvider({"permission_mode": "bypassPermissions"})
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.permission_mode == "bypassPermissions"
 
     def test_build_options_maps_working_dir_to_cwd(self):
         """working_dir config maps to ClaudeAgentOptions.cwd."""
-        provider = ClaudeCodeProvider({"working_dir": "/my/project"})
+        provider = ClaudeCodeAIProvider({"working_dir": "/my/project"})
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.cwd == "/my/project"
 
     def test_build_options_uses_context_project_root_as_cwd(self):
         """Context project_root is used as cwd when working_dir not set."""
-        provider = ClaudeCodeProvider()
+        provider = ClaudeCodeAIProvider()
         context = {"project_root": "/context/project"}
         options = provider._build_options(context=context, system_prompt=None)
 
@@ -204,7 +204,7 @@ class TestClaudeCodeProviderBuildOptions:
 
     def test_build_options_working_dir_takes_priority(self):
         """Configured working_dir takes priority over context project_root."""
-        provider = ClaudeCodeProvider({"working_dir": "/config/project"})
+        provider = ClaudeCodeAIProvider({"working_dir": "/config/project"})
         context = {"project_root": "/context/project"}
         options = provider._build_options(context=context, system_prompt=None)
 
@@ -212,14 +212,14 @@ class TestClaudeCodeProviderBuildOptions:
 
     def test_build_options_maps_max_turns(self):
         """max_turns maps directly to SDK parameter."""
-        provider = ClaudeCodeProvider({"max_turns": 15})
+        provider = ClaudeCodeAIProvider({"max_turns": 15})
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.max_turns == 15
 
     def test_build_options_maps_add_dirs(self):
         """add_dirs maps to ClaudeAgentOptions.add_dirs."""
-        provider = ClaudeCodeProvider({"add_dirs": ["/dir1", "/dir2"]})
+        provider = ClaudeCodeAIProvider({"add_dirs": ["/dir1", "/dir2"]})
         options = provider._build_options(context=None, system_prompt=None)
 
         assert "/dir1" in options.add_dirs
@@ -227,7 +227,7 @@ class TestClaudeCodeProviderBuildOptions:
 
     def test_build_options_combines_add_dirs_with_context(self):
         """add_dirs from config combines with context paths."""
-        provider = ClaudeCodeProvider({"add_dirs": ["/config/dir"]})
+        provider = ClaudeCodeAIProvider({"add_dirs": ["/config/dir"]})
         context = {"session_dir": "/session", "project_root": "/project"}
         options = provider._build_options(context=context, system_prompt=None)
 
@@ -237,48 +237,48 @@ class TestClaudeCodeProviderBuildOptions:
 
     def test_build_options_maps_system_prompt(self):
         """system_prompt is passed to ClaudeAgentOptions."""
-        provider = ClaudeCodeProvider()
+        provider = ClaudeCodeAIProvider()
         options = provider._build_options(context=None, system_prompt="Be helpful")
 
         assert options.system_prompt == "Be helpful"
 
     def test_build_options_maps_max_output_tokens_to_env(self):
         """max_output_tokens passed via env dict."""
-        provider = ClaudeCodeProvider({"max_output_tokens": 16000})
+        provider = ClaudeCodeAIProvider({"max_output_tokens": 16000})
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "16000"
 
     def test_build_options_maps_max_thinking_tokens_to_env(self):
         """max_thinking_tokens passed via env dict."""
-        provider = ClaudeCodeProvider({"max_thinking_tokens": 5000})
+        provider = ClaudeCodeAIProvider({"max_thinking_tokens": 5000})
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.env["MAX_THINKING_TOKENS"] == "5000"
 
     def test_build_options_maps_max_budget_to_extra_args(self):
         """max_budget_usd passed via extra_args dict."""
-        provider = ClaudeCodeProvider({"max_budget_usd": 2.50})
+        provider = ClaudeCodeAIProvider({"max_budget_usd": 2.50})
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.extra_args["--max-budget-usd"] == "2.5"
 
     def test_build_options_empty_env_when_no_token_configs(self):
         """env dict is empty when no token configs set."""
-        provider = ClaudeCodeProvider()
+        provider = ClaudeCodeAIProvider()
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.env == {}
 
     def test_build_options_empty_extra_args_when_no_budget(self):
         """extra_args is empty when no budget config set."""
-        provider = ClaudeCodeProvider()
+        provider = ClaudeCodeAIProvider()
         options = provider._build_options(context=None, system_prompt=None)
 
         assert options.extra_args == {}
 
 
-class TestClaudeCodeProviderGenerate:
+class TestClaudeCodeAIProviderGenerate:
     """Tests for generate() method with mocked SDK."""
 
     def _create_mock_assistant_message(self, text_blocks: list[str], write_blocks: list[dict] | None = None):
@@ -306,7 +306,7 @@ class TestClaudeCodeProviderGenerate:
         return message
 
     def test_generate_returns_provider_result(self):
-        """generate() returns ProviderResult with response."""
+        """generate() returns AIProviderResult with response."""
         from claude_agent_sdk.types import AssistantMessage
 
         # Create mock message
@@ -320,10 +320,10 @@ class TestClaudeCodeProviderGenerate:
             yield mock_message
 
         with patch("claude_agent_sdk.query", side_effect=mock_query):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
             result = provider.generate("Test prompt")
 
-            assert isinstance(result, ProviderResult)
+            assert isinstance(result, AIProviderResult)
             assert result.response == "Test response from Claude"
             assert result.files == {}
 
@@ -338,7 +338,7 @@ class TestClaudeCodeProviderGenerate:
             yield mock_message
 
         with patch("claude_agent_sdk.query", side_effect=mock_query) as mock_q:
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
             provider.generate("My test prompt")
 
             mock_q.assert_called_once()
@@ -346,7 +346,7 @@ class TestClaudeCodeProviderGenerate:
             assert call_kwargs["prompt"] == "My test prompt"
 
     def test_generate_tracks_file_writes(self):
-        """generate() tracks Write tool uses in ProviderResult.files."""
+        """generate() tracks Write tool uses in AIProviderResult.files."""
         from claude_agent_sdk.types import AssistantMessage, ToolUseBlock
 
         # Create mock ToolUseBlock for Write
@@ -365,7 +365,7 @@ class TestClaudeCodeProviderGenerate:
             yield mock_message
 
         with patch("claude_agent_sdk.query", side_effect=mock_query):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
             result = provider.generate("Create Entity.java")
 
             # File should be tracked with None value (provider wrote it)
@@ -383,7 +383,7 @@ class TestClaudeCodeProviderGenerate:
             yield mock_message
 
         with patch("claude_agent_sdk.query", side_effect=mock_query):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
             result = provider.generate("Test prompt")
 
             assert result.response == ""
@@ -410,7 +410,7 @@ class TestClaudeCodeProviderGenerate:
             yield mock_message2
 
         with patch("claude_agent_sdk.query", side_effect=mock_query):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
             result = provider.generate("Test prompt")
 
             assert result.response == "First part. Second part."
@@ -442,7 +442,7 @@ class TestClaudeCodeProviderGenerate:
             yield mock_message
 
         with patch("claude_agent_sdk.query", side_effect=mock_query):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
             result = provider.generate("Create Entity, Repository, Service")
 
             # All files should be tracked
@@ -477,7 +477,7 @@ class TestClaudeCodeProviderGenerate:
             yield mock_message
 
         with patch("claude_agent_sdk.query", side_effect=mock_query):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
             result = provider.generate("Create files")
 
             # Text should be concatenated
@@ -486,7 +486,7 @@ class TestClaudeCodeProviderGenerate:
             assert len(result.files) == 2
 
 
-class TestClaudeCodeProviderErrorHandling:
+class TestClaudeCodeAIProviderErrorHandling:
     """Tests for error handling in generate()."""
 
     def test_generate_wraps_sdk_exceptions(self):
@@ -499,7 +499,7 @@ class TestClaudeCodeProviderErrorHandling:
             "claude_agent_sdk.query",
             side_effect=mock_query_error
         ):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
 
             with pytest.raises(ProviderError) as exc_info:
                 provider.generate("Test prompt")
@@ -518,7 +518,7 @@ class TestClaudeCodeProviderErrorHandling:
             "claude_agent_sdk.query",
             side_effect=mock_query_async_error
         ):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
 
             with pytest.raises(ProviderError) as exc_info:
                 provider.generate("Test prompt")
@@ -536,7 +536,7 @@ class TestClaudeCodeProviderErrorHandling:
             yield
 
         with patch("claude_agent_sdk.query", side_effect=mock_query_error):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
 
             with pytest.raises(ProviderError) as exc_info:
                 provider.generate("Test prompt")
@@ -554,7 +554,7 @@ class TestClaudeCodeProviderErrorHandling:
             yield
 
         with patch("claude_agent_sdk.query", side_effect=mock_query_error):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
 
             with pytest.raises(ProviderError) as exc_info:
                 provider.generate("Test prompt")
@@ -572,7 +572,7 @@ class TestClaudeCodeProviderErrorHandling:
             yield
 
         with patch("claude_agent_sdk.query", side_effect=mock_query_error):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
 
             with pytest.raises(ProviderError) as exc_info:
                 provider.generate("Test prompt")
@@ -587,7 +587,7 @@ class TestClaudeCodeProviderErrorHandling:
             yield
 
         with patch("claude_agent_sdk.query", side_effect=mock_query_error):
-            provider = ClaudeCodeProvider()
+            provider = ClaudeCodeAIProvider()
 
             with pytest.raises(ProviderError) as exc_info:
                 provider.generate("Test prompt")

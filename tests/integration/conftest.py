@@ -16,10 +16,10 @@ from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStatus
 from aiwf.domain.models.write_plan import WriteOp, WritePlan
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.profiles.profile_factory import ProfileFactory
-from aiwf.domain.providers.provider_factory import ProviderFactory
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 from aiwf.domain.standards import StandardsProviderFactory
 
-from tests.integration.providers.fake_response_provider import FakeResponseProvider
+from tests.integration.providers.fake_ai_provider import FakeAIProvider
 
 
 class MockStandardsProvider:
@@ -209,22 +209,22 @@ def mock_profile_fail_review() -> MagicMock:
 
 
 @pytest.fixture
-def fake_provider() -> FakeResponseProvider:
+def fake_provider() -> FakeAIProvider:
     """Fake provider with default responses."""
-    return FakeResponseProvider(review_verdict="PASS")
+    return FakeAIProvider(review_verdict="PASS")
 
 
 @pytest.fixture
-def fake_provider_fail_review() -> FakeResponseProvider:
+def fake_provider_fail_review() -> FakeAIProvider:
     """Fake provider that returns FAIL verdict."""
-    return FakeResponseProvider(review_verdict="FAIL")
+    return FakeAIProvider(review_verdict="FAIL")
 
 
 @pytest.fixture
 def register_integration_providers(
     monkeypatch: pytest.MonkeyPatch,
     mock_profile: MagicMock,
-    fake_provider: FakeResponseProvider,
+    fake_provider: FakeAIProvider,
 ) -> None:
     """Register mock profile, standards provider, and fake AI provider.
 
@@ -234,7 +234,7 @@ def register_integration_providers(
     StandardsProviderFactory.register("mock-standards", MockStandardsProvider)
 
     # Register fake AI provider
-    ProviderFactory.register("fake", lambda: fake_provider)
+    AIProviderFactory.register("fake", lambda: fake_provider)
 
     # Mock profile factory
     original_create = ProfileFactory.create
@@ -280,5 +280,5 @@ def register_integration_providers(
     # Cleanup
     if "mock-standards" in StandardsProviderFactory._registry:
         del StandardsProviderFactory._registry["mock-standards"]
-    if "fake" in ProviderFactory._registry:
-        del ProviderFactory._registry["fake"]
+    if "fake" in AIProviderFactory._registry:
+        del AIProviderFactory._registry["fake"]

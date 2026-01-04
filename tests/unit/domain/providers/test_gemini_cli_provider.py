@@ -1,4 +1,4 @@
-"""Unit tests for GeminiCliProvider."""
+"""Unit tests for GeminiCliAIProvider."""
 
 import asyncio
 import json
@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from aiwf.domain.errors import ProviderError
-from aiwf.domain.models.provider_result import ProviderResult
+from aiwf.domain.models.ai_provider_result import AIProviderResult
 from aiwf.domain.providers.gemini_cli_provider import (
     DEFAULT_TIMEOUT,
     FILE_WRITE_TOOLS,
-    GeminiCliProvider,
+    GeminiCliAIProvider,
     VALID_APPROVAL_MODES,
 )
 
@@ -22,12 +22,12 @@ def make_ndjson(*events: dict) -> bytes:
     return "\n".join(lines).encode()
 
 
-class TestGeminiCliProviderInit:
+class TestGeminiCliAIProviderInit:
     """Tests for provider initialization."""
 
     def test_init_with_no_config(self):
         """Provider initializes with defaults."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
 
         assert provider._model is None
         assert provider._sandbox is False
@@ -49,7 +49,7 @@ class TestGeminiCliProviderInit:
             "timeout": 300,
         }
 
-        provider = GeminiCliProvider(config)
+        provider = GeminiCliAIProvider(config)
 
         assert provider._model == "gemini-2.5-flash"
         assert provider._sandbox is True
@@ -67,8 +67,8 @@ class TestGeminiCliProviderInit:
             "another_unknown": 123,
         }
 
-        with pytest.warns(UserWarning, match="Unknown GeminiCliProvider config keys"):
-            provider = GeminiCliProvider(config)
+        with pytest.warns(UserWarning, match="Unknown GeminiCliAIProvider config keys"):
+            provider = GeminiCliAIProvider(config)
 
         # Known keys still work
         assert provider._model == "gemini-2.5-flash"
@@ -76,40 +76,40 @@ class TestGeminiCliProviderInit:
     def test_invalid_timeout_raises_value_error(self):
         """timeout <= 0 raises ValueError."""
         with pytest.raises(ValueError, match="timeout must be > 0"):
-            GeminiCliProvider({"timeout": 0})
+            GeminiCliAIProvider({"timeout": 0})
 
         with pytest.raises(ValueError, match="timeout must be > 0"):
-            GeminiCliProvider({"timeout": -100})
+            GeminiCliAIProvider({"timeout": -100})
 
     def test_invalid_approval_mode_raises_value_error(self):
         """approval_mode not in valid set raises ValueError."""
         with pytest.raises(ValueError, match="approval_mode must be one of"):
-            GeminiCliProvider({"approval_mode": "invalid_mode"})
+            GeminiCliAIProvider({"approval_mode": "invalid_mode"})
 
     def test_include_directories_non_list_raises_value_error(self):
         """include_directories must be a list."""
         with pytest.raises(ValueError, match="include_directories must be a list"):
-            GeminiCliProvider({"include_directories": "/single/path"})
+            GeminiCliAIProvider({"include_directories": "/single/path"})
 
     def test_allowed_tools_non_list_raises_value_error(self):
         """allowed_tools must be a list."""
         with pytest.raises(ValueError, match="allowed_tools must be a list"):
-            GeminiCliProvider({"allowed_tools": "read_file"})
+            GeminiCliAIProvider({"allowed_tools": "read_file"})
 
 
-class TestGeminiCliProviderValidation:
+class TestGeminiCliAIProviderValidation:
     """Tests for validate() method."""
 
     def test_validate_passes_when_cli_available(self):
         """validate() succeeds when CLI in PATH."""
         with patch("shutil.which", return_value="/usr/bin/gemini"):
-            provider = GeminiCliProvider()
+            provider = GeminiCliAIProvider()
             provider.validate()  # Should not raise
 
     def test_validate_fails_when_cli_not_found(self):
         """validate() raises ProviderError with install link."""
         with patch("shutil.which", return_value=None):
-            provider = GeminiCliProvider()
+            provider = GeminiCliAIProvider()
 
             with pytest.raises(ProviderError) as exc_info:
                 provider.validate()
@@ -118,12 +118,12 @@ class TestGeminiCliProviderValidation:
             assert "github.com/google-gemini/gemini-cli" in str(exc_info.value)
 
 
-class TestGeminiCliProviderBuildArgs:
+class TestGeminiCliAIProviderBuildArgs:
     """Tests for _build_args() method."""
 
     def test_build_args_includes_stream_json(self):
         """Args always include -o stream-json."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         args = provider._build_args(context=None)
 
         assert "-o" in args
@@ -131,14 +131,14 @@ class TestGeminiCliProviderBuildArgs:
 
     def test_build_args_yolo_mode_adds_y_flag(self):
         """approval_mode='yolo' adds -y flag."""
-        provider = GeminiCliProvider({"approval_mode": "yolo"})
+        provider = GeminiCliAIProvider({"approval_mode": "yolo"})
         args = provider._build_args(context=None)
 
         assert "-y" in args
 
     def test_build_args_default_mode_no_flag(self):
         """approval_mode='default' adds no approval flag."""
-        provider = GeminiCliProvider({"approval_mode": "default"})
+        provider = GeminiCliAIProvider({"approval_mode": "default"})
         args = provider._build_args(context=None)
 
         assert "-y" not in args
@@ -146,7 +146,7 @@ class TestGeminiCliProviderBuildArgs:
 
     def test_build_args_auto_edit_mode(self):
         """approval_mode='auto_edit' adds --approval-mode flag."""
-        provider = GeminiCliProvider({"approval_mode": "auto_edit"})
+        provider = GeminiCliAIProvider({"approval_mode": "auto_edit"})
         args = provider._build_args(context=None)
 
         assert "--approval-mode" in args
@@ -155,7 +155,7 @@ class TestGeminiCliProviderBuildArgs:
 
     def test_build_args_maps_model(self):
         """model config maps to -m flag."""
-        provider = GeminiCliProvider({"model": "gemini-2.5-pro"})
+        provider = GeminiCliAIProvider({"model": "gemini-2.5-pro"})
         args = provider._build_args(context=None)
 
         assert "-m" in args
@@ -164,14 +164,14 @@ class TestGeminiCliProviderBuildArgs:
 
     def test_build_args_maps_sandbox(self):
         """sandbox config maps to -s flag."""
-        provider = GeminiCliProvider({"sandbox": True})
+        provider = GeminiCliAIProvider({"sandbox": True})
         args = provider._build_args(context=None)
 
         assert "-s" in args
 
     def test_build_args_maps_include_directories(self):
         """include_directories maps to --include-directories."""
-        provider = GeminiCliProvider({
+        provider = GeminiCliAIProvider({
             "include_directories": ["/dir1", "/dir2"]
         })
         args = provider._build_args(context=None)
@@ -182,7 +182,7 @@ class TestGeminiCliProviderBuildArgs:
 
     def test_build_args_maps_allowed_tools(self):
         """allowed_tools maps to --allowed-tools."""
-        provider = GeminiCliProvider({
+        provider = GeminiCliAIProvider({
             "allowed_tools": ["read_file", "write_file"]
         })
         args = provider._build_args(context=None)
@@ -192,12 +192,12 @@ class TestGeminiCliProviderBuildArgs:
         assert "write_file" in args
 
 
-class TestGeminiCliProviderNdjsonParsing:
+class TestGeminiCliAIProviderNdjsonParsing:
     """Tests for _parse_ndjson_stream() method."""
 
     def test_parse_extracts_assistant_messages(self):
         """Parser extracts text from assistant messages."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = make_ndjson(
             {"type": "message", "role": "assistant", "content": "Hello world"}
         )
@@ -209,7 +209,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_handles_multiple_messages(self):
         """Parser concatenates multiple assistant messages."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = make_ndjson(
             {"type": "message", "role": "assistant", "content": "Part 1. "},
             {"type": "message", "role": "assistant", "content": "Part 2."},
@@ -221,7 +221,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_ignores_user_messages(self):
         """Parser ignores user role messages."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = make_ndjson(
             {"type": "message", "role": "user", "content": "User input"},
             {"type": "message", "role": "assistant", "content": "Response"},
@@ -233,7 +233,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_tracks_write_file_tool(self):
         """Parser tracks write_file tool calls."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = make_ndjson(
             {"type": "tool_use", "tool_name": "write_file", "tool_id": "t1",
              "parameters": {"file_path": "/path/to/file.txt"}},
@@ -247,7 +247,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_tracks_replace_tool(self):
         """Parser tracks replace tool calls."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = make_ndjson(
             {"type": "tool_use", "tool_name": "replace", "tool_id": "t1",
              "parameters": {"file_path": "/path/to/edit.txt",
@@ -261,7 +261,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_tracks_multiple_file_writes(self):
         """Parser tracks multiple write operations."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = make_ndjson(
             {"type": "tool_use", "tool_name": "write_file", "tool_id": "t1",
              "parameters": {"file_path": "/path/file1.txt"}},
@@ -279,7 +279,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_only_tracks_successful_writes(self):
         """Parser ignores failed tool_result events."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = make_ndjson(
             {"type": "tool_use", "tool_name": "write_file", "tool_id": "t1",
              "parameters": {"file_path": "/path/failed.txt"}},
@@ -297,7 +297,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_handles_malformed_json(self):
         """Parser logs warning with sample content and continues."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         # Mix valid and invalid JSON lines
         stdout = b'{"type":"message","role":"assistant","content":"Valid"}\n'
         stdout += b'not valid json\n'
@@ -310,7 +310,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_handles_partial_line(self):
         """Parser handles truncated/incomplete JSON lines gracefully."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = b'{"type":"message","role":"assistant","content":"Complete"}\n'
         stdout += b'{"type":"message","role":"assis'  # Truncated
 
@@ -320,7 +320,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_handles_empty_output(self):
         """Parser returns empty response for empty output."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = b""
 
         response, files = provider._parse_ndjson_stream(stdout)
@@ -330,7 +330,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_handles_blank_lines(self):
         """Parser skips blank lines."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = b'\n\n{"type":"message","role":"assistant","content":"Hello"}\n\n'
 
         response, files = provider._parse_ndjson_stream(stdout)
@@ -339,7 +339,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_handles_mixed_events(self):
         """Parser handles interleaved message and tool events."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = make_ndjson(
             {"type": "init", "session_id": "abc123", "model": "gemini-2.5"},
             {"type": "message", "role": "assistant", "content": "Creating file..."},
@@ -357,7 +357,7 @@ class TestGeminiCliProviderNdjsonParsing:
 
     def test_parse_ignores_read_file_tool(self):
         """Parser does not track read_file tool calls."""
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         stdout = make_ndjson(
             {"type": "tool_use", "tool_name": "read_file", "tool_id": "t1",
              "parameters": {"file_path": "/path/read.txt"}},
@@ -369,7 +369,7 @@ class TestGeminiCliProviderNdjsonParsing:
         assert files == {}
 
 
-class TestGeminiCliProviderGenerate:
+class TestGeminiCliAIProviderGenerate:
     """Tests for generate() method with mocked subprocess."""
 
     @pytest.fixture
@@ -391,7 +391,7 @@ class TestGeminiCliProviderGenerate:
         """generate() passes prompt via -p flag."""
         mock, process = mock_subprocess
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         result = provider.generate("Test prompt")
 
         # Verify -p flag with prompt content in args
@@ -404,7 +404,7 @@ class TestGeminiCliProviderGenerate:
         """generate() tells Gemini to read the prompt file itself."""
         mock, process = mock_subprocess
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         result = provider.generate(
             prompt="ignored",
             context={"prompt_file": "/path/to/prompt.md"},
@@ -420,7 +420,7 @@ class TestGeminiCliProviderGenerate:
         """File reference is used when prompt_file is in context."""
         mock, process = mock_subprocess
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         result = provider.generate(
             prompt="This should be ignored",
             context={"prompt_file": "/path/to/prompt.md"},
@@ -442,14 +442,14 @@ class TestGeminiCliProviderGenerate:
             b"",
         )
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         result = provider.generate("Test")
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
         assert result.response == "Response text"
 
     def test_generate_returns_files_written(self, mock_subprocess):
-        """generate() returns tracked files in ProviderResult."""
+        """generate() returns tracked files in AIProviderResult."""
         mock, process = mock_subprocess
         process.communicate.return_value = (
             make_ndjson(
@@ -461,7 +461,7 @@ class TestGeminiCliProviderGenerate:
             b"",
         )
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         result = provider.generate("Create a file")
 
         assert "/path/new.txt" in result.files
@@ -471,7 +471,7 @@ class TestGeminiCliProviderGenerate:
         """generate() prepends system prompt to prompt via -p flag."""
         mock, process = mock_subprocess
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         result = provider.generate(
             prompt="User prompt",
             system_prompt="System instructions",
@@ -489,7 +489,7 @@ class TestGeminiCliProviderGenerate:
         """generate() uses configured timeout value."""
         mock, process = mock_subprocess
 
-        provider = GeminiCliProvider({"timeout": 120})
+        provider = GeminiCliAIProvider({"timeout": 120})
 
         # Track the timeout passed to wait_for
         captured_timeout = None
@@ -512,7 +512,7 @@ class TestGeminiCliProviderGenerate:
         """generate() uses project_root as working directory."""
         mock, process = mock_subprocess
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
         result = provider.generate(
             prompt="Test",
             context={"project_root": "/my/project"},
@@ -526,7 +526,7 @@ class TestGeminiCliProviderGenerate:
         """Config working_dir takes precedence over context."""
         mock, process = mock_subprocess
 
-        provider = GeminiCliProvider({"working_dir": "/config/dir"})
+        provider = GeminiCliAIProvider({"working_dir": "/config/dir"})
         result = provider.generate(
             prompt="Test",
             context={"project_root": "/context/dir"},
@@ -536,7 +536,7 @@ class TestGeminiCliProviderGenerate:
         assert call_kwargs["cwd"] == "/config/dir"
 
 
-class TestGeminiCliProviderErrorHandling:
+class TestGeminiCliAIProviderErrorHandling:
     """Tests for error handling in generate()."""
 
     @pytest.fixture
@@ -555,7 +555,7 @@ class TestGeminiCliProviderErrorHandling:
         process.communicate.side_effect = asyncio.TimeoutError()
         process.kill = MagicMock()
 
-        provider = GeminiCliProvider({"timeout": 10})
+        provider = GeminiCliAIProvider({"timeout": 10})
 
         with pytest.raises(ProviderError) as exc_info:
             provider.generate("Test")
@@ -570,7 +570,7 @@ class TestGeminiCliProviderErrorHandling:
         process.returncode = 1
         process.communicate.return_value = (b"", b"Some error message")
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
 
         with pytest.raises(ProviderError) as exc_info:
             provider.generate("Test")
@@ -584,7 +584,7 @@ class TestGeminiCliProviderErrorHandling:
         process.returncode = 1
         process.communicate.return_value = (b"", b"Authentication failed: not logged in")
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
 
         with pytest.raises(ProviderError) as exc_info:
             provider.generate("Test")
@@ -597,7 +597,7 @@ class TestGeminiCliProviderErrorHandling:
         mock, process = mock_subprocess
         mock.side_effect = FileNotFoundError("gemini not found")
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
 
         with pytest.raises(ProviderError) as exc_info:
             provider.generate("Test")
@@ -611,7 +611,7 @@ class TestGeminiCliProviderErrorHandling:
         process.returncode = 127
         process.communicate.return_value = (b"", b"gemini: command not found")
 
-        provider = GeminiCliProvider()
+        provider = GeminiCliAIProvider()
 
         with pytest.raises(ProviderError) as exc_info:
             provider.generate("Test")
@@ -619,17 +619,17 @@ class TestGeminiCliProviderErrorHandling:
         assert "Gemini CLI not found" in str(exc_info.value)
 
 
-class TestGeminiCliProviderMetadata:
+class TestGeminiCliAIProviderMetadata:
     """Tests for get_metadata() class method."""
 
     def test_metadata_has_correct_name(self):
         """Metadata name is 'gemini-cli'."""
-        metadata = GeminiCliProvider.get_metadata()
+        metadata = GeminiCliAIProvider.get_metadata()
         assert metadata["name"] == "gemini-cli"
 
     def test_metadata_has_all_config_keys(self):
         """Metadata lists all supported config keys."""
-        metadata = GeminiCliProvider.get_metadata()
+        metadata = GeminiCliAIProvider.get_metadata()
         expected_keys = {
             "model",
             "sandbox",
@@ -643,21 +643,21 @@ class TestGeminiCliProviderMetadata:
 
     def test_metadata_fs_ability_is_local_write(self):
         """fs_ability indicates local file write capability."""
-        metadata = GeminiCliProvider.get_metadata()
+        metadata = GeminiCliAIProvider.get_metadata()
         assert metadata["fs_ability"] == "local-write"
 
     def test_metadata_has_default_timeout(self):
         """Metadata includes default timeout."""
-        metadata = GeminiCliProvider.get_metadata()
+        metadata = GeminiCliAIProvider.get_metadata()
         assert metadata["default_response_timeout"] == DEFAULT_TIMEOUT
 
     def test_metadata_requires_config_is_false(self):
         """Provider does not require config."""
-        metadata = GeminiCliProvider.get_metadata()
+        metadata = GeminiCliAIProvider.get_metadata()
         assert metadata["requires_config"] is False
 
 
-class TestGeminiCliProviderConstants:
+class TestGeminiCliAIProviderConstants:
     """Tests for module-level constants."""
 
     def test_file_write_tools_contains_both_tools(self):

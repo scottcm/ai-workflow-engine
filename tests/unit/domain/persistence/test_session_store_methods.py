@@ -31,7 +31,7 @@ def _create_valid_session_json(session_id: str) -> dict:
         "profile": "jpa-mt",
         "scope": "domain",
         "entity": "TestEntity",
-        "providers": {"planner": "manual"},
+        "ai_providers": {"planner": "manual"},
         "execution_mode": "interactive",
         "phase": "initialized",
         "status": "in_progress",

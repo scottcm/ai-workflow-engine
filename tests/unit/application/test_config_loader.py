@@ -1,7 +1,25 @@
-"""Tests for fs_ability resolution with precedence rules."""
+"""Tests for config loading and fs_ability resolution.
 
+Includes:
+- fs_ability resolution with precedence rules
+- V2 workflow config loading (load_workflow_config)
+- Provider key validation (validate_provider_keys)
+"""
+
+from pathlib import Path
 import pytest
-from aiwf.application.config_loader import resolve_fs_ability
+from aiwf.application.config_loader import (
+    resolve_fs_ability,
+    load_workflow_config,
+    validate_provider_keys,
+    ConfigLoadError,
+)
+from aiwf.application.config_models import (
+    StageConfig,
+    PhaseConfig,
+    WorkflowConfig,
+)
+from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
 
 
 class TestResolveFsAbility:
@@ -239,3 +257,275 @@ class TestFsAbilityConfigValidation:
         assert "local-read" in error_msg
         assert "write-only" in error_msg
         assert "none" in error_msg
+
+
+class TestLoadWorkflowConfig:
+    """Tests for load_workflow_config() V2 workflow config loading."""
+
+    def test_load_valid_yaml(self, tmp_path: Path):
+        """Parses valid YAML workflow config without error."""
+        config_content = """
+workflow:
+  defaults:
+    ai_provider: claude-code
+    approval_provider: manual
+  plan:
+    prompt:
+      approval_provider: skip
+    response:
+      approval_provider: claude-code
+"""
+        config_file = tmp_path / "workflow.yml"
+        config_file.write_text(config_content)
+
+        config = load_workflow_config(config_file)
+
+        assert config.defaults.ai_provider == "claude-code"
+        assert config.defaults.approval_provider == "manual"
+        assert config.plan is not None
+        assert config.plan.prompt.approval_provider == "skip"
+        assert config.plan.response.approval_provider == "claude-code"
+
+    def test_load_minimal_config(self, tmp_path: Path):
+        """Parses minimal config with just defaults."""
+        config_content = """
+workflow:
+  defaults:
+    ai_provider: claude-code
+"""
+        config_file = tmp_path / "workflow.yml"
+        config_file.write_text(config_content)
+
+        config = load_workflow_config(config_file)
+
+        assert config.defaults.ai_provider == "claude-code"
+        assert config.defaults.approval_provider == "manual"  # default value
+        assert config.plan is None
+
+    def test_load_full_config(self, tmp_path: Path):
+        """Parses full config with all phases and stages."""
+        config_content = """
+workflow:
+  defaults:
+    ai_provider: claude-code
+    approval_provider: manual
+    approval_max_retries: 0
+    approval_allow_rewrite: false
+
+  plan:
+    prompt:
+      approval_provider: skip
+    response:
+      ai_provider: claude-code
+      approval_provider: claude-code
+      approval_max_retries: 2
+      approver_config:
+        model: "claude-3"
+
+  generate:
+    prompt:
+      approval_provider: manual
+    response:
+      ai_provider: claude-code
+      approval_provider: manual
+
+  review:
+    response:
+      approval_allow_rewrite: true
+
+  revise:
+    prompt:
+      approval_provider: skip
+"""
+        config_file = tmp_path / "workflow.yml"
+        config_file.write_text(config_content)
+
+        config = load_workflow_config(config_file)
+
+        # Check defaults
+        assert config.defaults.ai_provider == "claude-code"
+        assert config.defaults.approval_max_retries == 0
+
+        # Check plan phase
+        assert config.plan.prompt.approval_provider == "skip"
+        assert config.plan.response.approval_max_retries == 2
+        assert config.plan.response.approver_config == {"model": "claude-3"}
+
+        # Check generate phase
+        assert config.generate.prompt.approval_provider == "manual"
+
+        # Check review phase
+        assert config.review.response.approval_allow_rewrite is True
+
+        # Check revise phase
+        assert config.revise.prompt.approval_provider == "skip"
+
+    def test_load_missing_file_raises_error(self, tmp_path: Path):
+        """Raises ConfigLoadError for missing file."""
+        config_file = tmp_path / "nonexistent.yml"
+
+        with pytest.raises(ConfigLoadError) as exc_info:
+            load_workflow_config(config_file)
+
+        assert "not found" in str(exc_info.value).lower()
+
+    def test_load_malformed_yaml_raises_error(self, tmp_path: Path):
+        """Raises ConfigLoadError for malformed YAML."""
+        config_file = tmp_path / "bad.yml"
+        config_file.write_text("workflow: {invalid: yaml: syntax")
+
+        with pytest.raises(ConfigLoadError) as exc_info:
+            load_workflow_config(config_file)
+
+        assert "yaml" in str(exc_info.value).lower() or "Malformed" in str(exc_info.value)
+
+    def test_load_missing_workflow_key_raises_error(self, tmp_path: Path):
+        """Raises ConfigLoadError when 'workflow' key is missing."""
+        config_file = tmp_path / "no-workflow.yml"
+        config_file.write_text("defaults:\n  ai_provider: claude-code")
+
+        with pytest.raises(ConfigLoadError) as exc_info:
+            load_workflow_config(config_file)
+
+        assert "workflow" in str(exc_info.value).lower()
+
+    def test_load_unknown_phase_raises_error(self, tmp_path: Path):
+        """Raises ConfigLoadError for unknown phase names."""
+        config_content = """
+workflow:
+  defaults:
+    ai_provider: claude-code
+  unknown_phase:
+    response:
+      approval_provider: skip
+"""
+        config_file = tmp_path / "bad-phase.yml"
+        config_file.write_text(config_content)
+
+        with pytest.raises(ConfigLoadError) as exc_info:
+            load_workflow_config(config_file)
+
+        assert "unknown_phase" in str(exc_info.value)
+
+    def test_load_unknown_stage_raises_error(self, tmp_path: Path):
+        """Raises ConfigLoadError for unknown stage names."""
+        config_content = """
+workflow:
+  defaults:
+    ai_provider: claude-code
+  plan:
+    unknown_stage:
+      approval_provider: skip
+"""
+        config_file = tmp_path / "bad-stage.yml"
+        config_file.write_text(config_content)
+
+        with pytest.raises(ConfigLoadError) as exc_info:
+            load_workflow_config(config_file)
+
+        assert "unknown_stage" in str(exc_info.value)
+
+
+class TestValidateProviderKeys:
+    """Tests for validate_provider_keys() dry-run validation."""
+
+    def test_validate_known_ai_provider(self):
+        """Passes validation for known AI provider keys."""
+        config = WorkflowConfig(
+            defaults=StageConfig(ai_provider="manual")
+        )
+        # Should not raise - "manual" is a registered AI provider
+        validate_provider_keys(config)
+
+    def test_validate_unknown_ai_provider(self):
+        """Fails with clear message for unknown AI provider."""
+        config = WorkflowConfig(
+            defaults=StageConfig(ai_provider="unknown-provider")
+        )
+        with pytest.raises(ConfigLoadError) as exc_info:
+            validate_provider_keys(config)
+
+        assert "unknown-provider" in str(exc_info.value)
+        assert "ai_provider" in str(exc_info.value).lower()
+
+    def test_validate_known_approval_provider(self):
+        """Passes validation for built-in approval provider keys."""
+        config = WorkflowConfig(
+            defaults=StageConfig(
+                ai_provider="manual",
+                approval_provider="skip",
+            )
+        )
+        # Should not raise - "skip" is a built-in approval provider
+        validate_provider_keys(config)
+
+    def test_validate_ai_provider_as_approval(self):
+        """Passes validation when AI provider used as approval (wrapping path)."""
+        config = WorkflowConfig(
+            defaults=StageConfig(
+                ai_provider="manual",
+                approval_provider="manual",  # AI provider used as approver
+            )
+        )
+        # Should not raise - "manual" is a valid AI provider for wrapping
+        # Note: manual can be used as approval provider via wrapping
+        validate_provider_keys(config)
+
+    def test_validate_unknown_approval_provider(self):
+        """Fails with clear message for unknown approval provider."""
+        config = WorkflowConfig(
+            defaults=StageConfig(
+                ai_provider="manual",
+                approval_provider="unknown-approver",
+            )
+        )
+        with pytest.raises(ConfigLoadError) as exc_info:
+            validate_provider_keys(config)
+
+        assert "unknown-approver" in str(exc_info.value)
+        assert "approval" in str(exc_info.value).lower()
+
+    def test_validate_all_stages(self):
+        """Iterates all phase/stage combinations for validation."""
+        config = WorkflowConfig(
+            defaults=StageConfig(ai_provider="manual"),
+            plan=PhaseConfig(
+                prompt=StageConfig(approval_provider="skip"),
+                response=StageConfig(
+                    ai_provider="manual",
+                    approval_provider="manual",
+                ),
+            ),
+            generate=PhaseConfig(
+                response=StageConfig(ai_provider="manual"),
+            ),
+        )
+        # Should not raise - all keys are valid
+        validate_provider_keys(config)
+
+    def test_validate_detects_error_in_nested_stage(self):
+        """Detects unknown provider key in deeply nested stage config."""
+        config = WorkflowConfig(
+            defaults=StageConfig(ai_provider="manual"),
+            plan=PhaseConfig(
+                response=StageConfig(
+                    ai_provider="manual",
+                    approval_provider="invalid-nested",
+                ),
+            ),
+        )
+        with pytest.raises(ConfigLoadError) as exc_info:
+            validate_provider_keys(config)
+
+        assert "invalid-nested" in str(exc_info.value)
+
+    def test_validate_response_requires_ai_provider(self):
+        """Response stages require ai_provider after cascade."""
+        config = WorkflowConfig(
+            defaults=StageConfig(approval_provider="manual"),  # no ai_provider
+        )
+        with pytest.raises(ConfigLoadError) as exc_info:
+            validate_provider_keys(config)
+
+        assert "ai_provider" in str(exc_info.value).lower()
+        assert "response" in str(exc_info.value).lower()

@@ -11,7 +11,7 @@ from aiwf.domain.providers.approval_provider import (
     ManualApprovalProvider,
 )
 from aiwf.domain.providers.ai_approval_provider import AIApprovalProvider
-from aiwf.domain.providers.provider_factory import ResponseProviderFactory
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 
 
 class ApprovalProviderFactory:
@@ -21,8 +21,8 @@ class ApprovalProviderFactory:
     - "skip": SkipApprovalProvider (auto-approve)
     - "manual": ManualApprovalProvider (pause for user)
 
-    Unknown keys are treated as response provider keys and create
-    AIApprovalProvider wrapping the corresponding ResponseProvider.
+    Unknown keys are treated as AI provider keys and create
+    AIApprovalProvider wrapping the corresponding AIProvider.
     """
 
     _registry: dict[str, type[ApprovalProvider]] = {
@@ -62,12 +62,12 @@ class ApprovalProviderFactory:
         if key in cls._registry:
             return cls._registry[key]()
 
-        # Fall back to creating AIApprovalProvider wrapping a response provider
+        # Fall back to creating AIApprovalProvider wrapping an AI provider
         try:
-            response_provider = ResponseProviderFactory.create(key, config)
+            ai_provider = AIProviderFactory.create(key, config)
 
             # Validate fs_ability - approval providers must READ files to evaluate
-            metadata = response_provider.get_metadata()
+            metadata = ai_provider.get_metadata()
             fs_ability = metadata.get("fs_ability", "none")
 
             if fs_ability in ("none", "write-only"):
@@ -77,13 +77,13 @@ class ApprovalProviderFactory:
                     f"to evaluate artifacts. Use 'manual' for human approval."
                 )
 
-            return AIApprovalProvider(response_provider=response_provider)
+            return AIApprovalProvider(ai_provider=ai_provider)
         except KeyError:
             builtin_keys = list(cls._registry.keys())
-            response_keys = ResponseProviderFactory.list_providers()
+            ai_keys = AIProviderFactory.list_providers()
             raise KeyError(
                 f"Unknown approval provider: {key!r}. "
-                f"Valid options: {builtin_keys} or any ResponseProvider: {response_keys}"
+                f"Valid options: {builtin_keys} or any AIProvider: {ai_keys}"
             )
 
     @classmethod
@@ -91,10 +91,10 @@ class ApprovalProviderFactory:
         """Get list of available approval provider keys.
 
         Returns:
-            List of built-in provider identifiers plus AI-wrapped response providers.
+            List of built-in provider identifiers plus AI-wrapped providers.
         """
         builtin = list(cls._registry.keys())
-        response_providers = [
-            f"{k} (via AI)" for k in ResponseProviderFactory.list_providers()
+        ai_providers = [
+            f"{k} (via AI)" for k in AIProviderFactory.list_providers()
         ]
-        return builtin + response_providers
+        return builtin + ai_providers

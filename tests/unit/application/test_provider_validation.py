@@ -8,11 +8,11 @@ import pytest
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
 from aiwf.domain.errors import ProviderError
 from aiwf.domain.persistence.session_store import SessionStore
-from aiwf.domain.providers.response_provider import ResponseProvider
-from aiwf.domain.providers.provider_factory import ProviderFactory
+from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 
 
-class ValidatingProvider(ResponseProvider):
+class ValidatingProvider(AIProvider):
     """Provider that tracks validation calls."""
 
     validation_calls: list[str] = []
@@ -38,7 +38,7 @@ class ValidatingProvider(ResponseProvider):
         return None
 
 
-class FailingValidationProvider(ResponseProvider):
+class FailingValidationProvider(AIProvider):
     """Provider whose validate() always fails."""
 
     @classmethod
@@ -62,14 +62,14 @@ class FailingValidationProvider(ResponseProvider):
 @pytest.fixture
 def register_validating_providers():
     """Register test providers and clean up after."""
-    ProviderFactory.register("validating", ValidatingProvider)
-    ProviderFactory.register("failing-validation", FailingValidationProvider)
+    AIProviderFactory.register("validating", ValidatingProvider)
+    AIProviderFactory.register("failing-validation", FailingValidationProvider)
     ValidatingProvider.validation_calls = []
     yield
-    if "validating" in ProviderFactory._registry:
-        del ProviderFactory._registry["validating"]
-    if "failing-validation" in ProviderFactory._registry:
-        del ProviderFactory._registry["failing-validation"]
+    if "validating" in AIProviderFactory._registry:
+        del AIProviderFactory._registry["validating"]
+    if "failing-validation" in AIProviderFactory._registry:
+        del AIProviderFactory._registry["failing-validation"]
 
 
 def test_initialize_run_validates_all_providers(
@@ -132,7 +132,7 @@ def test_initialize_run_cleans_up_session_dir_on_validation_failure(
 
 
 def test_manual_provider_validates_successfully(sessions_root: Path, valid_jpa_mt_context: dict[str, Any]):
-    """ManualProvider.validate() succeeds (no external dependencies)."""
+    """ManualAIProvider.validate() succeeds (no external dependencies)."""
     store = SessionStore(sessions_root=sessions_root)
     orchestrator = WorkflowOrchestrator(session_store=store, sessions_root=sessions_root)
 

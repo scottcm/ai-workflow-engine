@@ -13,7 +13,7 @@ def _minimal_workflow_state_kwargs() -> dict:
         "phase": WorkflowPhase.INIT,
         "status": WorkflowStatus.IN_PROGRESS,
         "execution_mode": ExecutionMode.INTERACTIVE,
-        "providers": {"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
+        "ai_providers": {"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         "standards_hash": "sha256:deadbeef",
     }
 

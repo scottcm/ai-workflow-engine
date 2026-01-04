@@ -25,7 +25,7 @@ from aiwf.domain.models.workflow_state import (
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.errors import ProviderError
 from aiwf.domain.profiles.profile_factory import ProfileFactory
-from aiwf.domain.providers.provider_factory import ResponseProviderFactory
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 from aiwf.domain.providers.approval_provider import ApprovalProvider
 from aiwf.domain.providers.approval_factory import ApprovalProviderFactory
 from aiwf.domain.models.approval_result import (
@@ -447,7 +447,7 @@ class WorkflowOrchestrator:
         if role is None:
             raise ValueError(f"No provider role for phase: {state.phase}")
 
-        provider_key = state.providers.get(role)
+        provider_key = state.ai_providers.get(role)
         if provider_key is None:
             raise ValueError(f"No provider configured for role: {role}")
 
@@ -470,7 +470,7 @@ class WorkflowOrchestrator:
         prompt_content = prompt_path.read_text(encoding="utf-8")
 
         # Create provider and call
-        provider = ResponseProviderFactory.create(provider_key)
+        provider = AIProviderFactory.create(provider_key)
         context = self._build_provider_context(state)
 
         try:
@@ -654,7 +654,7 @@ class WorkflowOrchestrator:
         # Validate all configured AI providers before continuing setup
         try:
             for role, provider_key in providers.items():
-                ai_provider = ResponseProviderFactory.create(provider_key)
+                ai_provider = AIProviderFactory.create(provider_key)
                 ai_provider.validate()
         except (KeyError, ProviderError):
             shutil.rmtree(session_dir, ignore_errors=True)
@@ -1421,7 +1421,7 @@ def _build_initial_state(
         session_id=session_id,
         profile=profile,
         context=context,
-        providers=providers,
+        ai_providers=providers,
         execution_mode=execution_mode,
         metadata=metadata or {},
         phase=initial_phase,

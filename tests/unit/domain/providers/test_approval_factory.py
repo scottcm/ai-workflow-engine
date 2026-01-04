@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from aiwf.domain.providers.response_provider import ResponseProvider
+from aiwf.domain.providers.ai_provider import AIProvider
 from aiwf.domain.providers.approval_provider import ApprovalProvider
 from aiwf.domain.providers.approval_factory import ApprovalProviderFactory
 from aiwf.domain.providers.skip_approver import SkipApprovalProvider
@@ -42,11 +42,11 @@ class TestApprovalProviderFactoryAIFallback:
 
     def test_unknown_key_creates_ai_approval_provider(self) -> None:
         """Unknown key creates AIApprovalProvider wrapping response provider."""
-        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider = Mock(spec=AIProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "local-read"}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+            "aiwf.domain.providers.approval_factory.AIProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 
@@ -56,13 +56,13 @@ class TestApprovalProviderFactoryAIFallback:
             mock_factory.create.assert_called_once_with("claude", None)
 
     def test_ai_fallback_passes_config_to_provider_factory(self) -> None:
-        """AI fallback passes config to ResponseProviderFactory.create."""
-        mock_response_provider = Mock(spec=ResponseProvider)
+        """AI fallback passes config to AIProviderFactory.create."""
+        mock_response_provider = Mock(spec=AIProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "local-write"}
         config = {"api_key": "test-key", "model": "claude-3"}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+            "aiwf.domain.providers.approval_factory.AIProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 
@@ -71,9 +71,9 @@ class TestApprovalProviderFactoryAIFallback:
             mock_factory.create.assert_called_once_with("claude", config)
 
     def test_ai_fallback_propagates_provider_factory_errors(self) -> None:
-        """If ResponseProviderFactory.create fails, error propagates."""
+        """If AIProviderFactory.create fails, error propagates."""
         with patch(
-            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+            "aiwf.domain.providers.approval_factory.AIProviderFactory"
         ) as mock_factory:
             mock_factory.create.side_effect = KeyError("Provider 'unknown' not found")
 
@@ -151,12 +151,12 @@ class TestApprovalProviderFactoryConfig:
 
     def test_ai_provider_receives_config(self) -> None:
         """Response provider creation receives config."""
-        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider = Mock(spec=AIProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "local-read"}
         config = {"model": "gpt-4", "temperature": 0.7}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+            "aiwf.domain.providers.approval_factory.AIProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 
@@ -178,11 +178,11 @@ class TestApprovalProviderFactoryFsAbilityValidation:
 
     def test_rejects_provider_with_no_fs_ability(self) -> None:
         """Factory rejects fs_ability='none' - cannot read files to evaluate."""
-        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider = Mock(spec=AIProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "none"}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+            "aiwf.domain.providers.approval_factory.AIProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 
@@ -194,11 +194,11 @@ class TestApprovalProviderFactoryFsAbilityValidation:
 
     def test_rejects_provider_with_write_only(self) -> None:
         """Factory rejects fs_ability='write-only' - cannot read files to evaluate."""
-        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider = Mock(spec=AIProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "write-only"}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+            "aiwf.domain.providers.approval_factory.AIProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 
@@ -209,11 +209,11 @@ class TestApprovalProviderFactoryFsAbilityValidation:
 
     def test_accepts_provider_with_local_read(self) -> None:
         """Factory accepts fs_ability='local-read' - can read files to evaluate."""
-        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider = Mock(spec=AIProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "local-read"}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+            "aiwf.domain.providers.approval_factory.AIProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 
@@ -222,11 +222,11 @@ class TestApprovalProviderFactoryFsAbilityValidation:
 
     def test_accepts_provider_with_local_write(self) -> None:
         """Factory accepts fs_ability='local-write' - can read files to evaluate."""
-        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider = Mock(spec=AIProvider)
         mock_response_provider.get_metadata.return_value = {"fs_ability": "local-write"}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+            "aiwf.domain.providers.approval_factory.AIProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 
@@ -235,11 +235,11 @@ class TestApprovalProviderFactoryFsAbilityValidation:
 
     def test_defaults_to_none_when_metadata_missing_fs_ability(self) -> None:
         """Provider without fs_ability in metadata defaults to 'none' (rejected)."""
-        mock_response_provider = Mock(spec=ResponseProvider)
+        mock_response_provider = Mock(spec=AIProvider)
         mock_response_provider.get_metadata.return_value = {"name": "no-fs-provider"}
 
         with patch(
-            "aiwf.domain.providers.approval_factory.ResponseProviderFactory"
+            "aiwf.domain.providers.approval_factory.AIProviderFactory"
         ) as mock_factory:
             mock_factory.create.return_value = mock_response_provider
 

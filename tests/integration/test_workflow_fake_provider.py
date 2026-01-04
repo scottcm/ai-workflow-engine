@@ -21,38 +21,38 @@ from aiwf.domain.models.workflow_state import (
     WorkflowStatus,
 )
 from aiwf.domain.models.write_plan import WriteOp, WritePlan
-from aiwf.domain.providers.provider_factory import ProviderFactory
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 
-from tests.integration.providers.fake_response_provider import FakeResponseProvider
+from tests.integration.providers.fake_ai_provider import FakeAIProvider
 
 
 @pytest.fixture
-def fake_provider_pass() -> FakeResponseProvider:
+def fake_provider_pass() -> FakeAIProvider:
     """Fake provider that returns PASS verdict for reviews."""
-    return FakeResponseProvider(review_verdict="PASS")
+    return FakeAIProvider(review_verdict="PASS")
 
 
 @pytest.fixture
-def fake_provider_fail() -> FakeResponseProvider:
+def fake_provider_fail() -> FakeAIProvider:
     """Fake provider that returns FAIL verdict for reviews."""
-    return FakeResponseProvider(review_verdict="FAIL")
+    return FakeAIProvider(review_verdict="FAIL")
 
 
 @pytest.fixture
 def register_fake_provider(
     monkeypatch: pytest.MonkeyPatch,
-    fake_provider_pass: FakeResponseProvider,
+    fake_provider_pass: FakeAIProvider,
     register_integration_providers,
-) -> FakeResponseProvider:
+) -> FakeAIProvider:
     """Register the fake provider and return it for assertions."""
-    ProviderFactory.register("fake", lambda: fake_provider_pass)
+    AIProviderFactory.register("fake", lambda: fake_provider_pass)
     return fake_provider_pass
 
 
 @pytest.fixture
 def session_with_fake_provider(
     orchestrator: WorkflowOrchestrator,
-    register_fake_provider: FakeResponseProvider,
+    register_fake_provider: FakeAIProvider,
 ) -> str:
     """Create a session configured to use the fake provider."""
     session_id = orchestrator.initialize_run(
@@ -74,7 +74,7 @@ class TestFakeProviderBasics:
 
     def test_fake_provider_returns_deterministic_response(
         self,
-        fake_provider_pass: FakeResponseProvider,
+        fake_provider_pass: FakeAIProvider,
     ) -> None:
         """Fake provider returns non-None response."""
         response = fake_provider_pass.generate("test prompt", {})
@@ -83,7 +83,7 @@ class TestFakeProviderBasics:
 
     def test_fake_provider_tracks_call_history(
         self,
-        fake_provider_pass: FakeResponseProvider,
+        fake_provider_pass: FakeAIProvider,
     ) -> None:
         """Fake provider records calls for assertions."""
         fake_provider_pass.generate("prompt 1", {"ctx": 1})
@@ -102,7 +102,7 @@ class TestFakeProviderWorkflow:
         orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         sessions_root: Path,
-        register_fake_provider: FakeResponseProvider,
+        register_fake_provider: FakeAIProvider,
     ) -> None:
         """Approving PROMPT stage with fake provider creates response file."""
         session_id = session_with_fake_provider
@@ -123,7 +123,7 @@ class TestFakeProviderWorkflow:
         self,
         orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
-        register_fake_provider: FakeResponseProvider,
+        register_fake_provider: FakeAIProvider,
     ) -> None:
         """Fake provider receives actual prompt content."""
         session_id = session_with_fake_provider
@@ -194,12 +194,12 @@ class TestFakeProviderFullWorkflow:
         orchestrator: WorkflowOrchestrator,
         sessions_root: Path,
         register_integration_providers,
-        fake_provider_fail: FakeResponseProvider,
+        fake_provider_fail: FakeAIProvider,
         mock_profile: MagicMock,
     ) -> None:
         """Complete workflow with FAIL verdict triggers revision."""
         # Register FAIL provider
-        ProviderFactory.register("fake-fail", lambda: fake_provider_fail)
+        AIProviderFactory.register("fake-fail", lambda: fake_provider_fail)
 
         session_id = orchestrator.initialize_run(
             profile="test-profile",
@@ -248,7 +248,7 @@ class TestFakeProviderRetry:
         orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         sessions_root: Path,
-        register_fake_provider: FakeResponseProvider,
+        register_fake_provider: FakeAIProvider,
     ) -> None:
         """retry regenerates response using fake provider."""
         session_id = session_with_fake_provider
@@ -274,7 +274,7 @@ class TestFakeProviderRetry:
         self,
         orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
-        register_fake_provider: FakeResponseProvider,
+        register_fake_provider: FakeAIProvider,
     ) -> None:
         """retry stores feedback for provider context."""
         session_id = session_with_fake_provider
@@ -298,12 +298,12 @@ class TestFakeProviderCustomResponses:
         register_integration_providers,
     ) -> None:
         """Fake provider can be configured with custom per-phase responses."""
-        custom_provider = FakeResponseProvider(
+        custom_provider = FakeAIProvider(
             phase_responses={
                 WorkflowPhase.PLAN: "# Custom Plan\n\nMy custom planning response.",
             }
         )
-        ProviderFactory.register("custom", lambda: custom_provider)
+        AIProviderFactory.register("custom", lambda: custom_provider)
 
         session_id = orchestrator.initialize_run(
             profile="test-profile",
@@ -340,8 +340,8 @@ class TestFakeProviderCustomResponses:
             entity = context.get("entity", "Unknown") if context else "Unknown"
             return f"# Generated for {entity}\n\nCustom response."
 
-        custom_provider = FakeResponseProvider(generator=my_generator)
-        ProviderFactory.register("generator-fn", lambda: custom_provider)
+        custom_provider = FakeAIProvider(generator=my_generator)
+        AIProviderFactory.register("generator-fn", lambda: custom_provider)
 
         session_id = orchestrator.initialize_run(
             profile="test-profile",

@@ -142,7 +142,7 @@ class WorkflowState(BaseModel):
     review_hash: str | None = None      # None until review approved
 
     # Multi-provider strategy
-    providers: dict[str, str]  # role -> provider_key
+    ai_providers: dict[str, str]  # role -> provider_key
 
     # Standards provider key used for this session (empty = profile default)
     standards_provider: str = ""

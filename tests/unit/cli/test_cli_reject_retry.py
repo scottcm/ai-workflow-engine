@@ -32,7 +32,7 @@ def _make_state(
         "stage": stage,
         "status": WorkflowStatus.IN_PROGRESS,
         "execution_mode": ExecutionMode.INTERACTIVE,
-        "providers": {"planner": "manual"},
+        "ai_providers": {"planner": "manual"},
         "standards_hash": "abc123",
     }
     defaults.update(kwargs)

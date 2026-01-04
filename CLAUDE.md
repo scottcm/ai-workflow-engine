@@ -95,16 +95,16 @@ ai-workflow-engine/
 │   │   ├── models/              # Pydantic models
 │   │   │   ├── workflow_state.py    # WorkflowState, WorkflowPhase, WorkflowStatus, Artifact
 │   │   │   ├── processing_result.py # ProcessingResult (profile return type)
-│   │   │   ├── provider_result.py   # ProviderResult (provider return type)
+│   │   │   ├── ai_provider_result.py # AIProviderResult (provider return type)
 │   │   │   └── write_plan.py        # WritePlan, WriteOp
 │   │   ├── profiles/            # Profile abstractions
 │   │   │   ├── workflow_profile.py  # WorkflowProfile ABC
 │   │   │   └── profile_factory.py   # ProfileFactory registry
-│   │   ├── providers/           # Response provider abstractions
-│   │   │   ├── response_provider.py # ResponseProvider ABC (validate, generate)
-│   │   │   ├── provider_factory.py  # ResponseProviderFactory registry
-│   │   │   ├── manual_provider.py   # ManualProvider (returns None)
-│   │   │   └── claude_code_provider.py # ClaudeCodeProvider (SDK-based)
+│   │   ├── providers/           # AI provider abstractions
+│   │   │   ├── ai_provider.py       # AIProvider ABC (validate, generate)
+│   │   │   ├── provider_factory.py  # AIProviderFactory registry
+│   │   │   ├── manual_provider.py   # ManualAIProvider (returns None)
+│   │   │   └── claude_code_provider.py # ClaudeCodeAIProvider (SDK-based)
 │   │   ├── errors.py            # ProviderError exception
 │   │   ├── persistence/
 │   │   │   └── session_store.py     # SessionStore (JSON file I/O)
@@ -145,7 +145,7 @@ ai-workflow-engine/
 |-----------|------|----------|
 | Profile | Generate prompts, parse responses, return WritePlan | File I/O, mutate state |
 | Engine | Execute WritePlan, validate provider results, compute hashes | Generate prompts, parse responses |
-| Provider | Accept prompt, return ProviderResult (or None for manual) | Mutate state |
+| Provider | Accept prompt, return AIProviderResult (or None for manual) | Mutate state |
 
 ### Phase + Stage Model (ADR-0012)
 
@@ -160,14 +160,14 @@ Flow: `PLAN[PROMPT]` → approve → `PLAN[RESPONSE]` → approve → `GENERATE[
 ### AI Providers
 
 Providers enable automated workflow execution:
-- `ResponseProviderFactory.create("claude-code")` - creates provider instance
+- `AIProviderFactory.create("claude-code")` - creates provider instance
 - `validate()` called during `initialize_run()` - fail fast before workflow starts
-- `generate()` returns `ProviderResult` with `files: dict[str, str | None]`
+- `generate()` returns `AIProviderResult` with `files: dict[str, str | None]`
 - `None` value in files dict = provider wrote file directly (local-write)
 - String value = content for engine to write (API-only providers)
 - `fs_ability` metadata: `local-write`, `local-read`, `none`
 
-**Registered providers:** `manual`, `claude-code`
+**Registered providers:** `manual`, `claude-code`, `gemini-cli`
 
 ### Data Flow
 
@@ -226,7 +226,7 @@ Keep it simple. No Claude co-author citations.
 |--------|----------|---------|
 | CLI command | `cli.py`, `output_models.py` | Click command + Pydantic output model |
 | Workflow profile | `profiles/` directory | Implement `WorkflowProfile` ABC, register in factory |
-| Response provider | `domain/providers/` | Implement `ResponseProvider` ABC, register in `ResponseProviderFactory` |
+| AI provider | `domain/providers/` | Implement `AIProvider` ABC, register in `AIProviderFactory` |
 
 ## Don'ts
 

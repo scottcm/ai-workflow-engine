@@ -70,7 +70,7 @@ def test_session_store_deserialize_wrong_type_raises_valueerror(tmp_path: Path) 
         "profile": "jpa-mt",
         "scope": "domain",
         "entity": "Test",
-        "providers": {},
+        "ai_providers": {},
         "execution_mode": "interactive",
         "phase": 12345,  # Wrong type - should be string
         "status": "in_progress",
@@ -103,7 +103,7 @@ def test_session_store_deserialize_invalid_phase_enum_raises_valueerror(tmp_path
         "profile": "jpa-mt",
         "scope": "domain",
         "entity": "Test",
-        "providers": {},
+        "ai_providers": {},
         "execution_mode": "interactive",
         "phase": "NONEXISTENT_PHASE",  # Invalid enum value
         "status": "in_progress",

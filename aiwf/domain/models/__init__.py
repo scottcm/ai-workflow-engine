@@ -10,7 +10,7 @@ from .workflow_state import (
 from .write_plan import WriteOp, WritePlan
 from .processing_result import ProcessingResult
 from .prompt_sections import PromptSections
-from .provider_result import ProviderResult
+from .ai_provider_result import AIProviderResult
 
 
 __all__ = [
@@ -22,5 +22,5 @@ __all__ = [
     "WritePlan",
     "ProcessingResult",
     "PromptSections",
-    "ProviderResult",
+    "AIProviderResult",
 ]

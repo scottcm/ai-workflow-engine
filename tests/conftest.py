@@ -5,8 +5,8 @@ import pytest
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import WorkflowStatus
-from aiwf.domain.providers.response_provider import ResponseProvider
-from aiwf.domain.providers.provider_factory import ProviderFactory
+from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 
 
 @pytest.fixture(scope="session")
@@ -63,7 +63,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AIWF_SESSIONS_ROOT", raising=False)
 
 
-class FakeProvider(ResponseProvider):
+class FakeProvider(AIProvider):
     """Fake provider for testing - validates successfully and returns None."""
 
     @classmethod
@@ -94,18 +94,18 @@ def _register_test_providers():
     to prevent test pollution.
     """
     # Snapshot registry state before test
-    original_registry = dict(ProviderFactory._registry)
+    original_registry = dict(AIProviderFactory._registry)
 
     # Register common test provider keys
     for key in ["gemini", "planner", "reviewer", "generator"]:
-        if key not in ProviderFactory._registry:
-            ProviderFactory.register(key, FakeProvider)
+        if key not in AIProviderFactory._registry:
+            AIProviderFactory.register(key, FakeProvider)
 
     yield
 
     # Restore original registry state after test
-    ProviderFactory._registry.clear()
-    ProviderFactory._registry.update(original_registry)
+    AIProviderFactory._registry.clear()
+    AIProviderFactory._registry.update(original_registry)
 
 
 def make_fake_approve(return_value=None, side_effect=None):

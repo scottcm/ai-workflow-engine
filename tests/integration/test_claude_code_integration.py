@@ -1,4 +1,4 @@
-"""Integration tests for ClaudeCodeProvider.
+"""Integration tests for ClaudeCodeAIProvider.
 
 These tests invoke the actual Claude Code CLI via the Agent SDK and require:
 1. Claude Code CLI installed (`claude` command available)
@@ -17,8 +17,8 @@ from pathlib import Path
 import pytest
 
 from aiwf.domain.errors import ProviderError
-from aiwf.domain.models.provider_result import ProviderResult
-from aiwf.domain.providers.claude_code_provider import ClaudeCodeProvider
+from aiwf.domain.models.ai_provider_result import AIAIProviderResult
+from aiwf.domain.providers.claude_code_provider import ClaudeCodeAIProvider
 
 
 # Check if Claude CLI is available
@@ -36,14 +36,14 @@ pytestmark = [
 
 @pytest.fixture
 def provider():
-    """Create a ClaudeCodeProvider instance."""
-    return ClaudeCodeProvider()
+    """Create a ClaudeCodeAIProvider instance."""
+    return ClaudeCodeAIProvider()
 
 
 @pytest.fixture
 def provider_with_read_only():
-    """Create a ClaudeCodeProvider with read-only tools."""
-    return ClaudeCodeProvider({
+    """Create a ClaudeCodeAIProvider with read-only tools."""
+    return ClaudeCodeAIProvider({
         "allowed_tools": ["Read", "Grep", "Glob"],
         "permission_mode": "plan",
     })
@@ -87,7 +87,7 @@ class TestClaudeCodeGenerate:
             "Respond with exactly the word 'HELLO' and nothing else.",
         )
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
         assert result.response is not None
         assert "HELLO" in result.response.upper()
 
@@ -98,7 +98,7 @@ class TestClaudeCodeGenerate:
             system_prompt="Respond with only the numeric answer, no explanation.",
         )
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
         assert result.response is not None
         assert "4" in result.response
 
@@ -118,7 +118,7 @@ class TestClaudeCodeGenerate:
             context=context,
         )
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
         assert result.response is not None
         assert "BANANA" in result.response.upper()
 
@@ -135,7 +135,7 @@ class TestClaudeCodeGenerate:
 
         result = provider_with_read_only.generate(prompt)
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
         assert result.response is not None
         # Should contain numbers and DONE
         assert "1" in result.response
@@ -150,8 +150,8 @@ class TestClaudeCodeFileWrite:
     """Integration tests for file writing capability."""
 
     def test_file_write_tracked_in_result(self, tmp_path):
-        """File writes are tracked in ProviderResult.files."""
-        provider = ClaudeCodeProvider({
+        """File writes are tracked in AIProviderResult.files."""
+        provider = ClaudeCodeAIProvider({
             "working_dir": str(tmp_path),
             "allowed_tools": ["Read", "Write"],
             "permission_mode": "acceptEdits",
@@ -162,7 +162,7 @@ class TestClaudeCodeFileWrite:
             "containing the text 'Hello from Claude'."
         )
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
         # Verify file was created
         test_file = tmp_path / "test_output.txt"
         assert test_file.exists(), "File should have been created"
@@ -178,24 +178,24 @@ class TestClaudeCodeFileWrite:
     not claude_cli_available(),
     reason="Claude CLI not installed"
 )
-class TestClaudeCodeProviderModels:
+class TestClaudeCodeAIProviderModels:
     """Integration tests for model selection."""
 
     def test_default_model(self):
         """Provider works with default model."""
-        provider = ClaudeCodeProvider({
+        provider = ClaudeCodeAIProvider({
             "allowed_tools": ["Read"],  # Minimal tools
             "permission_mode": "plan",
         })
 
         result = provider.generate("Say 'test'")
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
         assert result.response is not None
 
     def test_specific_model(self):
         """Provider can use specific model."""
-        provider = ClaudeCodeProvider({
+        provider = ClaudeCodeAIProvider({
             "model": "sonnet",
             "allowed_tools": ["Read"],
             "permission_mode": "plan",
@@ -203,7 +203,7 @@ class TestClaudeCodeProviderModels:
 
         result = provider.generate("Say 'sonnet test'")
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
         assert result.response is not None
 
 
@@ -211,12 +211,12 @@ class TestClaudeCodeProviderModels:
     not claude_cli_available(),
     reason="Claude CLI not installed"
 )
-class TestClaudeCodeProviderConfig:
+class TestClaudeCodeAIProviderConfig:
     """Integration tests for configuration options."""
 
     def test_max_turns_limits_iterations(self):
         """max_turns config limits agent iterations."""
-        provider = ClaudeCodeProvider({
+        provider = ClaudeCodeAIProvider({
             "max_turns": 1,
             "allowed_tools": ["Read"],
             "permission_mode": "plan",
@@ -225,12 +225,12 @@ class TestClaudeCodeProviderConfig:
         # This should complete quickly due to max_turns=1
         result = provider.generate("Explain what max_turns does briefly.")
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
         # With max_turns=1, we may get partial response but should not error
 
     def test_thinking_tokens_config(self):
         """max_thinking_tokens config is accepted."""
-        provider = ClaudeCodeProvider({
+        provider = ClaudeCodeAIProvider({
             "max_thinking_tokens": 0,  # Disable thinking
             "allowed_tools": ["Read"],
             "permission_mode": "plan",
@@ -238,19 +238,19 @@ class TestClaudeCodeProviderConfig:
 
         result = provider.generate("Say 'test'")
 
-        assert isinstance(result, ProviderResult)
+        assert isinstance(result, AIProviderResult)
 
 
 @pytest.mark.skipif(
     not claude_cli_available(),
     reason="Claude CLI not installed"
 )
-class TestClaudeCodeProviderErrors:
+class TestClaudeCodeAIProviderErrors:
     """Integration tests for error handling."""
 
     def test_invalid_permission_mode_fails(self):
         """Provider fails with invalid permission mode."""
-        provider = ClaudeCodeProvider({
+        provider = ClaudeCodeAIProvider({
             "permission_mode": "invalid_mode",
         })
 
@@ -259,12 +259,12 @@ class TestClaudeCodeProviderErrors:
             provider.generate("Say 'test'")
 
 
-class TestClaudeCodeProviderMetadataIntegration:
+class TestClaudeCodeAIProviderMetadataIntegration:
     """Integration tests for provider metadata."""
 
     def test_metadata_is_complete(self):
         """Provider metadata has all required fields."""
-        metadata = ClaudeCodeProvider.get_metadata()
+        metadata = ClaudeCodeAIProvider.get_metadata()
 
         required_fields = [
             "name",
@@ -282,7 +282,7 @@ class TestClaudeCodeProviderMetadataIntegration:
 
     def test_metadata_values_reasonable(self):
         """Provider metadata has reasonable values."""
-        metadata = ClaudeCodeProvider.get_metadata()
+        metadata = ClaudeCodeAIProvider.get_metadata()
 
         assert metadata["name"] == "claude-code"
         assert metadata["default_response_timeout"] >= 60

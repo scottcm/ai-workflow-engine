@@ -61,7 +61,7 @@ class StandardsProvider(Protocol):
 class StandardsProviderFactory:
     """Factory for creating standards provider instances.
 
-    Follows the same pattern as ProviderFactory for AI providers.
+    Follows the same pattern as AIProviderFactory for AI providers.
     """
 
     _registry: dict[str, type[StandardsProvider]] = {}
