@@ -31,6 +31,26 @@ context:
     columns, constraints, and relationships.
 
 # =============================================================================
+# INPUT VALIDATION (V2)
+# Guidance on what to do if required inputs are missing or invalid
+# =============================================================================
+input_validation:
+  header: "### Input Validation"
+  content: |
+    Before proceeding, verify:
+    1. The schema file at `{{schema_file}}` exists and is readable
+    2. The file contains DDL for the `{{table}}` table
+
+    **If validation fails:** STOP immediately and report:
+    ```
+    VALIDATION FAILED: [reason]
+    - Expected: [what was expected]
+    - Found: [what was actually found or "file not found"]
+    ```
+
+    Do not attempt to guess or assume schema structure if the file is missing or malformed.
+
+# =============================================================================
 # CONVENTIONS SECTION
 # These tables are always included - values come from conventions.json
 # =============================================================================
@@ -114,8 +134,10 @@ task:
   artifacts:
     entity:
       phase: Entity Design Decisions
+      # First step is conditional based on base_entity_class - handled by profile
+      base_entity_step_with_class: "Determine if entity should extend `{{base_entity_class}}` (provides: {{base_entity_fields}}). Extend if: {{base_entity_criteria}}"
+      base_entity_step_without_class: "Design entity fields from scratch (no project base entity defined)"
       steps:
-        - Determine if entity should extend BaseEntity (has id, public_id, timestamps, version, is_active)
         - Map SQL types to Java types for each column
         - Identify @Column annotation requirements (name, nullable, length)
         - Plan relationship mappings (ManyToOne, OneToMany) with fetch/cascade strategies
@@ -211,8 +233,10 @@ expected_output:
   artifacts:
     entity:
       section: Entity Design
+      # First item is conditional based on base_entity_class - handled by profile
+      extends_item_with_class: "Extends: {{base_entity_class}} | None"
+      extends_item_without_class: "Fields: [all fields - no base entity]"
       items:
-        - "Extends: BaseEntity | None"
         - "Fields: [table mapping column -> field -> type]"
         - "Relationships: [ManyToOne/OneToMany with fetch/cascade]"
         - "Validations: [@NotNull, @Size, etc.]"
@@ -289,6 +313,15 @@ expected_output:
   # Closing sections always included
   closing:
     - section: Open Questions
+      guidance: |
+        Use this section for decisions that:
+        - Have multiple valid approaches with different trade-offs
+        - Depend on business context not available in the schema
+        - Require clarification of ambiguous requirements
+        - Could significantly impact downstream artifacts
+
+        Do NOT include questions that can be answered from the schema or standards.
+        Each question should include: context, options considered, and recommendation if you have one.
       items:
         - "[Any uncertainties or decisions needing human input]"
 
@@ -297,11 +330,30 @@ expected_output:
         - "[List applicable rules and how they'll be satisfied]"
 
 # =============================================================================
+# PRE-OUTPUT CHECKLIST (V3)
+# Self-verification before declaring the plan complete
+# =============================================================================
+pre_output_checklist:
+  header: "### Pre-Output Checklist"
+  intro: "Before stopping, verify your plan includes:"
+  # Third item is conditional based on base_entity_class - handled by profile
+  base_entity_check_with_class: "[ ] {{base_entity_class}} decision is documented with rationale"
+  base_entity_check_without_class: "[ ] Entity field design is complete (no base entity to extend)"
+  items:
+    - "[ ] All columns from schema DDL are accounted for (mapped or explicitly excluded with reason)"
+    - "[ ] Multi-tenancy classification is justified with evidence from schema"
+    - "[ ] All relationships have explicit fetch strategy (LAZY) and cascade settings"
+    - "[ ] Each design decision cites a rule ID from standards or marks [ASSUMPTION]"
+    - "[ ] File list matches the artifacts for this scope"
+
+# =============================================================================
 # INSTRUCTIONS
 # =============================================================================
 instructions:
   items:
     - "Read the schema file at `{{schema_file}}`"
+    - "Verify input files exist (see Input Validation above)"
     - "Analyze thoroughly before writing"
     - "Create `plan.md` with your implementation plan"
+    - "Run through the Pre-Output Checklist"
     - "**STOP and wait for approval** - Do not proceed to code generation"

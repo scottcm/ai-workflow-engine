@@ -29,9 +29,22 @@ Working documents (e.g., `claude-code-provider-work.md`) preserve implementation
 
 1. **Read first** - Before any implementation work, read the working document to recover context
 2. **Check Design Rationale** - Before proposing changes, verify you're not re-proposing rejected approaches
-3. **Update as you work** - Add new decisions, bug fixes, and rationale as work progresses
+3. **Update incrementally** - Update the working file BEFORE and AFTER each piece of work, not at end of session
 4. **Include "why"** - For each decision, capture the reasoning; for rejected alternatives, note `(rejected: reason)`
 5. **Keep current** - Mark completed items, update test counts, note pending work
+
+### When to Update Working Documents
+
+| Trigger | Action |
+|---------|--------|
+| Design decision made | Add to Decisions table with rationale + rejected alternatives |
+| Implementation complete | Add to Implementation Status table |
+| Bug found/fixed | Add to Bugs Fixed table |
+| Test verification | Note pass count |
+| Task started | Mark as in-progress |
+| Task done | Mark as complete |
+
+**Why incremental updates matter:** Context compression loses mental state. The working file is external memory. If you batch updates at end of session, you risk losing work if context compresses mid-task.
 
 ### Design Rationale Format
 

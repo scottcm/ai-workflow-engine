@@ -35,7 +35,10 @@
       "public_id_type": "UUID",
       "timestamp_type": "OffsetDateTime",
       "tech_stack": "Spring Boot, Hibernate, and PostgreSQL",
-      "technical_constraints": "- Java 21+ features allowed\n- All timestamps MUST use `OffsetDateTime`\n- Primary keys use `Long`\n- Public IDs use `UUID`\n- All relationships MUST use `FetchType.LAZY`\n- JSONB columns require hypersistence-utils `@Type(JsonType.class)`"
+      "technical_constraints": "- Java 21+ features allowed\n- All timestamps MUST use `OffsetDateTime`\n- Primary keys use `Long`\n- Public IDs use `UUID`\n- All relationships MUST use `FetchType.LAZY`\n- JSONB columns require hypersistence-utils `@Type(JsonType.class)`",
+      "base_entity_class": "BaseEntity",
+      "base_entity_fields": "id, publicId, createdAt, updatedAt, version, isActive",
+      "base_entity_criteria": "table has id (BIGSERIAL PK), public_id (UUID), created_at, updated_at, version, is_active columns"
     },
     "custom": {
       "admin_connection_pool": "admin",
@@ -78,7 +81,10 @@
       "public_id_type": "UUID",
       "timestamp_type": "OffsetDateTime",
       "tech_stack": "Spring Boot, Hibernate, and PostgreSQL",
-      "technical_constraints": "- Java 21+ features allowed\n- All timestamps MUST use `OffsetDateTime`\n- Primary keys use `Long`\n- Public IDs use `UUID`\n- All relationships MUST use `FetchType.LAZY`\n- JSONB columns require hypersistence-utils `@Type(JsonType.class)`"
+      "technical_constraints": "- Java 21+ features allowed\n- All timestamps MUST use `OffsetDateTime`\n- Primary keys use `Long`\n- Public IDs use `UUID`\n- All relationships MUST use `FetchType.LAZY`\n- JSONB columns require hypersistence-utils `@Type(JsonType.class)`",
+      "base_entity_class": "",
+      "base_entity_fields": "",
+      "base_entity_criteria": ""
     },
     "custom": {}
   },
@@ -119,7 +125,10 @@
       "public_id_type": "UUID",
       "timestamp_type": "Instant",
       "tech_stack": "Spring Boot and JPA with MySQL",
-      "technical_constraints": "- Java 17+ features allowed\n- All timestamps MUST use `Instant`\n- Primary keys use `UUID`\n- All relationships MUST use `FetchType.LAZY`"
+      "technical_constraints": "- Java 17+ features allowed\n- All timestamps MUST use `Instant`\n- Primary keys use `UUID`\n- All relationships MUST use `FetchType.LAZY`",
+      "base_entity_class": "",
+      "base_entity_fields": "",
+      "base_entity_criteria": ""
     },
     "custom": {
       "audit_created_field": "createdAt",

@@ -381,7 +381,7 @@ class JpaMtProfile(WorkflowProfile):
         )
 
     def _build_planning_prompt_from_yaml(
-        self, context: dict, artifacts: list[str]
+        self, context: dict, artifacts: list[str], variables: dict[str, str]
     ) -> str:
         """Build planning prompt from YAML configuration.
 
@@ -391,6 +391,7 @@ class JpaMtProfile(WorkflowProfile):
         Args:
             context: Workflow context dict
             artifacts: List of artifact types to generate
+            variables: Resolved convention variables (for conditional logic)
 
         Returns:
             Assembled markdown prompt (with {{var}} placeholders intact)
@@ -415,6 +416,14 @@ class JpaMtProfile(WorkflowProfile):
         lines.append("")
         lines.append(config["context"]["schema_reference"].strip())
         lines.append("")
+
+        # --- Input Validation Section (V2) ---
+        if "input_validation" in config:
+            iv = config["input_validation"]
+            lines.append(iv["header"])
+            lines.append("")
+            lines.append(iv["content"].strip())
+            lines.append("")
 
         # --- Conventions Section ---
         lines.append("### Project Conventions")
@@ -472,6 +481,15 @@ class JpaMtProfile(WorkflowProfile):
                 phase = artifact_phases[artifact]
                 lines.append(f"### {phase['phase']}")
                 lines.append("")
+                # Handle conditional base entity step for entity artifact
+                if artifact == "entity":
+                    if "base_entity_step_with_class" in phase:
+                        # Check if base_entity_class is set in convention variables
+                        base_entity_class = variables.get("base_entity_class", "")
+                        if base_entity_class:
+                            lines.append(f"- {phase['base_entity_step_with_class']}")
+                        else:
+                            lines.append(f"- {phase['base_entity_step_without_class']}")
                 for step in phase["steps"]:
                     lines.append(f"- {step}")
                 lines.append("")
@@ -535,6 +553,14 @@ class JpaMtProfile(WorkflowProfile):
             if artifact in artifact_sections:
                 section = artifact_sections[artifact]
                 lines.append(f"## {section['section']}")
+                # Handle conditional extends item for entity artifact
+                if artifact == "entity":
+                    if "extends_item_with_class" in section:
+                        base_entity_class = variables.get("base_entity_class", "")
+                        if base_entity_class:
+                            lines.append(f"- {section['extends_item_with_class']}")
+                        else:
+                            lines.append(f"- {section['extends_item_without_class']}")
                 for item in section["items"]:
                     lines.append(f"- {item}")
                 lines.append("")
@@ -560,6 +586,11 @@ class JpaMtProfile(WorkflowProfile):
         # Closing sections
         for section in expected["closing"]:
             lines.append(f"## {section['section']}")
+            # Include guidance if present (V5 for Open Questions)
+            if "guidance" in section:
+                lines.append("")
+                lines.append(section["guidance"].strip())
+                lines.append("")
             for item in section["items"]:
                 lines.append(f"- {item}")
             lines.append("")
@@ -568,6 +599,30 @@ class JpaMtProfile(WorkflowProfile):
         lines.append("")
         lines.append("---")
         lines.append("")
+
+        # --- Pre-Output Checklist Section (V3) ---
+        if "pre_output_checklist" in config:
+            poc = config["pre_output_checklist"]
+            lines.append(poc["header"])
+            lines.append("")
+            lines.append(poc["intro"])
+            lines.append("")
+            # First two items from the list
+            for item in poc["items"][:2]:
+                lines.append(f"- {item}")
+            # Conditional base entity check (inserted after multi-tenancy)
+            if "base_entity_check_with_class" in poc:
+                base_entity_class = variables.get("base_entity_class", "")
+                if base_entity_class:
+                    lines.append(f"- {poc['base_entity_check_with_class']}")
+                else:
+                    lines.append(f"- {poc['base_entity_check_without_class']}")
+            # Remaining items
+            for item in poc["items"][2:]:
+                lines.append(f"- {item}")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
 
         # --- Instructions Section ---
         lines.append("## Instructions")
@@ -595,17 +650,22 @@ class JpaMtProfile(WorkflowProfile):
         if not scope_config:
             raise ValueError(f"Unknown scope: {scope}")
 
-        # Build prompt from YAML configuration (with {{var}} placeholders)
-        prompt = self._build_planning_prompt_from_yaml(context, scope_config.artifacts)
-
         # Get convention name from context (optional)
         convention_name = context.get("conventions")
 
-        # Build complete variable dict from context and conventions
+        # Build complete variable dict from context and conventions FIRST
+        # (needed for conditional logic in prompt builder)
         variables = self._build_variables(context, convention_name)
 
         # Add computed variables
         variables["artifacts"] = ", ".join(scope_config.artifacts)
+
+        # Build prompt from YAML configuration (with {{var}} placeholders)
+        # Pass variables for conditional logic (e.g., base_entity_class)
+        prompt = self._build_planning_prompt_from_yaml(
+            context, scope_config.artifacts, variables
+        )
+
         # Note: Standards are referenced by file path, not embedded (see _build_planning_prompt_from_yaml)
 
         # Apply multi-pass variable resolution
