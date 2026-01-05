@@ -36,6 +36,7 @@ from aiwf.domain.models.approval_result import (
 from aiwf.application.approval_config import ApprovalConfig
 from aiwf.domain.validation.path_validator import normalize_metadata_paths
 from aiwf.domain.models.prompt_sections import PromptSections
+from aiwf.domain.models.ai_provider_result import AIProviderResult
 
 if TYPE_CHECKING:
     from aiwf.domain.events.emitter import WorkflowEventEmitter
@@ -486,8 +487,20 @@ class WorkflowOrchestrator:
                 state,
                 f"Awaiting {response_filename} (manual provider)"
             )
+        elif isinstance(response, AIProviderResult):
+            # SDK-based provider - handle result object
+            if response.response:
+                response_path.write_text(response.response, encoding="utf-8")
+                self._add_message(state, f"Created {response_filename}")
+            # Handle files dict for code generation
+            for file_path, content in response.files.items():
+                if content is not None:
+                    full_path = iteration_dir / "code" / file_path
+                    full_path.parent.mkdir(parents=True, exist_ok=True)
+                    full_path.write_text(content, encoding="utf-8")
+                    self._add_message(state, f"Created code/{file_path}")
         else:
-            # Automated provider - write response file
+            # Legacy string response
             response_path.write_text(response, encoding="utf-8")
             self._add_message(state, f"Created {response_filename}")
 
