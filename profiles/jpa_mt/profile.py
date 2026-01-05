@@ -3,6 +3,8 @@
 Multi-tenant JPA code generation for Spring/Hibernate environments.
 """
 
+import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,8 @@ from .standards import JpaMtStandardsProvider
 # Register the standards provider with the factory
 from aiwf.domain.standards import StandardsProviderFactory
 StandardsProviderFactory.register("yaml-rules", JpaMtStandardsProvider)
+
+logger = logging.getLogger(__name__)
 
 
 class JpaMtProfile(WorkflowProfile):
@@ -67,44 +71,143 @@ class JpaMtProfile(WorkflowProfile):
         return {"rules_path": rules_path}
 
     # =========================================================================
+    # TEMPLATE RESOLUTION
+    # =========================================================================
+
+    def _resolve_template_path(self, name: str, context: dict) -> Path:
+        """Resolve template path with project override support.
+
+        Resolution order:
+        1. Project directory: {working_dir}/.aiwf/jpa-mt/templates/{name}
+        2. Profile defaults: profiles/jpa_mt/templates/{name}
+
+        Args:
+            name: Template filename (e.g., "planning-prompt.md")
+            context: Workflow context (may contain "working_dir")
+
+        Returns:
+            Path to the template file
+
+        Raises:
+            FileNotFoundError: If template not found in any location
+        """
+        # Get working directory from context or use current directory
+        working_dir = Path(context.get("working_dir", ".")).resolve()
+
+        # Check project override first
+        project_path = working_dir / ".aiwf" / "jpa-mt" / "templates" / name
+        if project_path.exists():
+            logger.debug("Using project template: %s", project_path)
+            return project_path
+
+        # Fall back to profile defaults
+        profile_path = Path(__file__).parent / "templates" / name
+        if profile_path.exists():
+            logger.debug("Using profile template: %s", profile_path)
+            return profile_path
+
+        raise FileNotFoundError(
+            f"Template not found: {name}\n"
+            f"Searched:\n"
+            f"  - {project_path}\n"
+            f"  - {profile_path}"
+        )
+
+    def _load_template(
+        self,
+        name: str,
+        context: dict,
+        extra_vars: dict[str, str] | None = None,
+    ) -> str:
+        """Load and resolve a template file.
+
+        Loads the template from disk and substitutes placeholders with
+        values from context and extra_vars. Placeholders use {{name}} syntax.
+
+        Args:
+            name: Template filename (e.g., "planning-prompt.md")
+            context: Workflow context dict with entity, table, etc.
+            extra_vars: Additional variables (e.g., artifacts, standards)
+
+        Returns:
+            Fully resolved template string
+
+        Raises:
+            FileNotFoundError: If template not found
+        """
+        template_path = self._resolve_template_path(name, context)
+        content = template_path.read_text(encoding="utf-8")
+
+        # Build substitution dict from context
+        substitutions: dict[str, str] = {
+            "entity": context.get("entity", ""),
+            "table": context.get("table", ""),
+            "bounded_context": context.get("bounded_context", ""),
+            "scope": context.get("scope", "domain"),
+            "schema_file": context.get("schema_file", ""),
+        }
+
+        # Add extra variables (artifacts, standards, etc.)
+        if extra_vars:
+            substitutions.update(extra_vars)
+
+        # Substitute placeholders using regex for {{name}} pattern
+        def replace_placeholder(match: re.Match) -> str:
+            key = match.group(1)
+            if key in substitutions:
+                return substitutions[key]
+            # Leave unrecognized placeholders as-is
+            logger.debug("Unrecognized placeholder: {{%s}}", key)
+            return match.group(0)
+
+        resolved = re.sub(r"\{\{(\w+)\}\}", replace_placeholder, content)
+        return resolved
+
+    # =========================================================================
     # PROMPT GENERATION
     # =========================================================================
 
     def generate_planning_prompt(self, context: dict) -> PromptResult:
-        """Generate planning phase prompt."""
+        """Generate planning phase prompt.
+
+        Loads the planning-prompt.md template and substitutes placeholders
+        with values from context and profile configuration.
+        """
         scope = context.get("scope", "domain")
         scope_config = self.config.scopes.get(scope)
 
         if not scope_config:
             raise ValueError(f"Unknown scope: {scope}")
 
-        # Build prompt as string (engine doesn't fully support PromptSections yet)
-        parts = [
-            "# Role",
-            "You are a senior Java architect specializing in multi-tenant JPA applications.",
-            "",
-            "# Context",
-            self._build_context_section(context),
-            "",
-            "# Task",
-            f"Analyze the schema and create an implementation plan for the {context['entity']} entity.",
-            "",
-            f"Scope: {scope} ({scope_config.description})",
-            f"Artifacts to generate: {', '.join(scope_config.artifacts)}",
-            "",
-            "Your plan should include:",
-            "1. Entity analysis (fields, types, relationships)",
-            "2. Multi-tenancy strategy (global vs tenant-scoped based on schema)",
-            "3. Implementation decisions (field mappings, validation rules)",
-            "4. File list with expected paths",
-            "",
-            "# Standards",
-            self._get_standards_summary(context),
-            "",
-            "# Expected Output",
-            "Create a file named `plan.md` with your implementation plan.",
-        ]
-        return "\n".join(parts)
+        # Build extra variables for template substitution
+        extra_vars = {
+            "artifacts": ", ".join(scope_config.artifacts),
+            "standards": self._get_standards_for_context(context),
+        }
+
+        return self._load_template("planning-prompt.md", context, extra_vars)
+
+    def _get_standards_for_context(self, context: dict) -> str:
+        """Get standards bundle for the current context.
+
+        Uses the standards provider to generate a filtered standards bundle
+        based on the current scope.
+
+        Args:
+            context: Workflow context with scope
+
+        Returns:
+            Markdown-formatted standards bundle
+        """
+        try:
+            config = self.get_standards_config()
+            provider = JpaMtStandardsProvider(config)
+            provider.validate()
+            return provider.create_bundle(context)
+        except Exception as e:
+            # Fall back to summary if provider fails
+            logger.warning("Standards provider failed: %s", e)
+            return self._get_standards_summary(context)
 
     def generate_generation_prompt(self, context: dict) -> PromptResult:
         """Generate code generation phase prompt."""
