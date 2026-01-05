@@ -93,7 +93,9 @@ class PromptAssembler:
         response_filename = Path(response_relpath).name
 
         if fs_ability == "local-write":
-            return f"## Output Destination\n\nDo not display the file contents to the screen.\nSave your response to `{response_relpath}`"
+            # Use absolute path to avoid working directory ambiguity
+            absolute_path = self.session_dir / response_relpath
+            return f"## Output Destination\n\nDo not display the file contents to the screen.\nSave your response to `{absolute_path}`"
         elif fs_ability == "local-read":
             return f"## Output Destination\n\nName your output file `{response_filename}`"
         elif fs_ability == "write-only":

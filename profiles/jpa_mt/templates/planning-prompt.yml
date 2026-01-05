@@ -211,10 +211,10 @@ constraints:
 
 # =============================================================================
 # EXPECTED OUTPUT
-# Structure of the plan.md file the AI should create
+# Structure of the implementation plan
 # =============================================================================
 expected_output:
-  intro: "Create a file named `plan.md` with the following structure:"
+  intro: "Your implementation plan should follow this structure:"
 
   # Common sections always included
   common:
@@ -354,6 +354,6 @@ instructions:
     - "Read the schema file at `{{schema_file}}`"
     - "Verify input files exist (see Input Validation above)"
     - "Analyze thoroughly before writing"
-    - "Create `plan.md` with your implementation plan"
+    - "Write your implementation plan (see Output Destination below)"
     - "Run through the Pre-Output Checklist"
-    - "**STOP and wait for approval** - Do not proceed to code generation"
+    - "**STOP** after creating the plan - Do NOT generate code"
