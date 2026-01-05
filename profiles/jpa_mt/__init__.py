@@ -59,6 +59,7 @@ def register(cli_group: click.Group) -> type["WorkflowProfile"]:
     @click.option("--bounded-context", required=True, help="DDD bounded context (e.g., client)")
     @click.option("--schema-file", required=True, type=click.Path(exists=True), help="Path to schema DDL file")
     @click.option("--design", type=click.Path(exists=True), help="Path to design document (optional)")
+    @click.option("--conventions", help="Named convention set from conventions.json (e.g., control-plane)")
     @click.option("--dev", help="Developer identifier")
     @click.option("--task-id", help="Task/ticket identifier")
     @click.option(
@@ -78,6 +79,7 @@ def register(cli_group: click.Group) -> type["WorkflowProfile"]:
         bounded_context: str,
         schema_file: str,
         design: str | None,
+        conventions: str | None,
         dev: str | None,
         task_id: str | None,
         execution_mode: str,
@@ -101,6 +103,8 @@ def register(cli_group: click.Group) -> type["WorkflowProfile"]:
 
         if design:
             context["design"] = design
+        if conventions:
+            context["conventions"] = conventions
 
         # Build metadata
         metadata = {}

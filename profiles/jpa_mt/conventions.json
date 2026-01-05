@@ -1,0 +1,130 @@
+{
+  "control-plane": {
+    "naming": {
+      "entity_class": "{{entity}}",
+      "repository_class": "{{entity}}Repository",
+      "service_class": "{{entity}}Service",
+      "controller_class": "{{entity}}Controller",
+      "dto_request_class": "{{entity}}Request",
+      "dto_response_class": "{{entity}}Response",
+      "mapper_class": "{{entity}}Mapper"
+    },
+    "packages": {
+      "base_package": "com.skillsharbor.backend.controlplane",
+      "entity_package": "{{base_package}}.domain.{{bounded_context}}",
+      "repository_package": "{{base_package}}.repository.{{bounded_context}}",
+      "service_package": "{{base_package}}.service.{{bounded_context}}",
+      "controller_package": "{{base_package}}.api.{{bounded_context}}",
+      "dto_package": "{{base_package}}.dto.{{bounded_context}}",
+      "mapper_package": "{{base_package}}.mapper.{{bounded_context}}"
+    },
+    "tenancy": {
+      "tenant_column": "client_id",
+      "rls_setting": "app.current_client_id",
+      "global_schemas": ["global"],
+      "tenant_schemas": ["app"],
+      "tenant_entity": "Client",
+      "tenant_entity_lower": "client",
+      "tenant_table": "app.clients",
+      "global_schema_example": "global",
+      "tenant_schema_example": "app",
+      "tenant_id_type": "Long"
+    },
+    "technical": {
+      "id_type": "Long",
+      "public_id_type": "UUID",
+      "timestamp_type": "OffsetDateTime",
+      "tech_stack": "Spring Boot, Hibernate, and PostgreSQL",
+      "technical_constraints": "- Java 21+ features allowed\n- All timestamps MUST use `OffsetDateTime`\n- Primary keys use `Long`\n- Public IDs use `UUID`\n- All relationships MUST use `FetchType.LAZY`\n- JSONB columns require hypersistence-utils `@Type(JsonType.class)`"
+    },
+    "custom": {
+      "admin_connection_pool": "admin",
+      "tenant_connection_pool": "tenant"
+    }
+  },
+  "training": {
+    "naming": {
+      "entity_class": "{{entity}}",
+      "repository_class": "{{entity}}Repository",
+      "service_class": "{{entity}}Service",
+      "controller_class": "{{entity}}Controller",
+      "dto_request_class": "{{entity}}Request",
+      "dto_response_class": "{{entity}}Response",
+      "mapper_class": "{{entity}}Mapper"
+    },
+    "packages": {
+      "base_package": "com.skillsharbor.backend.training",
+      "entity_package": "{{base_package}}.domain.{{bounded_context}}",
+      "repository_package": "{{base_package}}.repository.{{bounded_context}}",
+      "service_package": "{{base_package}}.service.{{bounded_context}}",
+      "controller_package": "{{base_package}}.api.{{bounded_context}}",
+      "dto_package": "{{base_package}}.dto.{{bounded_context}}",
+      "mapper_package": "{{base_package}}.mapper.{{bounded_context}}"
+    },
+    "tenancy": {
+      "tenant_column": "client_id",
+      "rls_setting": "training.current_client_id",
+      "global_schemas": ["training_global"],
+      "tenant_schemas": ["training"],
+      "tenant_entity": "Client",
+      "tenant_entity_lower": "client",
+      "tenant_table": "training.clients",
+      "global_schema_example": "training_global",
+      "tenant_schema_example": "training",
+      "tenant_id_type": "Long"
+    },
+    "technical": {
+      "id_type": "Long",
+      "public_id_type": "UUID",
+      "timestamp_type": "OffsetDateTime",
+      "tech_stack": "Spring Boot, Hibernate, and PostgreSQL",
+      "technical_constraints": "- Java 21+ features allowed\n- All timestamps MUST use `OffsetDateTime`\n- Primary keys use `Long`\n- Public IDs use `UUID`\n- All relationships MUST use `FetchType.LAZY`\n- JSONB columns require hypersistence-utils `@Type(JsonType.class)`"
+    },
+    "custom": {}
+  },
+  "generic-example": {
+    "_comment": "Example with different naming conventions",
+    "naming": {
+      "entity_class": "{{entity}}Entity",
+      "repository_class": "{{entity}}Repo",
+      "service_class": "{{entity}}Svc",
+      "controller_class": "{{entity}}Api",
+      "dto_request_class": "Create{{entity}}Dto",
+      "dto_response_class": "{{entity}}Dto",
+      "mapper_class": "{{entity}}Converter"
+    },
+    "packages": {
+      "base_package": "com.example.app",
+      "entity_package": "{{base_package}}.entity",
+      "repository_package": "{{base_package}}.repository",
+      "service_package": "{{base_package}}.service",
+      "controller_package": "{{base_package}}.controller",
+      "dto_package": "{{base_package}}.dto",
+      "mapper_package": "{{base_package}}.mapper"
+    },
+    "tenancy": {
+      "tenant_column": "tenant_id",
+      "rls_setting": "app.current_tenant_id",
+      "global_schemas": ["global", "shared"],
+      "tenant_schemas": ["app"],
+      "tenant_entity": "Tenant",
+      "tenant_entity_lower": "tenant",
+      "tenant_table": "app.tenants",
+      "global_schema_example": "global",
+      "tenant_schema_example": "app",
+      "tenant_id_type": "UUID"
+    },
+    "technical": {
+      "id_type": "UUID",
+      "public_id_type": "UUID",
+      "timestamp_type": "Instant",
+      "tech_stack": "Spring Boot and JPA with MySQL",
+      "technical_constraints": "- Java 17+ features allowed\n- All timestamps MUST use `Instant`\n- Primary keys use `UUID`\n- All relationships MUST use `FetchType.LAZY`"
+    },
+    "custom": {
+      "audit_created_field": "createdAt",
+      "audit_updated_field": "updatedAt",
+      "version_field": "version"
+    }
+  }
+}

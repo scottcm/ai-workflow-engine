@@ -17,15 +17,21 @@ class PromptAssembler:
     - Domain-specific formatting and structure
     """
 
-    # Engine-owned variables that get substituted
-    ENGINE_VARIABLES = {
-        "{{STANDARDS}}": "standards-bundle.md",
-        "{{PLAN}}": "plan.md",
-    }
-
     def __init__(self, session_dir: Path, state: WorkflowState):
         self.session_dir = session_dir
         self.state = state
+
+    def _get_engine_variables(self) -> dict[str, str]:
+        """Build engine-owned variables with workspace-relative paths.
+
+        Returns:
+            Dict mapping variable names to workspace-relative file paths.
+        """
+        session_path = f".aiwf/sessions/{self.state.session_id}"
+        return {
+            "{{STANDARDS}}": f"{session_path}/standards-bundle.md",
+            "{{PLAN}}": f"{session_path}/plan.md",
+        }
 
     def assemble(
         self,
@@ -59,9 +65,13 @@ class PromptAssembler:
         }
 
     def _substitute_engine_variables(self, content: str) -> str:
-        """Substitute engine-owned variables in prompt content."""
+        """Substitute engine-owned variables in prompt content.
+
+        Variables are replaced with workspace-relative paths so the AI
+        can locate files regardless of its working directory context.
+        """
         result = content
-        for variable, value in self.ENGINE_VARIABLES.items():
+        for variable, value in self._get_engine_variables().items():
             result = result.replace(variable, value)
         return result
 

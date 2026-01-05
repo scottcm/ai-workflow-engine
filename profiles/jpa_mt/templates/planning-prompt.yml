@@ -1,0 +1,307 @@
+# JPA-MT Planning Prompt Configuration
+# This file defines the structure of planning prompts for all scopes.
+# The profile assembles the final prompt by selecting sections based on scope/artifacts.
+
+# =============================================================================
+# ROLE
+# =============================================================================
+role:
+  title: JPA Multi-Tenant Entity Planning
+  description: |
+    You are a senior Java architect specializing in multi-tenant JPA applications
+    with {{tech_stack}}. Your task is to analyze a database schema and create a
+    detailed implementation plan for code generation.
+
+# =============================================================================
+# CONTEXT SECTION
+# Variables: entity, table, bounded_context, scope, artifacts, schema_file
+# =============================================================================
+context:
+  header: |
+    **Entity:** {{entity}}
+    **Table:** {{table}}
+    **Bounded Context:** {{bounded_context}}
+    **Scope:** {{scope}}
+    **Artifacts to Generate:** {{artifacts}}
+
+  schema_reference: |
+    ### Schema
+
+    Read the schema DDL at `{{schema_file}}` to understand the table structure,
+    columns, constraints, and relationships.
+
+# =============================================================================
+# CONVENTIONS SECTION
+# These tables are always included - values come from conventions.json
+# =============================================================================
+conventions:
+  naming:
+    header: "**Naming:**"
+    table:
+      - artifact: Entity class
+        pattern: "{{entity_class}}"
+      - artifact: Repository
+        pattern: "{{repository_class}}"
+      - artifact: Service
+        pattern: "{{service_class}}"
+      - artifact: Controller
+        pattern: "{{controller_class}}"
+      - artifact: Request DTO
+        pattern: "{{dto_request_class}}"
+      - artifact: Response DTO
+        pattern: "{{dto_response_class}}"
+      - artifact: Mapper
+        pattern: "{{mapper_class}}"
+
+  packages:
+    header: "**Packages:**"
+    table:
+      - artifact: Entity
+        package: "{{entity_package}}"
+      - artifact: Repository
+        package: "{{repository_package}}"
+      - artifact: Service
+        package: "{{service_package}}"
+      - artifact: Controller
+        package: "{{controller_package}}"
+      - artifact: DTO
+        package: "{{dto_package}}"
+      - artifact: Mapper
+        package: "{{mapper_package}}"
+
+  technical:
+    header: "**Technical:**"
+    table:
+      - setting: Primary key type
+        value: "{{id_type}}"
+      - setting: Public ID type
+        value: "{{public_id_type}}"
+      - setting: Timestamp type
+        value: "{{timestamp_type}}"
+      - setting: Tenant ID type
+        value: "{{tenant_id_type}}"
+
+# =============================================================================
+# TASK PHASES
+# Selected based on artifacts in scope
+# =============================================================================
+task:
+  intro: |
+    Analyze the schema for the `{{table}}` table and create a comprehensive
+    implementation plan for the `{{entity}}` entity.
+
+  # Common phases included for all scopes
+  common:
+    - phase: Schema Analysis
+      steps:
+        - List all columns with their SQL types
+        - Identify nullable vs non-nullable columns
+        - Note any default values or constraints
+        - Identify primary key column(s) and generation strategy
+        - Identify foreign key columns and their targets
+
+    - phase: Multi-Tenancy Classification
+      description: |
+        Classify the entity into one of these categories:
+
+        | Category | Schema | Has {{tenant_column}} | Example |
+        |----------|--------|---------------|---------|
+        | Global Reference | `{{global_schema_example}}.*` | No | tiers, categories |
+        | Tenant-Scoped | `{{tenant_schema_example}}.*` | Yes | users, projects |
+        | Top-Level Tenant | `{{tenant_table}}` | No (IS tenant) | {{tenant_entity_lower}} |
+
+  # Artifact-specific phases
+  artifacts:
+    entity:
+      phase: Entity Design Decisions
+      steps:
+        - Determine if entity should extend BaseEntity (has id, public_id, timestamps, version, is_active)
+        - Map SQL types to Java types for each column
+        - Identify @Column annotation requirements (name, nullable, length)
+        - Plan relationship mappings (ManyToOne, OneToMany) with fetch/cascade strategies
+        - Identify validation annotations (@NotNull, @Size, etc.)
+        - Note any special handling (JSONB, enums, converters)
+
+    repository:
+      phase: Repository Design Decisions
+      steps:
+        - Identify standard CRUD methods needed
+        - Plan tenant-scoped query methods (findByClientIdAnd...)
+        - Identify custom @Query methods for complex lookups
+        - Consider pagination requirements
+        - Note any projections or DTOs for read optimization
+
+    service:
+      phase: Service Design Decisions
+      steps:
+        - Identify business operations (create, update, delete, custom operations)
+        - Determine transaction boundaries (@Transactional scope)
+        - List repository dependencies
+        - Identify cross-service dependencies
+        - Plan validation logic beyond entity constraints
+        - Consider event publishing requirements
+
+    controller:
+      phase: Controller Design Decisions
+      steps:
+        - Design REST endpoints (HTTP method, path, description)
+        - Map operations to HTTP verbs (GET, POST, PUT, PATCH, DELETE)
+        - Plan request/response DTO usage per endpoint
+        - Identify path variables and query parameters
+        - Determine security requirements (@PreAuthorize, roles)
+        - Plan error response handling
+
+    dto:
+      phase: DTO Design Decisions
+      steps:
+        - Identify fields for request DTO (create/update input)
+        - Identify fields for response DTO (API output)
+        - Plan validation annotations on request DTO
+        - Determine which entity fields to expose vs hide
+        - Consider nested DTOs for relationships
+        - Plan any view-specific response variants
+
+    mapper:
+      phase: Mapper Design Decisions
+      steps:
+        - Plan entity → response DTO mapping
+        - Plan request DTO → entity mapping (create)
+        - Plan request DTO → entity mapping (update/patch)
+        - Identify fields requiring special handling
+        - Plan nested object mapping strategy
+        - Consider collection mapping approach
+
+# =============================================================================
+# CONSTRAINTS
+# =============================================================================
+constraints:
+  critical:
+    header: "### CRITICAL Requirements"
+    items:
+      - "**DO NOT generate code** - This is planning phase only"
+      - "**DO NOT assume fields** - Derive everything from schema DDL"
+      - "**Cite rule IDs** for any standards-based decisions (e.g., \"Per JPA-ENT-001...\")"
+      - "**Flag uncertainties** - Mark assumptions with [ASSUMPTION] tag"
+
+  technical:
+    header: "### Technical Constraints"
+    content: "{{technical_constraints}}"
+
+# =============================================================================
+# EXPECTED OUTPUT
+# Structure of the plan.md file the AI should create
+# =============================================================================
+expected_output:
+  intro: "Create a file named `plan.md` with the following structure:"
+
+  # Common sections always included
+  common:
+    - section: Schema Analysis
+      items:
+        - "Table: {{table}}"
+        - "Columns: [table of columns with types]"
+        - "Relationships: [identified FKs and their targets]"
+
+    - section: Multi-Tenancy
+      items:
+        - "Classification: [Global/Tenant-Scoped/Top-Level]"
+        - "Scoping Strategy: [how tenant isolation is enforced]"
+
+  # Artifact-specific design sections
+  artifacts:
+    entity:
+      section: Entity Design
+      items:
+        - "Extends: BaseEntity | None"
+        - "Fields: [table mapping column -> field -> type]"
+        - "Relationships: [ManyToOne/OneToMany with fetch/cascade]"
+        - "Validations: [@NotNull, @Size, etc.]"
+
+    repository:
+      section: Repository Design
+      items:
+        - "Standard Methods: [list with signatures]"
+        - "Custom Queries: [any @Query methods needed]"
+
+    service:
+      section: Service Design
+      items:
+        - "Public Methods: [list with signatures]"
+        - "Transaction Boundaries: [where @Transactional applies]"
+        - "Dependencies: [repositories or other services needed]"
+
+    controller:
+      section: Controller Design
+      items:
+        - "Endpoints: [HTTP method, path, description]"
+        - "Request/Response: [DTO types for each endpoint]"
+        - "Security: [authorization requirements]"
+
+    dto:
+      section: DTO Design
+      items:
+        - "Request DTO: [fields for create/update operations]"
+        - "Response DTO: [fields to expose in responses]"
+        - "Validation: [field constraints]"
+
+    mapper:
+      section: Mapper Design
+      items:
+        - "Entity → Response: [mapping strategy]"
+        - "Request → Entity: [mapping strategy]"
+        - "Special Handling: [nested objects, collections]"
+
+  # File list - entries selected based on artifacts
+  file_list:
+    header: "Files to generate (use the package and naming conventions above):"
+    entries:
+      entity:
+        file: Entity
+        package: "{{entity_package}}"
+        class: "{{entity_class}}"
+      repository:
+        file: Repository
+        package: "{{repository_package}}"
+        class: "{{repository_class}}"
+      service:
+        file: Service
+        package: "{{service_package}}"
+        class: "{{service_class}}"
+      controller:
+        file: Controller
+        package: "{{controller_package}}"
+        class: "{{controller_class}}"
+      dto_request:
+        artifact: dto
+        file: Request DTO
+        package: "{{dto_package}}"
+        class: "{{dto_request_class}}"
+      dto_response:
+        artifact: dto
+        file: Response DTO
+        package: "{{dto_package}}"
+        class: "{{dto_response_class}}"
+      mapper:
+        file: Mapper
+        package: "{{mapper_package}}"
+        class: "{{mapper_class}}"
+
+  # Closing sections always included
+  closing:
+    - section: Open Questions
+      items:
+        - "[Any uncertainties or decisions needing human input]"
+
+    - section: Standards Compliance
+      items:
+        - "[List applicable rules and how they'll be satisfied]"
+
+# =============================================================================
+# INSTRUCTIONS
+# =============================================================================
+instructions:
+  items:
+    - "Read the schema file at `{{schema_file}}`"
+    - "Analyze thoroughly before writing"
+    - "Create `plan.md` with your implementation plan"
+    - "**STOP and wait for approval** - Do not proceed to code generation"
