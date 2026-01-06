@@ -7,7 +7,20 @@ AI agent guide for the AI Workflow Engine codebase.
 - **Platform:** Windows
 - **Python:** 3.13+ via Poetry
 - **Run tests:** `poetry run pytest tests/unit/ -v`
-- **Run CLI:** `poetry run aiwf <command>`
+- **Run CLI:**
+  ```bash
+  # Profile-specific commands (jpa-mt example)
+  poetry run aiwf jpa-mt init --entity X --table Y --bounded-context Z --scope domain --schema-file PATH
+  poetry run aiwf jpa-mt scopes
+  poetry run aiwf jpa-mt info
+
+  # Generic workflow commands
+  poetry run aiwf step <session-id>
+  poetry run aiwf approve <session-id>
+  poetry run aiwf reject <session-id>
+  poetry run aiwf status <session-id>
+  poetry run aiwf list
+  ```
 
 ## Context Recovery and Working Documents
 
@@ -19,45 +32,60 @@ Working documents (e.g., `claude-code-provider-work.md`) preserve implementation
 
 | Section | Purpose |
 |---------|---------|
-| **Current Status** | Quick scan of what's done vs in-progress |
-| **Implementation Summary** | Files changed, with descriptions |
-| **Code Review Findings** | What was reviewed, what was fixed |
-| **Design Rationale** | WHY decisions were made, including rejected alternatives |
-| **Next Steps** | Pending work items |
+| **Active Task** | REQUIRED - What you're doing RIGHT NOW (see below) |
+| **Decisions Made** | WHY decisions were made, including rejected alternatives |
+| **Implementation Status** | What's done, what's pending |
+
+### Active Task Section (CRITICAL)
+
+Every working document MUST have an Active Task section near the top:
+
+```markdown
+## Active Task
+
+**Doing:** [current task - what you're about to do]
+**Why:** [context and reasoning]
+**Blocked by:** [if waiting on something, otherwise omit]
+```
+
+**Protocol:**
+1. BEFORE starting work: Write what you're about to do in Active Task
+2. DO the work
+3. AFTER completing: Clear Active Task, add outcome to relevant section (Decisions, Status, etc.)
+
+**Why this matters:** Context compression loses your mental state. If you only write results AFTER work, compression mid-task means you forget what you were doing. Writing intent FIRST creates a breadcrumb.
 
 ### How to Use Working Documents
 
-1. **Read first** - Before any implementation work, read the working document to recover context
-2. **Check Design Rationale** - Before proposing changes, verify you're not re-proposing rejected approaches
-3. **Update incrementally** - Update the working file BEFORE and AFTER each piece of work, not at end of session
-4. **Include "why"** - For each decision, capture the reasoning; for rejected alternatives, note `(rejected: reason)`
-5. **Keep current** - Mark completed items, update test counts, note pending work
+1. **Read Active Task first** - This tells you what was in progress
+2. **Check Decisions** - Don't re-propose rejected approaches
+3. **Write intent before action** - Update Active Task BEFORE starting work
+4. **Clear when done** - Move outcomes to appropriate sections, clear Active Task
 
-### When to Update Working Documents
+### Decisions Format
 
-| Trigger | Action |
-|---------|--------|
-| Design decision made | Add to Decisions table with rationale + rejected alternatives |
-| Implementation complete | Add to Implementation Status table |
-| Bug found/fixed | Add to Bugs Fixed table |
-| Test verification | Note pass count |
-| Task started | Mark as in-progress |
-| Task done | Mark as complete |
-
-**Why incremental updates matter:** Context compression loses mental state. The working file is external memory. If you batch updates at end of session, you risk losing work if context compresses mid-task.
-
-### Design Rationale Format
-
-Use this table format to preserve decision context:
+Active decisions table:
 
 ```markdown
-| Decision | Why |
-|----------|-----|
-| Gate before hash | Content must be approved before becoming immutable (rejected: hash-then-approve) |
-| Skip retry for PROMPT | Prompts are profile-generated, not AI-generated (rejected: profile regeneration) |
+## Decisions
+
+| # | Decision | Rationale |
+|---|----------|-----------|
+| D1 | Use absolute paths | AI needs to find files regardless of working directory |
+| D2 | Profile describes format, engine controls destination | Separation of concerns |
 ```
 
-The `(rejected: X)` suffix prevents re-proposing dismissed approaches after context compression.
+When a decision is deprecated/changed, move it to Deprecated section:
+
+```markdown
+## Deprecated Decisions
+
+| # | Was | Changed To | Why |
+|---|-----|------------|-----|
+| D1 | Relative paths | D1 (absolute) | AI launched from wrong dir couldn't resolve paths |
+```
+
+**Maintenance:** Periodically review Decisions table. If any no longer apply, move to Deprecated with explanation. The "Changed To" column links to the replacement decision.
 
 ## Quick Reference
 
@@ -248,3 +276,11 @@ Keep it simple. No Claude co-author citations.
 - Don't use `field()` - use `Field()` (Pydantic, not dataclass)
 - Don't change step() return signature (breaking API change)
 - Don't block workflow on hash mismatches (non-enforcement policy)
+
+## Behavioral Rules
+
+1. **Ask before implementing** - When there are multiple valid approaches, present options with your recommendation, then wait for user choice.
+
+2. **Stop and re-read when corrected** - If the user corrects you, don't continue with your assumption. Re-read what they actually said.
+
+3. **Don't persist on corrected topics** - When the user says "not X", stop referencing X. Don't keep bringing it back.
