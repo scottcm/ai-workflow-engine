@@ -29,9 +29,10 @@ ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design
 | [0010](0010-profile-provider-access.md) | Proposed | Profile Provider Access | Future - Multi-pass generation |
 | [0011](0011-prompt-builder-api.md) | Draft | Prompt Builder API | Valid - PromptSections design |
 | [0012](0012-workflow-phases-stages-approval-providers.md) | **Accepted** | Phases, Stages, Approval Providers | **Current architecture** |
-| [0013](0013-claude-code-provider.md) | Accepted | Claude Code Response Provider | SDK-based provider |
-| [0014](0014-gemini-cli-provider.md) | Accepted | Gemini CLI Response Provider | Subprocess-based provider |
+| [0013](0013-claude-code-provider.md) | Accepted | Claude Code AI Provider | SDK-based provider |
+| [0014](0014-gemini-cli-provider.md) | Accepted | Gemini CLI AI Provider | Subprocess-based provider |
 | [0015](0015-approval-provider-implementation.md) | **Accepted** | Approval Provider Implementation | Approval gates system |
+| [0016](0016-v2-workflow-config-and-provider-naming.md) | **Accepted** | V2 Workflow Config and Provider Naming | Provider naming convention |
 
 ---
 
@@ -72,7 +73,7 @@ The following draft ADRs may need updates:
 
 ## Creating New ADRs
 
-Use the next available number (currently 0016). Follow the format:
+Use the next available number (currently 0017). Follow the format:
 
 ```markdown
 # ADR-NNNN: Title

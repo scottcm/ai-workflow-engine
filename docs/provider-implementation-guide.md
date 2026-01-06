@@ -1,14 +1,16 @@
-# Response Provider Implementation Guide
+# AI Provider Implementation Guide
 
-This guide explains how to implement a custom response provider for the AI Workflow Engine.
+This guide explains how to implement a custom AI provider for the AI Workflow Engine.
 
 ## Overview
 
-Response providers enable automated workflow execution by calling external AI services (LLMs). The engine invokes providers during the `approve` command for ING phases (PLANNING, GENERATING, REVIEWING, REVISING).
+AI providers enable automated workflow execution by calling external AI services (LLMs). The engine invokes providers during the `approve` command for ING phases (PLANNING, GENERATING, REVIEWING, REVISING).
+
+**Naming Convention (ADR-0016):** As of v2, providers are named `AIProvider` (not `ResponseProvider`) to clarify their role.
 
 **Key behaviors:**
 - `validate()` is called during `initialize_run()` to fail fast before workflow starts
-- `generate()` returns a `ProviderResult`, or `None` for manual mode (user provides response)
+- `generate()` returns an `AIProviderResult`, or `None` for manual mode (user provides response)
 - `ProviderError` propagates to the orchestrator which sets ERROR status and emits WORKFLOW_FAILED event
 - Timeouts come from provider metadata (per-call overrides are out of scope per ADR-0007)
 
@@ -24,17 +26,17 @@ Providers declare their file system access level via `fs_ability` metadata:
 
 **Local-write providers** write code files directly. The engine validates files exist after execution.
 
-**Non-writing providers** return file content in `ProviderResult.files`. The engine writes files.
+**Non-writing providers** return file content in `AIProviderResult.files`. The engine writes files.
 
-## The ProviderResult Model
+## The AIProviderResult Model
 
-Providers return a `ProviderResult` that supports both file-writing and content-returning modes:
+Providers return an `AIProviderResult` that supports both file-writing and content-returning modes:
 
 ```python
 from pydantic import BaseModel
 
 
-class ProviderResult(BaseModel):
+class AIProviderResult(BaseModel):
     """Result from AI provider execution."""
 
     files: dict[str, str | None]  # {path: content or None if already written}
@@ -53,14 +55,14 @@ class ProviderResult(BaseModel):
 | Non-writing (web chat, API-only) | Content strings | Write files to `/code` |
 | Mixed | Some `None`, some content | Write where needed, validate rest |
 
-## The ResponseProvider Interface
+## The AIProvider Interface
 
 ```python
 from abc import ABC, abstractmethod
 from typing import Any
 
 
-class ResponseProvider(ABC):
+class AIProvider(ABC):
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
         """Return provider metadata.
@@ -103,7 +105,7 @@ class ResponseProvider(ABC):
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> ProviderResult | None:
+    ) -> AIProviderResult | None:
         """Generate AI response.
 
         Args:
@@ -114,7 +116,7 @@ class ResponseProvider(ABC):
             response_timeout: Seconds to wait for response
 
         Returns:
-            ProviderResult with files dict, or None for manual mode.
+            AIProviderResult with files dict, or None for manual mode.
         """
         ...
 ```
@@ -128,12 +130,12 @@ Returns file content for engine to write:
 ```python
 from typing import Any
 
-from aiwf.domain.providers.response_provider import ResponseProvider
-from aiwf.domain.models.provider_result import ProviderResult
+from aiwf.domain.providers.ai_provider import AIProvider
+from aiwf.domain.models.ai_provider_result import AIProviderResult
 from aiwf.domain.errors import ProviderError
 
 
-class MyApiProvider(ResponseProvider):
+class MyApiProvider(AIProvider):
     """API-based provider - returns content, engine writes files."""
 
     def __init__(self, config: dict | None = None):
@@ -164,7 +166,7 @@ class MyApiProvider(ResponseProvider):
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> ProviderResult:
+    ) -> AIProviderResult:
         """Call API and return content for engine to write."""
         response = self._call_api(prompt, system_prompt)
 
@@ -172,7 +174,7 @@ class MyApiProvider(ResponseProvider):
         files = self._parse_code_blocks(response.text)
 
         # Return content - engine will write files
-        return ProviderResult(
+        return AIProviderResult(
             files=files,  # {"Entity.java": "package com...", ...}
             response=response.text,  # Optional: full response for logging
         )
@@ -183,7 +185,7 @@ class MyApiProvider(ResponseProvider):
 Writes files directly, returns `None` values:
 
 ```python
-class ClaudeCodeProvider(ResponseProvider):
+class ClaudeCodeProvider(AIProvider):
     """Local-write provider - writes files directly."""
 
     @classmethod
@@ -206,14 +208,14 @@ class ClaudeCodeProvider(ResponseProvider):
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> ProviderResult:
+    ) -> AIProviderResult:
         """Invoke CLI - it writes files directly."""
         # Prompt tells Claude what files to create and where
         self._invoke_claude_cli(prompt, context)
 
         # Return None values - engine validates files exist
         expected_files = context.get("expected_outputs", [])
-        return ProviderResult(
+        return AIProviderResult(
             files={f: None for f in expected_files},  # None = already written
             response=None,  # Response file also written by Claude
         )
@@ -224,10 +226,10 @@ class ClaudeCodeProvider(ResponseProvider):
 Register your provider with the factory so it can be referenced by key:
 
 ```python
-from aiwf.domain.providers.provider_factory import ProviderFactory
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 from my_module import MyProvider
 
-ProviderFactory.register("my-provider", MyProvider)
+AIProviderFactory.register("my-provider", MyProvider)
 ```
 
 Users can then specify `--provider planner=my-provider` when initializing a workflow.
@@ -257,7 +259,7 @@ The orchestrator catches `ProviderError` in its `approve()` method and:
 For unit tests, use `FakeProvider` from `tests/conftest.py` or create test-specific providers:
 
 ```python
-class FailingProvider(ResponseProvider):
+class FailingProvider(AIProvider):
     """Provider that always fails validation."""
 
     def validate(self) -> None:
@@ -272,12 +274,13 @@ Register test providers in a fixture with cleanup:
 ```python
 @pytest.fixture
 def register_test_provider():
-    ProviderFactory.register("failing", FailingProvider)
+    AIProviderFactory.register("failing", FailingProvider)
     yield
-    del ProviderFactory._registry["failing"]
+    del AIProviderFactory._registry["failing"]
 ```
 
 ## See Also
 
 - [ADR-0007: Plugin Architecture](adr/0007-plugin-architecture.md) - Design rationale for the provider system
+- [ADR-0016: V2 Workflow Config and Provider Naming](adr/0016-v2-workflow-config-and-provider-naming.md) - Provider naming convention
 - [aiwf/domain/providers/manual_provider.py](../aiwf/domain/providers/manual_provider.py) - Reference implementation for manual mode
