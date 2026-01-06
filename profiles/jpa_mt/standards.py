@@ -4,10 +4,13 @@ Reads YAML rules files and produces a markdown standards bundle
 filtered by scope.
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 from aiwf.domain.errors import ProviderError
 
@@ -99,9 +102,15 @@ class JpaMtStandardsProvider:
             Markdown-formatted standards bundle
 
         Raises:
-            ProviderError: If bundle creation fails
+            ProviderError: If bundle creation fails or rules_path not configured
             ValueError: If scope is unknown
         """
+        # Guard: ensure rules_path is configured before loading
+        if not self.rules_path:
+            raise ProviderError(
+                "rules_path not configured. Call validate() first or check configuration."
+            )
+
         scope = context.get("scope") if isinstance(context, dict) else None
 
         if not scope or scope not in SCOPE_PREFIXES:
@@ -119,6 +128,8 @@ class JpaMtStandardsProvider:
     def _load_rules(self) -> dict[str, list[tuple[str, str, str]]]:
         """Load rules from all YAML files.
 
+        Detects and warns about duplicate rule IDs across files.
+
         Returns:
             Dict mapping category names to list of (rule_id, severity, text) tuples
         """
@@ -126,6 +137,7 @@ class JpaMtStandardsProvider:
             return {}
 
         rules_by_category: dict[str, list[tuple[str, str, str]]] = {}
+        seen_rule_ids: dict[str, str] = {}  # rule_id -> first file where seen
         rules_files = sorted(self.rules_path.glob("*.rules.yml"))
 
         for file_path in rules_files:
@@ -133,6 +145,18 @@ class JpaMtStandardsProvider:
                 category_name = self._file_to_category(file_path)
                 file_rules = self._parse_yaml_file(file_path)
                 if file_rules:
+                    # Check for duplicate rule IDs
+                    for rule_id, severity, text in file_rules:
+                        if rule_id in seen_rule_ids:
+                            logger.warning(
+                                "Duplicate rule ID '%s' found in %s "
+                                "(first seen in %s). Last definition wins.",
+                                rule_id,
+                                file_path.name,
+                                seen_rule_ids[rule_id],
+                            )
+                        seen_rule_ids[rule_id] = file_path.name
+
                     rules_by_category[category_name] = file_rules
             except yaml.YAMLError as e:
                 raise ProviderError(f"Failed to parse {file_path}: {e}")

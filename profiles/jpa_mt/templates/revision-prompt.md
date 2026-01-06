@@ -22,6 +22,20 @@ Read the review findings at `iteration-{{iteration}}/review-response.md` to unde
 
 Read the current code in `iteration-{{iteration}}/code/` to understand the existing implementation before making corrections.
 
+### Input Validation
+
+Before proceeding, verify:
+1. The review findings file at `iteration-{{iteration}}/review-response.md` exists and is readable
+2. The review contains a Findings section with specific issues to fix
+3. The current code files exist in `iteration-{{iteration}}/code/`
+
+**If validation fails:** STOP immediately and report:
+```
+VALIDATION FAILED: [reason]
+- Expected: [what was expected]
+- Found: [what was actually found]
+```
+
 ---
 
 ## Task

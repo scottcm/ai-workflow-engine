@@ -37,6 +37,22 @@ Read the generated code files in the current iteration's `code/` directory:
 
 Review each file thoroughly before providing your assessment.
 
+### Input Validation
+
+Before proceeding, verify:
+1. The `code/` directory exists and contains the expected files for scope `{{scope}}`
+2. Each code file is readable and contains valid Java code
+3. The standards bundle is available
+
+**If validation fails:** STOP immediately and report:
+```
+VALIDATION FAILED: [reason]
+- Expected: [what was expected]
+- Found: [what was actually found]
+```
+
+If files are missing, set `missing_inputs` count in REVIEW_META accordingly.
+
 ---
 
 ## Standards

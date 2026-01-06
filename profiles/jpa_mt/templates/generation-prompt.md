@@ -18,6 +18,20 @@ You are a senior Java developer implementing JPA entities and repositories for a
 
 Read the approved implementation plan at `iteration-{{iteration}}/planning-response.md` to understand the complete entity design, field mappings, relationship configurations, and repository methods.
 
+### Input Validation
+
+Before proceeding, verify:
+1. The planning response file at `iteration-{{iteration}}/planning-response.md` exists and is readable
+2. The file contains a complete implementation plan with Entity Design and Repository Design sections
+3. The schema file referenced in the plan exists
+
+**If validation fails:** STOP immediately and report:
+```
+VALIDATION FAILED: [reason]
+- Expected: [what was expected]
+- Found: [what was actually found]
+```
+
 ---
 
 ## Standards
