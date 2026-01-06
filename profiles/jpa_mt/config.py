@@ -35,6 +35,11 @@ class JpaMtConfig(BaseModel):
     # Project settings
     base_package: str = "com.example.app"
 
+    # Question handling mode for planning phase
+    # "manual" = Stop and require human to answer questions (default)
+    # "assume" = AI makes reasonable assumptions with [ASSUMPTION] tag
+    open_questions_mode: Literal["manual", "assume"] = "manual"
+
     # Standards configuration
     standards: StandardsConfig = Field(default_factory=StandardsConfig)
 

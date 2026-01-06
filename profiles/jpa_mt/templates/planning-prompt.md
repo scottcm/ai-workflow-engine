@@ -2,7 +2,7 @@
 
 ## Role
 
-You are a senior Java architect specializing in multi-tenant JPA applications with Spring Boot, Hibernate, and PostgreSQL. Your task is to analyze a database schema and create a detailed implementation plan for JPA entity generation.
+You are a senior Java architect specializing in multi-tenant JPA applications with {{tech_stack}}. Your task is to analyze a database schema and create a detailed implementation plan for JPA entity generation.
 
 ---
 
@@ -17,6 +17,37 @@ You are a senior Java architect specializing in multi-tenant JPA applications wi
 ### Schema
 
 Read the schema DDL at `{{schema_file}}` to understand the table structure, columns, constraints, and relationships.
+
+### Project Conventions
+
+**Naming:**
+| Artifact | Pattern |
+|----------|---------|
+| Entity class | `{{entity_class}}` |
+| Repository | `{{repository_class}}` |
+| Service | `{{service_class}}` |
+| Controller | `{{controller_class}}` |
+| Request DTO | `{{dto_request_class}}` |
+| Response DTO | `{{dto_response_class}}` |
+| Mapper | `{{mapper_class}}` |
+
+**Packages:**
+| Artifact | Package |
+|----------|---------|
+| Entity | `{{entity_package}}` |
+| Repository | `{{repository_package}}` |
+| Service | `{{service_package}}` |
+| Controller | `{{controller_package}}` |
+| DTO | `{{dto_package}}` |
+| Mapper | `{{mapper_package}}` |
+
+**Technical:**
+| Setting | Value |
+|---------|-------|
+| Primary key type | `{{id_type}}` |
+| Public ID type | `{{public_id_type}}` |
+| Timestamp type | `{{timestamp_type}}` |
+| Tenant ID type | `{{tenant_id_type}}` |
 
 ---
 
@@ -44,11 +75,11 @@ Analyze the schema for the `{{table}}` table and create a comprehensive implemen
 
 Classify the entity into one of these categories:
 
-| Category | Schema | Has client_id | Example |
+| Category | Schema | Has {{tenant_column}} | Example |
 |----------|--------|---------------|---------|
-| Global Reference | `global.*` | No | tiers, categories |
-| Tenant-Scoped | `app.*` | Yes | users, projects |
-| Top-Level Tenant | `app.clients` | No (IS tenant) | clients |
+| Global Reference | `{{global_schema_example}}.*` | No | tiers, categories |
+| Tenant-Scoped | `{{tenant_schema_example}}.*` | Yes | users, projects |
+| Top-Level Tenant | `{{tenant_table}}` | No (IS tenant) | {{tenant_entity_lower}} |
 
 ### Phase 3: Implementation Decisions
 
@@ -85,48 +116,13 @@ Classify the entity into one of these categories:
 
 ### Technical Constraints
 
-- Java 21+ features allowed
-- All timestamps MUST use `OffsetDateTime` (not LocalDateTime)
-- All relationships MUST use `FetchType.LAZY`
-- JSONB columns require hypersistence-utils `@Type(JsonType.class)`
+{{technical_constraints}}
 
 ---
 
 ## Expected Output
 
-Create a file named `plan.md` with the following structure:
-
-```markdown
-# Implementation Plan: {{entity}}
-
-## Schema Analysis
-- Table: {{table}}
-- Columns: [table of columns with types]
-- Relationships: [identified FKs and their targets]
-
-## Multi-Tenancy
-- Classification: [Global/Tenant-Scoped/Top-Level]
-- Scoping Strategy: [how tenant isolation is enforced]
-
-## Entity Design
-- Extends: BaseEntity | None
-- Fields: [table mapping column -> field -> type]
-- Relationships: [ManyToOne/OneToMany with fetch/cascade]
-- Validations: [@NotNull, @Size, etc.]
-
-## Repository Design
-- Standard Methods: [list with signatures]
-- Custom Queries: [any @Query methods needed]
-
-## File List
-- [Full path for each file to generate]
-
-## Open Questions
-- [Any uncertainties or decisions needing human input]
-
-## Standards Compliance
-- [List applicable rules and how they'll be satisfied]
-```
+{{expected_output}}
 
 ---
 

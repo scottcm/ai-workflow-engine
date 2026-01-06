@@ -214,7 +214,7 @@ constraints:
 # Structure of the implementation plan
 # =============================================================================
 expected_output:
-  intro: "Your implementation plan should follow this structure:"
+  intro: "Write a markdown document with exactly this structure (this IS your response content):"
 
   # Common sections always included
   common:
@@ -275,45 +275,11 @@ expected_output:
         - "Request → Entity: [mapping strategy]"
         - "Special Handling: [nested objects, collections]"
 
-  # File list - entries selected based on artifacts
-  file_list:
-    header: "Files to generate (use the package and naming conventions above):"
-    entries:
-      entity:
-        file: Entity
-        package: "{{entity_package}}"
-        class: "{{entity_class}}"
-      repository:
-        file: Repository
-        package: "{{repository_package}}"
-        class: "{{repository_class}}"
-      service:
-        file: Service
-        package: "{{service_package}}"
-        class: "{{service_class}}"
-      controller:
-        file: Controller
-        package: "{{controller_package}}"
-        class: "{{controller_class}}"
-      dto_request:
-        artifact: dto
-        file: Request DTO
-        package: "{{dto_package}}"
-        class: "{{dto_request_class}}"
-      dto_response:
-        artifact: dto
-        file: Response DTO
-        package: "{{dto_package}}"
-        class: "{{dto_response_class}}"
-      mapper:
-        file: Mapper
-        package: "{{mapper_package}}"
-        class: "{{mapper_class}}"
-
   # Closing sections always included
   closing:
     - section: Open Questions
-      guidance: |
+      # Guidance varies based on open_questions_mode config - profile selects which to use
+      guidance_manual: |
         Use this section for decisions that:
         - Have multiple valid approaches with different trade-offs
         - Depend on business context not available in the schema
@@ -322,6 +288,13 @@ expected_output:
 
         Do NOT include questions that can be answered from the schema or standards.
         Each question should include: context, options considered, and recommendation if you have one.
+      guidance_assume: |
+        For technical implementation decisions, make reasonable assumptions and document with [ASSUMPTION] tag.
+        Only include questions here for business logic decisions that:
+        - Cannot be inferred from the schema, standards, or design document
+        - Would significantly impact the API contract or data model
+
+        If you must include a question, state your recommended approach and proceed with it as an assumption.
       items:
         - "[Any uncertainties or decisions needing human input]"
 
@@ -344,7 +317,6 @@ pre_output_checklist:
     - "[ ] Multi-tenancy classification is justified with evidence from schema"
     - "[ ] All relationships have explicit fetch strategy (LAZY) and cascade settings"
     - "[ ] Each design decision cites a rule ID from standards or marks [ASSUMPTION]"
-    - "[ ] File list matches the artifacts for this scope"
 
 # =============================================================================
 # INSTRUCTIONS
