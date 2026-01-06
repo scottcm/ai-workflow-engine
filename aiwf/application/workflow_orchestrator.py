@@ -409,12 +409,9 @@ class WorkflowOrchestrator:
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
         iteration_dir.mkdir(parents=True, exist_ok=True)
 
-        # Construct workspace-relative response path for output instructions
-        # Uses forward slashes for cross-platform compatibility
-        response_relpath = (
-            f".aiwf/sessions/{state.session_id}/"
-            f"iteration-{state.current_iteration}/{response_filename}"
-        )
+        # Construct iteration-relative response path for output instructions
+        # PromptAssembler will prepend session_dir to build full path
+        response_relpath = f"iteration-{state.current_iteration}/{response_filename}"
 
         # Assemble prompt: substitute engine variables, append output instructions
         assembler = PromptAssembler(session_dir, state)
@@ -1383,11 +1380,9 @@ class WorkflowOrchestrator:
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
         iteration_dir.mkdir(parents=True, exist_ok=True)
 
-        # Construct workspace-relative response path for output instructions
-        response_relpath = (
-            f".aiwf/sessions/{state.session_id}/"
-            f"iteration-{state.current_iteration}/{response_filename}"
-        )
+        # Construct iteration-relative response path for output instructions
+        # PromptAssembler will prepend session_dir to build full path
+        response_relpath = f"iteration-{state.current_iteration}/{response_filename}"
 
         # Assemble prompt if it's PromptSections, otherwise use directly
         if isinstance(prompt_content, PromptSections):

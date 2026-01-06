@@ -25,12 +25,11 @@ class PromptAssembler:
         """Build engine-owned variables with workspace-relative paths.
 
         Returns:
-            Dict mapping variable names to workspace-relative file paths.
+            Dict mapping variable names to file paths relative to workspace root.
         """
-        session_path = f".aiwf/sessions/{self.state.session_id}"
         return {
-            "{{STANDARDS}}": f"{session_path}/standards-bundle.md",
-            "{{PLAN}}": f"{session_path}/plan.md",
+            "{{STANDARDS}}": str(self.session_dir / "standards-bundle.md"),
+            "{{PLAN}}": str(self.session_dir / "plan.md"),
         }
 
     def assemble(
@@ -93,9 +92,9 @@ class PromptAssembler:
         response_filename = Path(response_relpath).name
 
         if fs_ability == "local-write":
-            # Use absolute path to avoid working directory ambiguity
-            absolute_path = self.session_dir / response_relpath
-            return f"## Output Destination\n\nDo not display the file contents to the screen.\nSave your response to `{absolute_path}`"
+            # Workspace-relative path - AI should be launched from workspace root
+            output_path = self.session_dir / response_relpath
+            return f"## Output Destination\n\nDo not display the file contents to the screen.\nSave your response to `{output_path}`"
         elif fs_ability == "local-read":
             return f"## Output Destination\n\nName your output file `{response_filename}`"
         elif fs_ability == "write-only":
