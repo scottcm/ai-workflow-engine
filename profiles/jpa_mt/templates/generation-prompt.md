@@ -32,32 +32,65 @@ Implement the `{{entity}}` entity and related artifacts based on the approved pl
 
 ### Implementation Requirements
 
-1. **Entity Class**
-   - Implement all fields from the plan with correct JPA annotations
-   - Apply `@Table(schema = "...", name = "...")` with explicit schema
-   - Include field-level validations (`@NotNull`, `@Size`, etc.)
-   - Implement relationships with `FetchType.LAZY`
+#### Entity Class
+- Implement all fields from the plan with correct JPA annotations
+- Apply `@Table(schema = "...", name = "...")` with explicit schema
+- Include field-level validations (`@NotNull`, `@Size`, etc.)
+- Implement relationships with `FetchType.LAZY`
+{{#if entity_extends}}
+- Extend `{{entity_extends}}` as specified in conventions
+- Do NOT redeclare inherited fields
+{{/if}}
+{{#if entity_implements}}
+- Implement interfaces: `{{entity_implements}}`
+{{/if}}
 
-2. **Repository Interface**
-   - Extend appropriate Spring Data JPA repository
-   - Include tenant-scoped query methods where applicable
-   - Add custom `@Query` methods from the plan
+#### Repository Interface
+- Extend {{#if repository_extends}}`{{repository_extends}}`{{/if}}{{#unless repository_extends}}appropriate Spring Data JPA repository{{/unless}}
+- Include tenant-scoped query methods where applicable
+- Add custom `@Query` methods from the plan
 
-3. **Multi-Tenancy**
-   - Follow the classification from the plan (Global/Tenant-Scoped/Top-Level)
-   - Apply tenant filtering annotations if tenant-scoped
-   - Ensure proper `{{tenant_column}}` handling for tenant-scoped entities
+#### Service Class (scope: service, api, full)
+{{#if service_extends}}
+- Extend `{{service_extends}}`
+{{/if}}
+{{#if service_implements}}
+- Implement interfaces: `{{service_implements}}`
+{{/if}}
+- Implement business logic methods from the plan
+- Use constructor injection for dependencies
+- Apply `@Transactional` appropriately
 
-### BaseEntity Integration
+#### Controller Class (scope: api, full)
+{{#if controller_extends}}
+- Extend `{{controller_extends}}`
+{{/if}}
+- Implement REST endpoints from the plan
+- Apply `@RestController` and `@RequestMapping`
+- Include validation on request bodies
 
-Extend `BaseEntity` if the entity meets ALL of these conditions:
+#### DTO Classes (scope: api, full)
+- Create request/response DTOs
+- Apply validation annotations on request DTOs
+- Include mapper between entity and DTOs
+
+### Multi-Tenancy
+- Follow the classification from the plan (Global/Tenant-Scoped/Top-Level)
+- Apply tenant filtering annotations if tenant-scoped
+- Ensure proper `{{tenant_column}}` handling for tenant-scoped entities
+
+### Base Class Integration
+{{#if entity_extends}}
+Extend `{{entity_extends}}` if the entity meets the criteria specified in the plan.
+{{/if}}
+{{#unless entity_extends}}
+Extend base class if the entity meets ALL of these conditions:
 - Has `id` (`{{id_type}}`) as primary key
 - Has `public_id` (`{{public_id_type}}`) column
 - Has `created_at`, `updated_at` timestamps (`{{timestamp_type}}`)
 - Has `version` for optimistic locking
 - Has `is_active` boolean flag
-
-If extending BaseEntity, do NOT redeclare inherited fields.
+{{/unless}}
 
 ---
 
@@ -96,20 +129,44 @@ Wrap each file in a code block with the filename as a comment:
 // {{entity_class}}.java
 package {{entity_package}};
 
-// ... complete implementation
+import ...;
+
+@Entity
+@Table(schema = "...", name = "{{table}}")
+public class {{entity_class}}{{#if entity_extends}} extends {{entity_extends}}{{/if}}{{#if entity_implements}} implements {{entity_implements}}{{/if}} {
+    // ... complete implementation
+}
 ```
 
 ```java
 // {{repository_class}}.java
 package {{repository_package}};
 
-// ... complete implementation
+import ...;
+
+public interface {{repository_class}} extends {{#if repository_extends}}{{repository_extends}}{{/if}}{{#unless repository_extends}}JpaRepository<{{entity_class}}, {{id_type}}>{{/unless}} {
+    // ... complete implementation
+}
 ```
 
 ### Files to Generate
 
 Based on scope `{{scope}}` with artifacts `{{artifacts}}`:
-- Generate each artifact file with complete, production-ready code
+
+**Domain Scope (entity, repository):**
+- `{{entity_class}}.java` - Entity with JPA annotations
+- `{{repository_class}}.java` - Repository interface
+
+**Service Scope (adds service):**
+- `{{service_class}}.java` - Service with business logic
+
+**API Scope (adds controller, DTOs, mapper):**
+- `{{controller_class}}.java` - REST controller
+- `{{dto_request_class}}.java` - Request DTO
+- `{{dto_response_class}}.java` - Response DTO
+- `{{mapper_class}}.java` - Entity/DTO mapper
+
+Generate each artifact file with complete, production-ready code:
 - Include all imports (no wildcard imports)
 - Include all necessary annotations
 - Include Javadoc for public methods

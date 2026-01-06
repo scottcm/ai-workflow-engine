@@ -16,6 +16,7 @@ from aiwf.domain.models.workflow_state import WorkflowStatus
 from aiwf.domain.profiles.workflow_profile import PromptResult, WorkflowProfile
 
 from .config import JpaMtConfig
+from .review_metadata import ParseError, ReviewVerdict, format_review_summary, parse_review_metadata
 from .standards import JpaMtStandardsProvider
 
 # Register the standards provider with the factory
@@ -29,7 +30,15 @@ class JpaMtProfile(WorkflowProfile):
     """Multi-tenant JPA domain layer generation profile (v2)."""
 
     def __init__(self, config: JpaMtConfig | None = None):
-        self.config = config or JpaMtConfig()
+        if config is None:
+            # Load from config.yml if it exists
+            config_path = Path(__file__).parent / "config.yml"
+            if config_path.exists():
+                self.config = JpaMtConfig.from_yaml(config_path)
+            else:
+                self.config = JpaMtConfig()
+        else:
+            self.config = config
 
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
@@ -160,44 +169,109 @@ class JpaMtProfile(WorkflowProfile):
                         result[key] = str(value)
         return result
 
+    def _process_conditionals(
+        self,
+        text: str,
+        variables: dict[str, str],
+    ) -> str:
+        """Process conditional blocks in templates.
+
+        Supports simple conditional syntax:
+        - {{#if var}}content{{/if}} - include if var is defined and non-empty
+        - {{#unless var}}content{{/unless}} - include if var is undefined or empty
+
+        Conditionals can be nested. Processing is done iteratively from
+        innermost to outermost by matching only blocks that don't contain
+        other conditional markers inside.
+
+        Args:
+            text: Text with conditional blocks
+            variables: Dict of variable name -> value
+
+        Returns:
+            Text with conditionals resolved
+        """
+        # Match innermost {{#if var}}...{{/if}} blocks (no nested conditionals inside)
+        # The negative lookahead (?:(?!\{\{#).)* ensures no {{# inside content
+        if_pattern = re.compile(
+            r"\{\{#if\s+(\w+)\}\}((?:(?!\{\{#)(?!\{\{/).)*)?\{\{/if\}\}",
+            re.DOTALL
+        )
+
+        # Match innermost {{#unless var}}...{{/unless}} blocks
+        unless_pattern = re.compile(
+            r"\{\{#unless\s+(\w+)\}\}((?:(?!\{\{#)(?!\{\{/).)*)?\{\{/unless\}\}",
+            re.DOTALL
+        )
+
+        # Iterate until no more conditionals (handles nesting)
+        max_iterations = 10
+        for _ in range(max_iterations):
+            # Process #if blocks
+            def if_replace(match: re.Match) -> str:
+                var_name = match.group(1)
+                content = match.group(2) or ""
+                value = variables.get(var_name, "")
+                return content if value else ""
+
+            new_text = if_pattern.sub(if_replace, text)
+
+            # Process #unless blocks
+            def unless_replace(match: re.Match) -> str:
+                var_name = match.group(1)
+                content = match.group(2) or ""
+                value = variables.get(var_name, "")
+                return content if not value else ""
+
+            new_text = unless_pattern.sub(unless_replace, new_text)
+
+            if new_text == text:
+                break
+            text = new_text
+
+        return text
+
     def _resolve_variables(
         self,
         text: str,
         variables: dict[str, str],
         max_passes: int = 3,
     ) -> str:
-        """Multi-pass variable substitution.
+        """Multi-pass variable substitution with conditional support.
 
-        Repeatedly substitutes {{var}} placeholders until no more remain
-        or max_passes is reached. This allows variables to reference other
-        variables (e.g., entity_package uses base_package).
+        First processes conditional blocks ({{#if}}/{{#unless}}), then
+        repeatedly substitutes {{var}} placeholders until no more remain
+        or max_passes is reached.
+
+        For undefined variables, substitutes empty string (not leaving
+        the placeholder). This allows templates to handle optional
+        variables gracefully.
 
         Args:
-            text: Text with {{var}} placeholders
+            text: Text with {{var}} placeholders and optional conditionals
             variables: Dict of variable name -> value
             max_passes: Maximum substitution passes (default: 3)
 
         Returns:
-            Text with variables substituted (unresolved placeholders left as-is)
+            Text with conditionals resolved and variables substituted
         """
+        # First, process conditionals
+        text = self._process_conditionals(text, variables)
+
+        # Then, substitute variables
         pattern = re.compile(r"\{\{(\w+)\}\}")
 
         for pass_num in range(max_passes):
             def replace(match: re.Match) -> str:
                 key = match.group(1)
-                return variables.get(key, match.group(0))
+                # Return empty string for undefined vars (graceful handling)
+                return variables.get(key, "")
 
             new_text = pattern.sub(replace, text)
             if new_text == text:
                 # No changes made, stop early
                 break
             text = new_text
-
-        # Warn about unresolved variables
-        unresolved = pattern.findall(text)
-        if unresolved:
-            unique = sorted(set(unresolved))
-            logger.warning("Unresolved placeholders: %s", unique)
 
         return text
 
@@ -565,29 +639,18 @@ class JpaMtProfile(WorkflowProfile):
                     lines.append(f"- {item}")
                 lines.append("")
 
-        # File list
-        lines.append("## File List")
-        lines.append("")
-        lines.append(expected["file_list"]["header"])
-        lines.append("")
-        lines.append("| File | Package | Class |")
-        lines.append("|------|---------|-------|")
-
-        file_entries = expected["file_list"]["entries"]
-        for key, entry in file_entries.items():
-            # Check if this entry belongs to the requested artifacts
-            entry_artifact = entry.get("artifact", key)
-            if entry_artifact in artifacts:
-                lines.append(
-                    f"| {entry['file']} | `{entry['package']}` | `{entry['class']}` |"
-                )
-        lines.append("")
-
         # Closing sections
         for section in expected["closing"]:
             lines.append(f"## {section['section']}")
             # Include guidance if present (V5 for Open Questions)
-            if "guidance" in section:
+            # Select guidance based on open_questions_mode config
+            guidance_key = f"guidance_{self.config.open_questions_mode}"
+            if guidance_key in section:
+                lines.append("")
+                lines.append(section[guidance_key].strip())
+                lines.append("")
+            elif "guidance" in section:
+                # Fallback to default guidance if mode-specific not found
                 lines.append("")
                 lines.append(section["guidance"].strip())
                 lines.append("")
@@ -791,22 +854,48 @@ class JpaMtProfile(WorkflowProfile):
         )
 
     def process_review_response(self, content: str) -> ProcessingResult:
-        """Process review response and extract verdict."""
-        # TODO: Parse @@@REVIEW_META to extract PASS/FAIL verdict
+        """Process review response and extract verdict per ADR-0004."""
         if not content or not content.strip():
             return ProcessingResult(
                 status=WorkflowStatus.ERROR,
                 error_message="Empty review response",
             )
 
-        # For now, assume review passes
-        # TODO: Parse @@@REVIEW_META to extract PASS/FAIL verdict
-        return ProcessingResult(
-            status=WorkflowStatus.SUCCESS,
-            approved=True,
-            messages=["Review complete (TODO: parse verdict)"],
-            metadata={"verdict": "PASS"},
-        )
+        try:
+            metadata = parse_review_metadata(content)
+        except ParseError as e:
+            return ProcessingResult(
+                status=WorkflowStatus.ERROR,
+                error_message=f"Failed to parse @@@REVIEW_META: {e}",
+            )
+
+        summary = format_review_summary(metadata)
+
+        if metadata.verdict == ReviewVerdict.PASS:
+            return ProcessingResult(
+                status=WorkflowStatus.SUCCESS,
+                approved=True,
+                messages=[f"REVIEW: {summary}"],
+                metadata={
+                    "verdict": metadata.verdict.value,
+                    "issues_total": metadata.issues_total,
+                    "issues_critical": metadata.issues_critical,
+                    "missing_inputs": metadata.missing_inputs,
+                },
+            )
+        else:
+            # FAIL -> needs revision
+            return ProcessingResult(
+                status=WorkflowStatus.FAILED,
+                approved=False,
+                messages=[f"REVIEW: {summary}"],
+                metadata={
+                    "verdict": metadata.verdict.value,
+                    "issues_total": metadata.issues_total,
+                    "issues_critical": metadata.issues_critical,
+                    "missing_inputs": metadata.missing_inputs,
+                },
+            )
 
     def process_revision_response(
         self, content: str, session_dir: Path, iteration: int

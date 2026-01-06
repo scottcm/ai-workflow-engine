@@ -80,20 +80,38 @@ For each finding:
 
 ## Expected Output
 
-Regenerate all code files with fixes applied:
+Regenerate all code files with fixes applied. Based on scope `{{scope}}`:
 
-{{artifacts}}
+**Domain Scope (entity, repository):**
+- `{{entity_class}}.java` - Entity with JPA annotations
+- `{{repository_class}}.java` - Repository interface
+
+**Service Scope (adds):**
+- `{{service_class}}.java` - Service with business logic
+
+**API Scope (adds):**
+- `{{controller_class}}.java` - REST controller
+- `{{dto_request_class}}.java` - Request DTO
+- `{{dto_response_class}}.java` - Response DTO
+- `{{mapper_class}}.java` - Entity/DTO mapper
 
 Each file must be complete and production-ready. Include all imports, annotations, and implementations.
 
-### Output Format
+### Code Format
 
-For each file, use this structure:
+Wrap each file in a code block with the filename as a comment:
 
-```
-## [FileName.java]
+```java
+// {{entity_class}}.java
+package {{entity_package}};
 
-[Complete file contents with all fixes applied]
+import ...;
+
+@Entity
+@Table(schema = "...", name = "{{table}}")
+public class {{entity_class}}{{#if entity_extends}} extends {{entity_extends}}{{/if}}{{#if entity_implements}} implements {{entity_implements}}{{/if}} {
+    // ... complete implementation with fixes
+}
 ```
 
 ---

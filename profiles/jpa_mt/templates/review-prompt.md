@@ -20,9 +20,20 @@ You are a senior code reviewer specializing in multi-tenant JPA applications wit
 
 Read the generated code files in the current iteration's `code/` directory:
 
-**Expected files:**
+**Expected files based on scope `{{scope}}`:**
+
+**Domain Scope (entity, repository):**
 - `{{entity_class}}.java` - Entity class
 - `{{repository_class}}.java` - Repository interface
+
+**Service Scope (adds):**
+- `{{service_class}}.java` - Service class
+
+**API Scope (adds):**
+- `{{controller_class}}.java` - REST controller
+- `{{dto_request_class}}.java` - Request DTO
+- `{{dto_response_class}}.java` - Response DTO
+- `{{mapper_class}}.java` - Entity/DTO mapper
 
 Review each file thoroughly before providing your assessment.
 
@@ -57,6 +68,13 @@ Review the generated code against the standards and check for:
 - Check cascade settings are appropriate
 - Confirm proper use of `@Column` annotations
 - Validate index and constraint annotations
+{{#if entity_extends}}
+- Verify entity extends `{{entity_extends}}` where appropriate
+- Confirm inherited fields are NOT redeclared
+{{/if}}
+{{#if entity_implements}}
+- Verify entity implements `{{entity_implements}}`
+{{/if}}
 
 ### 4. Potential Issues
 
