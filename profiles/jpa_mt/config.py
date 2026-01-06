@@ -19,6 +19,8 @@ class StandardsConfig(BaseModel):
 
     sources: list[StandardsSource] = Field(default_factory=list)
     cache_dir: Path | None = None
+    # Default rules path when sources is empty (None = use profile default location)
+    default_rules_path: str | None = None
 
 
 class ScopeConfig(BaseModel):

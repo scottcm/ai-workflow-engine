@@ -30,15 +30,51 @@ class JpaMtProfile(WorkflowProfile):
     """Multi-tenant JPA domain layer generation profile (v2)."""
 
     def __init__(self, config: JpaMtConfig | None = None):
-        if config is None:
-            # Load from config.yml if it exists
+        """Initialize profile with optional config.
+
+        Args:
+            config: Profile configuration. If None, uses default JpaMtConfig.
+                   For loading from file, use from_config_file() instead.
+        """
+        self.config = config if config is not None else JpaMtConfig()
+
+    @classmethod
+    def from_config_file(cls, config_path: Path | str | None = None) -> "JpaMtProfile":
+        """Factory method to create profile from config file.
+
+        This is the preferred way to create a profile when loading
+        from a YAML configuration file.
+
+        Args:
+            config_path: Path to config.yml file. If None, looks for
+                        config.yml in profile directory.
+
+        Returns:
+            JpaMtProfile instance with loaded configuration.
+
+        Raises:
+            FileNotFoundError: If config file doesn't exist and path was explicit.
+
+        Example:
+            # Load from default location
+            profile = JpaMtProfile.from_config_file()
+
+            # Load from specific path
+            profile = JpaMtProfile.from_config_file("/path/to/config.yml")
+        """
+        if config_path is None:
+            # Default to profile directory's config.yml
             config_path = Path(__file__).parent / "config.yml"
-            if config_path.exists():
-                self.config = JpaMtConfig.from_yaml(config_path)
-            else:
-                self.config = JpaMtConfig()
+            if not config_path.exists():
+                # No default config file, use default config
+                return cls()
         else:
-            self.config = config
+            config_path = Path(config_path)
+            if not config_path.exists():
+                raise FileNotFoundError(f"Config file not found: {config_path}")
+
+        config = JpaMtConfig.from_yaml(config_path)
+        return cls(config=config)
 
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
@@ -70,15 +106,31 @@ class JpaMtProfile(WorkflowProfile):
         return "yaml-rules"  # New provider for YAML-based standards
 
     def get_standards_config(self) -> dict[str, Any]:
-        # Get rules_path from config sources, or use default
+        """Get standards provider configuration.
+
+        Resolution order:
+        1. First source in standards.sources (if configured)
+        2. standards.default_rules_path (if configured)
+        3. Profile default: {profile_dir}/rules/ (if exists)
+
+        Returns:
+            Dict with 'rules_path' key for JpaMtStandardsProvider
+        """
         rules_path = None
+
+        # 1. Check explicit sources first
         if self.config.standards.sources:
-            # Use first source path
             rules_path = self.config.standards.sources[0].path
 
-        # Default to LIVE/experimental for YAML rules
+        # 2. Fall back to configured default_rules_path
+        if not rules_path and self.config.standards.default_rules_path:
+            rules_path = self.config.standards.default_rules_path
+
+        # 3. Fall back to profile default location
         if not rules_path:
-            rules_path = str(Path(__file__).parent.parent.parent / "LIVE" / "experimental")
+            profile_rules = Path(__file__).parent / "rules"
+            if profile_rules.exists():
+                rules_path = str(profile_rules)
 
         return {"rules_path": rules_path}
 

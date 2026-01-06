@@ -384,8 +384,26 @@ class TestJpaMtStandardsProviderCreateBundle:
 
         bundle = provider.create_bundle({"scope": "domain"})
 
-        # Should transform filename to title case category
-        assert "Jpa And Database Standards" in bundle
+        # Should transform filename to title case, preserving acronyms
+        assert "JPA And Database Standards" in bundle
+
+    def test_category_preserves_acronyms(self, tmp_path: Path):
+        """Category names preserve known acronyms like JPA, API, DTO."""
+        # Test multiple acronyms
+        rules_file = tmp_path / "REST_API_STANDARDS.rules.yml"
+        rules_file.write_text(
+            """rules:
+  API-001: 'C: Test rule.'
+"""
+        )
+
+        config = {"rules_path": str(tmp_path)}
+        provider = JpaMtStandardsProvider(config)
+
+        bundle = provider.create_bundle({"scope": "api"})
+
+        # Both REST and API should be uppercase, not "Rest Api"
+        assert "REST API Standards" in bundle
 
 
 class TestJpaMtStandardsProviderEdgeCases:

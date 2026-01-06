@@ -165,6 +165,9 @@ class JpaMtStandardsProvider:
 
         return rules_by_category
 
+    # Known acronyms that should remain uppercase after title() transformation
+    KNOWN_ACRONYMS = ["JPA", "API", "DTO", "REST", "SQL", "CRUD", "HTTP", "JSON", "XML"]
+
     def _file_to_category(self, file_path: Path) -> str:
         """Convert file name to human-readable category name.
 
@@ -179,6 +182,13 @@ class JpaMtStandardsProvider:
         name = name.replace(".rules", "")  # Remove .rules if present
         name = name.replace("-marked", "")  # Remove -marked suffix
         name = name.replace("_", " ").title()  # Convert to title case
+
+        # Restore known acronyms to uppercase
+        for acronym in self.KNOWN_ACRONYMS:
+            # Replace title-cased version with uppercase
+            title_version = acronym.title()  # e.g., "Jpa"
+            name = name.replace(title_version, acronym)
+
         return f"{name} Standards"
 
     def _parse_yaml_file(self, file_path: Path) -> list[tuple[str, str, str]]:

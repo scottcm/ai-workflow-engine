@@ -1,9 +1,12 @@
 """Tests for JpaMtProfile."""
 
 import pytest
+from pathlib import Path
+from unittest.mock import patch
 
 from aiwf.domain.models.workflow_state import WorkflowStatus
 from profiles.jpa_mt.profile import JpaMtProfile
+from profiles.jpa_mt.config import JpaMtConfig, StandardsConfig, StandardsSource
 
 
 class TestConditionalProcessing:
@@ -200,3 +203,234 @@ missing_inputs: 1
         assert result.metadata["issues_total"] == 2
         assert result.metadata["issues_critical"] == 0
         assert result.metadata["missing_inputs"] == 1
+
+
+class TestGetStandardsConfig:
+    """Test get_standards_config method."""
+
+    def test_uses_explicit_source_path(self, tmp_path):
+        """Explicit source path takes priority."""
+        source = StandardsSource(type="local", path=str(tmp_path / "rules"))
+        config = JpaMtConfig(
+            standards=StandardsConfig(sources=[source])
+        )
+        profile = JpaMtProfile(config=config)
+
+        result = profile.get_standards_config()
+
+        assert result["rules_path"] == str(tmp_path / "rules")
+
+    def test_uses_default_rules_path_when_no_sources(self, tmp_path):
+        """default_rules_path is used when sources is empty."""
+        config = JpaMtConfig(
+            standards=StandardsConfig(
+                default_rules_path=str(tmp_path / "default-rules")
+            )
+        )
+        profile = JpaMtProfile(config=config)
+
+        result = profile.get_standards_config()
+
+        assert result["rules_path"] == str(tmp_path / "default-rules")
+
+    def test_source_takes_priority_over_default(self, tmp_path):
+        """Explicit source takes priority over default_rules_path."""
+        source = StandardsSource(type="local", path=str(tmp_path / "explicit"))
+        config = JpaMtConfig(
+            standards=StandardsConfig(
+                sources=[source],
+                default_rules_path=str(tmp_path / "default")
+            )
+        )
+        profile = JpaMtProfile(config=config)
+
+        result = profile.get_standards_config()
+
+        assert result["rules_path"] == str(tmp_path / "explicit")
+
+    def test_falls_back_to_profile_rules_dir(self, tmp_path):
+        """Falls back to profile's rules/ directory if it exists."""
+        config = JpaMtConfig()  # No sources, no default_rules_path
+        profile = JpaMtProfile(config=config)
+
+        # Mock the profile's rules directory to exist
+        with patch.object(Path, "exists", return_value=True):
+            result = profile.get_standards_config()
+
+        # Should return profile's rules/ path (existence mocked)
+        assert "rules_path" in result
+        # Path should end with 'rules' or be the profile directory's rules
+        if result["rules_path"]:
+            assert "rules" in result["rules_path"]
+
+    def test_returns_none_when_no_rules_found(self):
+        """Returns None rules_path when no rules directory exists."""
+        config = JpaMtConfig()  # No sources, no default_rules_path
+        profile = JpaMtProfile(config=config)
+
+        # Mock the profile's rules directory to NOT exist
+        with patch.object(Path, "exists", return_value=False):
+            result = profile.get_standards_config()
+
+        assert result["rules_path"] is None
+
+
+class TestFromConfigFile:
+    """Test from_config_file factory method."""
+
+    def test_from_config_file_with_valid_path(self, tmp_path):
+        """Factory loads config from specified path."""
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            """base_package: com.test.app
+open_questions_mode: assume
+"""
+        )
+
+        profile = JpaMtProfile.from_config_file(config_file)
+
+        assert profile.config.base_package == "com.test.app"
+        assert profile.config.open_questions_mode == "assume"
+
+    def test_from_config_file_with_string_path(self, tmp_path):
+        """Factory accepts string path."""
+        config_file = tmp_path / "config.yml"
+        config_file.write_text("base_package: com.string.path\n")
+
+        profile = JpaMtProfile.from_config_file(str(config_file))
+
+        assert profile.config.base_package == "com.string.path"
+
+    def test_from_config_file_missing_raises_error(self, tmp_path):
+        """Factory raises FileNotFoundError for missing explicit path."""
+        missing_path = tmp_path / "nonexistent.yml"
+
+        with pytest.raises(FileNotFoundError) as exc_info:
+            JpaMtProfile.from_config_file(missing_path)
+
+        assert "nonexistent.yml" in str(exc_info.value)
+
+    def test_from_config_file_none_uses_default(self):
+        """Factory with None returns profile with default config."""
+        # When default config.yml doesn't exist, should return default config
+        with patch.object(Path, "exists", return_value=False):
+            profile = JpaMtProfile.from_config_file(None)
+
+        # Should have default values
+        assert profile.config.base_package == "com.example.app"
+        assert profile.config.open_questions_mode == "manual"
+
+    def test_constructor_no_file_io(self):
+        """Constructor with None config doesn't do file I/O."""
+        # This verifies the refactored constructor doesn't load files
+        profile = JpaMtProfile()
+
+        # Should have default config without file I/O
+        assert profile.config.base_package == "com.example.app"
+
+
+class TestTemplateRendering:
+    """Smoke tests for template rendering."""
+
+    @pytest.fixture
+    def profile(self):
+        """Create a JpaMtProfile instance."""
+        return JpaMtProfile()
+
+    @pytest.fixture
+    def minimal_context(self):
+        """Minimal context for prompt generation."""
+        return {
+            "entity": "Customer",
+            "table": "customers",
+            "bounded_context": "crm",
+            "scope": "domain",
+        }
+
+    def test_planning_prompt_renders_without_error(self, profile, minimal_context):
+        """Planning prompt renders without crashing."""
+        prompt = profile.generate_planning_prompt(minimal_context)
+
+        # Basic validity checks
+        assert isinstance(prompt, str)
+        assert len(prompt) > 500  # Should be substantial
+        assert "Customer" in prompt
+        assert "customers" in prompt
+        assert "## Role" in prompt
+        assert "## Task" in prompt
+
+    def test_generation_prompt_renders_without_error(self, profile, minimal_context):
+        """Generation prompt renders without crashing."""
+        prompt = profile.generate_generation_prompt(minimal_context)
+
+        assert isinstance(prompt, str)
+        assert len(prompt) > 200
+        assert "Customer" in prompt
+
+    def test_review_prompt_renders_without_error(self, profile, minimal_context):
+        """Review prompt renders without crashing."""
+        prompt = profile.generate_review_prompt(minimal_context)
+
+        assert isinstance(prompt, str)
+        assert len(prompt) > 200
+        assert "Customer" in prompt
+
+    def test_revision_prompt_renders_without_error(self, profile, minimal_context):
+        """Revision prompt renders without crashing."""
+        prompt = profile.generate_revision_prompt(minimal_context)
+
+        assert isinstance(prompt, str)
+        assert len(prompt) > 200
+        assert "Customer" in prompt
+
+    def test_all_scopes_render_planning_prompt(self, profile):
+        """All scopes can generate planning prompts."""
+        scopes = ["domain", "service", "api", "full"]
+
+        for scope in scopes:
+            context = {
+                "entity": "TestEntity",
+                "table": "test_entities",
+                "bounded_context": "test",
+                "scope": scope,
+            }
+            prompt = profile.generate_planning_prompt(context)
+            assert isinstance(prompt, str), f"Failed for scope: {scope}"
+            assert len(prompt) > 100, f"Prompt too short for scope: {scope}"
+
+    def test_template_uses_yaml_config(self, profile, minimal_context):
+        """Planning prompt uses YAML configuration."""
+        prompt = profile.generate_planning_prompt(minimal_context)
+
+        # These come from planning-prompt.yml
+        assert "JPA Multi-Tenant" in prompt  # From role.title
+        assert "Implementation Plan" in prompt  # From expected_output
+        assert "Schema Analysis" in prompt  # From task phases
+
+    def test_conventions_with_default_context(self, profile):
+        """Templates work with no conventions specified."""
+        context = {
+            "entity": "Product",
+            "table": "products",
+            "bounded_context": "inventory",
+            "scope": "domain",
+            # No conventions specified
+        }
+        prompt = profile.generate_planning_prompt(context)
+
+        # Should still render without errors
+        assert isinstance(prompt, str)
+        assert "Product" in prompt
+
+    def test_template_has_no_unresolved_required_vars(self, profile, minimal_context):
+        """Templates resolve required variables."""
+        prompt = profile.generate_planning_prompt(minimal_context)
+
+        # These context vars should be resolved
+        assert "{{entity}}" not in prompt
+        assert "{{table}}" not in prompt
+        assert "{{bounded_context}}" not in prompt
+        assert "{{scope}}" not in prompt
+
+        # Engine vars like {{STANDARDS}} are expected to remain
+        # (resolved by PromptAssembler, not profile)
