@@ -454,57 +454,76 @@ class JpaMtProfile(WorkflowProfile):
             f"  - {profile_path}"
         )
 
-    def _build_planning_prompt_from_yaml(
-        self, context: dict, artifacts: list[str], variables: dict[str, str]
-    ) -> str:
-        """Build planning prompt from YAML configuration.
+    # =========================================================================
+    # PLANNING PROMPT SECTION BUILDERS
+    # =========================================================================
 
-        Loads planning-prompt.yml and assembles the prompt based on
-        the requested artifacts.
+    def _build_role_section(self, config: dict) -> list[str]:
+        """Build the Role section of the planning prompt.
+
+        This section defines the AI's persona and could become
+        a system prompt in the future.
 
         Args:
-            context: Workflow context dict
-            artifacts: List of artifact types to generate
-            variables: Resolved convention variables (for conditional logic)
+            config: Loaded YAML config
 
         Returns:
-            Assembled markdown prompt (with {{var}} placeholders intact)
+            List of lines for the role section
         """
-        config = self._load_prompt_config("planning-prompt.yml", context)
-        lines: list[str] = []
+        return [
+            f"# {config['role']['title']}",
+            "",
+            "## Role",
+            "",
+            config["role"]["description"].strip(),
+            "",
+            "---",
+            "",
+        ]
 
-        # --- Role Section ---
-        lines.append(f"# {config['role']['title']}")
-        lines.append("")
-        lines.append("## Role")
-        lines.append("")
-        lines.append(config["role"]["description"].strip())
-        lines.append("")
-        lines.append("---")
-        lines.append("")
+    def _build_planning_context_section(self, config: dict) -> list[str]:
+        """Build the Context section with schema reference for planning prompt.
 
-        # --- Context Section ---
-        lines.append("## Context")
-        lines.append("")
-        lines.append(config["context"]["header"].strip())
-        lines.append("")
-        lines.append(config["context"]["schema_reference"].strip())
-        lines.append("")
+        Args:
+            config: Loaded YAML config
 
-        # --- Input Validation Section (V2) ---
+        Returns:
+            List of lines for the context section
+        """
+        lines = [
+            "## Context",
+            "",
+            config["context"]["header"].strip(),
+            "",
+            config["context"]["schema_reference"].strip(),
+            "",
+        ]
+
+        # Input Validation subsection (optional)
         if "input_validation" in config:
             iv = config["input_validation"]
-            lines.append(iv["header"])
-            lines.append("")
-            lines.append(iv["content"].strip())
-            lines.append("")
+            lines.extend([
+                iv["header"],
+                "",
+                iv["content"].strip(),
+                "",
+            ])
 
-        # --- Conventions Section ---
-        lines.append("### Project Conventions")
-        lines.append("")
+        return lines
+
+    def _build_conventions_section(self, config: dict) -> list[str]:
+        """Build the Project Conventions section with naming/packages/technical tables.
+
+        Args:
+            config: Loaded YAML config
+
+        Returns:
+            List of lines for the conventions section
+        """
+        conv = config["conventions"]
+        lines = ["### Project Conventions", ""]
 
         # Naming table
-        conv = config["conventions"]
         lines.append(conv["naming"]["header"])
         lines.append("| Artifact | Pattern |")
         lines.append("|----------|---------|")
@@ -526,15 +545,29 @@ class JpaMtProfile(WorkflowProfile):
         lines.append("|---------|-------|")
         for row in conv["technical"]["table"]:
             lines.append(f"| {row['setting']} | `{row['value']}` |")
-        lines.append("")
-        lines.append("---")
-        lines.append("")
+        lines.extend(["", "---", ""])
 
-        # --- Task Section ---
-        lines.append("## Task")
-        lines.append("")
-        lines.append(config["task"]["intro"].strip())
-        lines.append("")
+        return lines
+
+    def _build_task_section(
+        self, config: dict, artifacts: list[str], variables: dict[str, str]
+    ) -> list[str]:
+        """Build the Task section with common and artifact-specific phases.
+
+        Args:
+            config: Loaded YAML config
+            artifacts: List of artifact types to generate
+            variables: Resolved convention variables
+
+        Returns:
+            List of lines for the task section
+        """
+        lines = [
+            "## Task",
+            "",
+            config["task"]["intro"].strip(),
+            "",
+        ]
 
         # Common phases
         for phase in config["task"]["common"]:
@@ -555,64 +588,97 @@ class JpaMtProfile(WorkflowProfile):
                 phase = artifact_phases[artifact]
                 lines.append(f"### {phase['phase']}")
                 lines.append("")
-                # Handle conditional base entity step for entity artifact
-                if artifact == "entity":
-                    if "base_entity_step_with_class" in phase:
-                        # Check if base_entity_class is set in convention variables
-                        base_entity_class = variables.get("base_entity_class", "")
-                        if base_entity_class:
-                            lines.append(f"- {phase['base_entity_step_with_class']}")
-                        else:
-                            lines.append(f"- {phase['base_entity_step_without_class']}")
+                # Handle conditional base entity step
+                if artifact == "entity" and "base_entity_step_with_class" in phase:
+                    base_entity_class = variables.get("base_entity_class", "")
+                    if base_entity_class:
+                        lines.append(f"- {phase['base_entity_step_with_class']}")
+                    else:
+                        lines.append(f"- {phase['base_entity_step_without_class']}")
                 for step in phase["steps"]:
                     lines.append(f"- {step}")
                 lines.append("")
 
-        lines.append("---")
-        lines.append("")
+        lines.extend(["---", ""])
+        return lines
 
-        # --- Standards Section ---
-        # Note: {{STANDARDS}} is an engine variable resolved by PromptAssembler
-        lines.append("## Standards")
-        lines.append("")
-        lines.append("Read the standards bundle at `{{STANDARDS}}`. This file contains the coding standards for this project, organized by category.")
-        lines.append("")
-        lines.append("Key areas to focus on:")
-        lines.append("- JPA entity and repository standards (JPA-*)")
-        lines.append("- Multi-tenancy patterns (MT-*)")
-        lines.append("- Naming conventions (NAM-*, JV-NAM-*)")
-        lines.append("- Package structure (PKG-*, DOM-*)")
-        lines.append("")
-        lines.append("You MUST cite rule IDs when making standards-based decisions.")
-        lines.append("")
-        lines.append("---")
-        lines.append("")
+    def _build_standards_section(self) -> list[str]:
+        """Build the Standards section with reference to standards bundle.
 
-        # --- Constraints Section ---
+        Note: {{STANDARDS}} is an engine variable resolved by PromptAssembler.
+
+        Returns:
+            List of lines for the standards section
+        """
+        return [
+            "## Standards",
+            "",
+            "Read the standards bundle at `{{STANDARDS}}`. This file contains the coding standards for this project, organized by category.",
+            "",
+            "Key areas to focus on:",
+            "- JPA entity and repository standards (JPA-*)",
+            "- Multi-tenancy patterns (MT-*)",
+            "- Naming conventions (NAM-*, JV-NAM-*)",
+            "- Package structure (PKG-*, DOM-*)",
+            "",
+            "You MUST cite rule IDs when making standards-based decisions.",
+            "",
+            "---",
+            "",
+        ]
+
+    def _build_constraints_section(self, config: dict) -> list[str]:
+        """Build the Constraints section with critical and technical requirements.
+
+        Args:
+            config: Loaded YAML config
+
+        Returns:
+            List of lines for the constraints section
+        """
         constraints = config["constraints"]
-        lines.append("## Constraints")
-        lines.append("")
-        lines.append(constraints["critical"]["header"])
-        lines.append("")
+        lines = [
+            "## Constraints",
+            "",
+            constraints["critical"]["header"],
+            "",
+        ]
         for item in constraints["critical"]["items"]:
             lines.append(f"- {item}")
-        lines.append("")
-        lines.append(constraints["technical"]["header"])
-        lines.append("")
-        lines.append(constraints["technical"]["content"])
-        lines.append("")
-        lines.append("---")
-        lines.append("")
+        lines.extend([
+            "",
+            constraints["technical"]["header"],
+            "",
+            constraints["technical"]["content"],
+            "",
+            "---",
+            "",
+        ])
+        return lines
 
-        # --- Expected Output Section ---
+    def _build_expected_output_section(
+        self, config: dict, artifacts: list[str], variables: dict[str, str]
+    ) -> list[str]:
+        """Build the Expected Output section with format template.
+
+        Args:
+            config: Loaded YAML config
+            artifacts: List of artifact types
+            variables: Resolved convention variables
+
+        Returns:
+            List of lines for the expected output section
+        """
         expected = config["expected_output"]
-        lines.append("## Expected Output")
-        lines.append("")
-        lines.append(expected["intro"])
-        lines.append("")
-        lines.append("```markdown")
-        lines.append(f"# Implementation Plan: {{{{entity}}}}")
-        lines.append("")
+        lines = [
+            "## Expected Output",
+            "",
+            expected["intro"],
+            "",
+            "```markdown",
+            "# Implementation Plan: {{entity}}",
+            "",
+        ]
 
         # Common sections
         for section in expected["common"]:
@@ -627,72 +693,119 @@ class JpaMtProfile(WorkflowProfile):
             if artifact in artifact_sections:
                 section = artifact_sections[artifact]
                 lines.append(f"## {section['section']}")
-                # Handle conditional extends item for entity artifact
-                if artifact == "entity":
-                    if "extends_item_with_class" in section:
-                        base_entity_class = variables.get("base_entity_class", "")
-                        if base_entity_class:
-                            lines.append(f"- {section['extends_item_with_class']}")
-                        else:
-                            lines.append(f"- {section['extends_item_without_class']}")
+                # Handle conditional extends item
+                if artifact == "entity" and "extends_item_with_class" in section:
+                    base_entity_class = variables.get("base_entity_class", "")
+                    if base_entity_class:
+                        lines.append(f"- {section['extends_item_with_class']}")
+                    else:
+                        lines.append(f"- {section['extends_item_without_class']}")
                 for item in section["items"]:
                     lines.append(f"- {item}")
                 lines.append("")
 
-        # Closing sections
+        # Closing sections (e.g., Open Questions)
         for section in expected["closing"]:
             lines.append(f"## {section['section']}")
-            # Include guidance if present (V5 for Open Questions)
             # Select guidance based on open_questions_mode config
             guidance_key = f"guidance_{self.config.open_questions_mode}"
             if guidance_key in section:
-                lines.append("")
-                lines.append(section[guidance_key].strip())
-                lines.append("")
+                lines.extend(["", section[guidance_key].strip(), ""])
             elif "guidance" in section:
-                # Fallback to default guidance if mode-specific not found
-                lines.append("")
-                lines.append(section["guidance"].strip())
-                lines.append("")
+                lines.extend(["", section["guidance"].strip(), ""])
             for item in section["items"]:
                 lines.append(f"- {item}")
             lines.append("")
 
-        lines.append("```")
-        lines.append("")
-        lines.append("---")
-        lines.append("")
+        lines.extend(["```", "", "---", ""])
+        return lines
 
-        # --- Pre-Output Checklist Section (V3) ---
-        if "pre_output_checklist" in config:
-            poc = config["pre_output_checklist"]
-            lines.append(poc["header"])
-            lines.append("")
-            lines.append(poc["intro"])
-            lines.append("")
-            # First two items from the list
-            for item in poc["items"][:2]:
-                lines.append(f"- {item}")
-            # Conditional base entity check (inserted after multi-tenancy)
-            if "base_entity_check_with_class" in poc:
-                base_entity_class = variables.get("base_entity_class", "")
-                if base_entity_class:
-                    lines.append(f"- {poc['base_entity_check_with_class']}")
-                else:
-                    lines.append(f"- {poc['base_entity_check_without_class']}")
-            # Remaining items
-            for item in poc["items"][2:]:
-                lines.append(f"- {item}")
-            lines.append("")
-            lines.append("---")
-            lines.append("")
+    def _build_checklist_section(
+        self, config: dict, variables: dict[str, str]
+    ) -> list[str]:
+        """Build the Pre-Output Checklist section.
 
-        # --- Instructions Section ---
-        lines.append("## Instructions")
-        lines.append("")
+        Args:
+            config: Loaded YAML config
+            variables: Resolved convention variables
+
+        Returns:
+            List of lines for the checklist section (empty if not configured)
+        """
+        if "pre_output_checklist" not in config:
+            return []
+
+        poc = config["pre_output_checklist"]
+        lines = [
+            poc["header"],
+            "",
+            poc["intro"],
+            "",
+        ]
+
+        # First two items
+        for item in poc["items"][:2]:
+            lines.append(f"- {item}")
+
+        # Conditional base entity check (after multi-tenancy)
+        if "base_entity_check_with_class" in poc:
+            base_entity_class = variables.get("base_entity_class", "")
+            if base_entity_class:
+                lines.append(f"- {poc['base_entity_check_with_class']}")
+            else:
+                lines.append(f"- {poc['base_entity_check_without_class']}")
+
+        # Remaining items
+        for item in poc["items"][2:]:
+            lines.append(f"- {item}")
+
+        lines.extend(["", "---", ""])
+        return lines
+
+    def _build_instructions_section(self, config: dict) -> list[str]:
+        """Build the Instructions section.
+
+        Args:
+            config: Loaded YAML config
+
+        Returns:
+            List of lines for the instructions section
+        """
+        lines = ["## Instructions", ""]
         for i, item in enumerate(config["instructions"]["items"], 1):
             lines.append(f"{i}. {item}")
         lines.append("")
+        return lines
+
+    def _build_planning_prompt_from_yaml(
+        self, context: dict, artifacts: list[str], variables: dict[str, str]
+    ) -> str:
+        """Build planning prompt from YAML configuration.
+
+        Loads planning-prompt.yml and assembles the prompt by delegating
+        to section-specific builder methods.
+
+        Args:
+            context: Workflow context dict
+            artifacts: List of artifact types to generate
+            variables: Resolved convention variables (for conditional logic)
+
+        Returns:
+            Assembled markdown prompt (with {{var}} placeholders intact)
+        """
+        config = self._load_prompt_config("planning-prompt.yml", context)
+        lines: list[str] = []
+
+        # Assemble sections in order
+        lines.extend(self._build_role_section(config))
+        lines.extend(self._build_planning_context_section(config))
+        lines.extend(self._build_conventions_section(config))
+        lines.extend(self._build_task_section(config, artifacts, variables))
+        lines.extend(self._build_standards_section())
+        lines.extend(self._build_constraints_section(config))
+        lines.extend(self._build_expected_output_section(config, artifacts, variables))
+        lines.extend(self._build_checklist_section(config, variables))
+        lines.extend(self._build_instructions_section(config))
 
         return "\n".join(lines)
 
