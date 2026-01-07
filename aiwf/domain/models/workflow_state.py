@@ -9,13 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 STRICT_MODEL_CONFIG = ConfigDict(extra="forbid")
 
 
-class ExecutionMode(str, Enum):
-    """Execution mode for workflow sessions."""
-
-    INTERACTIVE = "interactive"
-    AUTOMATED = "automated"
-
-
 class WorkflowPhase(str, Enum):
     """Workflow phase - WHAT work is being done.
 
@@ -130,7 +123,6 @@ class WorkflowState(BaseModel):
     phase: WorkflowPhase
     stage: WorkflowStage | None = None  # None for INIT and terminal phases
     status: WorkflowStatus
-    execution_mode: ExecutionMode
     current_iteration: int = 1  # Starts at 1, increments on revision
 
     # Hashing and approval

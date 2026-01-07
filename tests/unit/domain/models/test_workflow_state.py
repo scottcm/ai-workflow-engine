@@ -6,7 +6,6 @@ TDD Tests for ADR-0012 Phase 1.
 import pytest
 
 from aiwf.domain.models.workflow_state import (
-    ExecutionMode,
     WorkflowPhase,
     WorkflowStage,
     WorkflowState,
@@ -91,7 +90,6 @@ def _minimal_workflow_state_kwargs() -> dict:
         "profile": "test",
         "phase": WorkflowPhase.INIT,
         "status": WorkflowStatus.IN_PROGRESS,
-        "execution_mode": ExecutionMode.INTERACTIVE,
         "ai_providers": {"planner": "manual"},
         "standards_hash": "sha256:test",
     }

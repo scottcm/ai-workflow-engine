@@ -15,7 +15,6 @@ import pytest
 
 from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.models.workflow_state import (
-    ExecutionMode,
     PhaseTransition,
     WorkflowPhase,
     WorkflowState,
@@ -32,7 +31,6 @@ def _create_valid_session_json(session_id: str) -> dict:
         "scope": "domain",
         "entity": "TestEntity",
         "ai_providers": {"planner": "manual"},
-        "execution_mode": "interactive",
         "phase": "initialized",
         "status": "in_progress",
         "current_iteration": 1,

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from aiwf.domain.models.workflow_state import ExecutionMode, WorkflowPhase, WorkflowState, WorkflowStatus
+from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowState, WorkflowStatus
 
 
 def _minimal_workflow_state_kwargs() -> dict:
@@ -12,7 +12,6 @@ def _minimal_workflow_state_kwargs() -> dict:
         "context": {"scope": "domain", "entity": "Tier"},
         "phase": WorkflowPhase.INIT,
         "status": WorkflowStatus.IN_PROGRESS,
-        "execution_mode": ExecutionMode.INTERACTIVE,
         "ai_providers": {"planner": "manual", "generator": "manual", "reviewer": "manual", "reviser": "manual"},
         "standards_hash": "sha256:deadbeef",
     }

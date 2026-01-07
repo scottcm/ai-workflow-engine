@@ -15,7 +15,6 @@ from aiwf.application.standards_materializer import materialize_standards
 from aiwf.application.transitions import Action, TransitionTable, TransitionResult
 
 from aiwf.domain.models.workflow_state import (
-    ExecutionMode,
     PhaseTransition,
     WorkflowPhase,
     WorkflowStage,
@@ -569,7 +568,6 @@ class WorkflowOrchestrator:
         profile: str,
         providers: dict[str, str],
         context: dict[str, Any] | None = None,
-        execution_mode: ExecutionMode = ExecutionMode.INTERACTIVE,
         metadata: dict[str, Any] | None = None,
         standards_provider: str | None = None,
         # Legacy parameters for backward compatibility
@@ -596,7 +594,6 @@ class WorkflowOrchestrator:
             profile: Profile identifier (e.g., "jpa-mt")
             providers: Role to provider mapping (e.g., {"planner": "manual"})
             context: Profile-specific context dict (new API)
-            execution_mode: Interactive or automated execution
             metadata: Optional additional metadata
             standards_provider: Optional standards provider key override
             scope: (Legacy) Workflow scope - use context instead
@@ -657,7 +654,6 @@ class WorkflowOrchestrator:
             profile=profile,
             context=effective_context,
             providers=providers,
-            execution_mode=execution_mode,
             metadata=metadata,
         )
 
@@ -1407,7 +1403,6 @@ def _build_initial_state(
     profile: str,
     context: dict[str, Any],
     providers: dict[str, str],
-    execution_mode: ExecutionMode,
     metadata: dict[str, Any] | None,
 ) -> WorkflowState:
     """Build the initial `WorkflowState` for a new session.
@@ -1430,7 +1425,6 @@ def _build_initial_state(
         profile=profile,
         context=context,
         ai_providers=providers,
-        execution_mode=execution_mode,
         metadata=metadata or {},
         phase=initial_phase,
         status=initial_status,

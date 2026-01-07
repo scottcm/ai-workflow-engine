@@ -26,66 +26,91 @@ AI agent guide for the AI Workflow Engine codebase.
 
 **After context compression, ALWAYS read the active working document first.**
 
-Working documents (e.g., `claude-code-provider-work.md`) preserve implementation state across context boundaries. They are critical for maintaining continuity.
+Working documents (e.g., `workflow-process-analysis.md`) preserve implementation state across context boundaries. They prevent costly re-discovery of codebase knowledge.
 
-### Working Document Structure
+### Working Document Lifecycle
 
-| Section | Purpose |
-|---------|---------|
-| **Active Task** | REQUIRED - What you're doing RIGHT NOW (see below) |
-| **Decisions Made** | WHY decisions were made, including rejected alternatives |
-| **Implementation Status** | What's done, what's pending |
+```
+1. PLAN: Write what you're about to do, why, and how
+2. EXECUTE: Do the work, update progress as you go
+3. RECORD: Add results/findings to permanent sections
+4. CLEAN: Remove detailed plan steps, keep only what's needed for context
+```
+
+### Required Sections
+
+| Section | When to Write | Purpose |
+|---------|---------------|---------|
+| **Active Task** | BEFORE starting | What you're doing, why, next steps |
+| **Reference Knowledge** | After research | Permanent facts that shouldn't be re-discovered |
+| **Decisions** | When choices are made | Why X was chosen, what was rejected |
+| **Status** | After completing items | What's done, what's pending |
 
 ### Active Task Section (CRITICAL)
-
-Every working document MUST have an Active Task section near the top:
 
 ```markdown
 ## Active Task
 
-**Doing:** [current task - what you're about to do]
-**Why:** [context and reasoning]
-**Blocked by:** [if waiting on something, otherwise omit]
+**Question:** What are you trying to answer/accomplish?
+**Why:** Context and motivation
+**Approach:**
+1. Step I will take first
+2. Step I will take second
+3. ...
+
+**Progress:**
+- [x] Step 1 complete - found X
+- [ ] Step 2 in progress
 ```
 
 **Protocol:**
-1. BEFORE starting work: Write what you're about to do in Active Task
-2. DO the work
-3. AFTER completing: Clear Active Task, add outcome to relevant section (Decisions, Status, etc.)
+1. BEFORE starting: Write question, why, and approach steps
+2. DURING work: Check off steps, note findings
+3. AFTER completing: Move findings to Reference Knowledge, clear Active Task
 
-**Why this matters:** Context compression loses your mental state. If you only write results AFTER work, compression mid-task means you forget what you were doing. Writing intent FIRST creates a breadcrumb.
+### Reference Knowledge Section
 
-### How to Use Working Documents
+**Purpose:** Store facts that required code exploration so they don't need re-discovery.
 
-1. **Read Active Task first** - This tells you what was in progress
-2. **Check Decisions** - Don't re-propose rejected approaches
-3. **Write intent before action** - Update Active Task BEFORE starting work
-4. **Clear when done** - Move outcomes to appropriate sections, clear Active Task
+```markdown
+## Reference Knowledge
+
+### Approval Gates (ADR-0012, ADR-0015)
+
+Each gate asks a specific question:
+| Phase | Stage | Question |
+|-------|-------|----------|
+| PLAN | PROMPT | "Is this planning prompt ready to send to AI?" |
+| PLAN | RESPONSE | "Is this plan acceptable?" |
+...
+
+Key behavior: Gates run AFTER content creation, not when user issues `approve`.
+
+### Where Things Are Configured
+
+| Concept | Location | Notes |
+|---------|----------|-------|
+| open_questions_mode | profiles/jpa_mt/config.py | Controls response content, not workflow |
+| ApprovalConfig | aiwf/application/approval_config.py | Per-stage gate configuration |
+```
 
 ### Decisions Format
-
-Active decisions table:
 
 ```markdown
 ## Decisions
 
-| # | Decision | Rationale |
-|---|----------|-----------|
-| D1 | Use absolute paths | AI needs to find files regardless of working directory |
-| D2 | Profile describes format, engine controls destination | Separation of concerns |
+| # | Decision | Rationale | Alternatives Rejected |
+|---|----------|-----------|----------------------|
+| D1 | Use ApprovalConfig, not ExecutionMode | ApprovalConfig is granular per-stage | ExecutionMode is unused, binary |
 ```
 
-When a decision is deprecated/changed, move it to Deprecated section:
+### Cleanup Guidelines
 
-```markdown
-## Deprecated Decisions
-
-| # | Was | Changed To | Why |
-|---|-----|------------|-----|
-| D1 | Relative paths | D1 (absolute) | AI launched from wrong dir couldn't resolve paths |
-```
-
-**Maintenance:** Periodically review Decisions table. If any no longer apply, move to Deprecated with explanation. The "Changed To" column links to the replacement decision.
+After completing a task:
+1. **Keep:** Reference Knowledge (permanent facts)
+2. **Keep:** Decisions with rationale
+3. **Remove:** Detailed approach steps (they're done)
+4. **Summarize:** Reduce verbose findings to key points
 
 ## Quick Reference
 

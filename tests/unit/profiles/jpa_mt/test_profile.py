@@ -283,14 +283,14 @@ class TestFromConfigFile:
         config_file = tmp_path / "config.yml"
         config_file.write_text(
             """base_package: com.test.app
-open_questions_mode: assume
+assume_answers: true
 """
         )
 
         profile = JpaMtProfile.from_config_file(config_file)
 
         assert profile.config.base_package == "com.test.app"
-        assert profile.config.open_questions_mode == "assume"
+        assert profile.config.assume_answers is True
 
     def test_from_config_file_with_string_path(self, tmp_path):
         """Factory accepts string path."""
@@ -318,7 +318,7 @@ open_questions_mode: assume
 
         # Should have default values
         assert profile.config.base_package == "com.example.app"
-        assert profile.config.open_questions_mode == "manual"
+        assert profile.config.assume_answers is False
 
     def test_constructor_no_file_io(self):
         """Constructor with None config doesn't do file I/O."""
@@ -327,6 +327,123 @@ open_questions_mode: assume
 
         # Should have default config without file I/O
         assert profile.config.base_package == "com.example.app"
+
+
+class TestAIProviderProperty:
+    """Tests for ai_provider lazy initialization (ADR-0010)."""
+
+    def test_ai_provider_returns_none_when_not_configured(self):
+        """ai_provider returns None when config has no ai_provider."""
+        profile = JpaMtProfile()  # Default config has ai_provider=None
+
+        assert profile.ai_provider is None
+        assert profile._ai_provider is None  # Cache not populated
+
+    def test_ai_provider_lazy_creates_provider(self):
+        """ai_provider creates provider on first access when configured."""
+        from unittest.mock import MagicMock, patch
+
+        config = JpaMtConfig(ai_provider="claude-code")
+        profile = JpaMtProfile(config=config)
+
+        mock_provider = MagicMock()
+        with patch(
+            "aiwf.domain.providers.provider_factory.AIProviderFactory.create",
+            return_value=mock_provider,
+        ) as mock_create:
+            # First access should create provider
+            provider = profile.ai_provider
+
+            assert provider is mock_provider
+            mock_create.assert_called_once_with("claude-code")
+
+            # Second access should return cached provider (no new create call)
+            provider2 = profile.ai_provider
+            assert provider2 is provider
+            mock_create.assert_called_once()  # Still just one call
+
+    def test_ai_provider_can_inject_mock_for_testing(self):
+        """Tests can inject mock directly via _ai_provider."""
+        from unittest.mock import MagicMock
+
+        profile = JpaMtProfile()
+        mock_provider = MagicMock()
+
+        # Inject mock directly
+        profile._ai_provider = mock_provider
+
+        # Property returns injected mock
+        assert profile.ai_provider is mock_provider
+
+    def test_ai_provider_config_loads_from_yaml(self, tmp_path):
+        """ai_provider field loads correctly from YAML config."""
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            """base_package: com.test.app
+ai_provider: claude-code
+"""
+        )
+
+        profile = JpaMtProfile.from_config_file(config_file)
+
+        assert profile.config.ai_provider == "claude-code"
+
+    def test_ai_provider_with_invalid_key_raises_error(self):
+        """ai_provider raises KeyError for unregistered provider key."""
+        config = JpaMtConfig(ai_provider="nonexistent-provider")
+        profile = JpaMtProfile(config=config)
+
+        with pytest.raises(KeyError) as exc_info:
+            _ = profile.ai_provider
+
+        assert "nonexistent-provider" in str(exc_info.value)
+
+    def test_ai_provider_rejects_manual_provider(self):
+        """ai_provider raises ValueError for 'manual' - it can't generate content."""
+        config = JpaMtConfig(ai_provider="manual")
+        profile = JpaMtProfile(config=config)
+
+        with pytest.raises(ValueError) as exc_info:
+            _ = profile.ai_provider
+
+        assert "manual" in str(exc_info.value)
+
+    def test_ai_provider_can_be_used_for_generation(self):
+        """Injected provider can validate and generate content."""
+        from unittest.mock import MagicMock
+
+        profile = JpaMtProfile()
+        mock_provider = MagicMock()
+        mock_provider.generate.return_value = MagicMock(
+            files={"output.java": "public class Output {}"}
+        )
+
+        # Inject mock
+        profile._ai_provider = mock_provider
+
+        # Use provider for generation
+        result = profile.ai_provider.generate("Generate a Java class")
+
+        mock_provider.generate.assert_called_once_with("Generate a Java class")
+        assert result.files["output.java"] == "public class Output {}"
+
+    @pytest.mark.claude_code
+    def test_ai_provider_with_claude_code_validates(self):
+        """Claude Code provider can be validated when available.
+
+        This is an integration test - requires claude CLI to be installed.
+        Run with: pytest -m claude_code
+        """
+        config = JpaMtConfig(ai_provider="claude-code")
+        profile = JpaMtProfile(config=config)
+
+        provider = profile.ai_provider
+
+        # Should not raise if claude CLI is available
+        provider.validate()
+        # Verify it conforms to interface
+        assert hasattr(provider, "generate")
+        assert callable(provider.generate)
 
 
 class TestTemplateRendering:

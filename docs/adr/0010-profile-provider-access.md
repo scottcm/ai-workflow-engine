@@ -1,7 +1,7 @@
 # ADR-0010: Profile Access to AI Providers
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 Profiles currently operate as pure functions: they receive input (context, response content) and return output (prompts, ProcessingResults with WritePlans). They have no access to AI providers - all provider invocation is handled by the engine's approval handler.
@@ -22,9 +22,35 @@ Breaking generation into focused calls (entity first, then repo using entity as 
 For profiles that want full automation (no user intervention), this isn't an option.
 
 ## Decision
-Allow profiles to optionally receive an AI provider for internal use during response processing.
+Allow profiles to optionally access an AI provider for internal use during prompt regeneration and response processing.
 
-### Approach: Optional Provider Parameter
+### Approach: Config-Specified Provider with Lazy Initialization
+
+Profiles specify their provider in config and use lazy initialization:
+
+```yaml
+# Profile config.yml
+ai_provider: claude-code  # Optional - provider key for internal use
+```
+
+```python
+class JpaMtProfile(WorkflowProfile):
+    def __init__(self, config: JpaMtConfig | None = None):
+        self.config = config or JpaMtConfig()
+        self._ai_provider: AIProvider | None = None  # Lazy cache
+
+    @property
+    def ai_provider(self) -> AIProvider | None:
+        """Get the configured AI provider, if any."""
+        if self._ai_provider is None and self.config.ai_provider:
+            from aiwf.domain.providers import AIProviderFactory
+            self._ai_provider = AIProviderFactory.create(self.config.ai_provider)
+        return self._ai_provider
+```
+
+Profiles that want to support prompt regeneration (ADR-0015) set `can_regenerate_prompts: True` in metadata and implement `regenerate_prompt()` using the configured provider.
+
+### Alternative: Optional Provider Parameter (Not Implemented)
 Add an optional `provider` parameter to profile methods that process responses:
 
 ```python

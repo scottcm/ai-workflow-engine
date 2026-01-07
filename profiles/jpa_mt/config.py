@@ -37,10 +37,14 @@ class JpaMtConfig(BaseModel):
     # Project settings
     base_package: str = "com.example.app"
 
-    # Question handling mode for planning phase
-    # "manual" = Stop and require human to answer questions (default)
-    # "assume" = AI makes reasonable assumptions with [ASSUMPTION] tag
-    open_questions_mode: Literal["manual", "assume"] = "manual"
+    # When True, AI makes reasonable assumptions with [ASSUMPTION] tag
+    # When False (default), AI stops and asks questions for human to answer
+    assume_answers: bool = False
+
+    # AI provider for internal use (prompt regeneration, etc.)
+    # When set, profile can use AI for adaptive operations like fixing prompts
+    # based on rejection feedback. See ADR-0010.
+    ai_provider: str | None = None
 
     # Standards configuration
     standards: StandardsConfig = Field(default_factory=StandardsConfig)

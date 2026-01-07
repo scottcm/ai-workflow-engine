@@ -10,7 +10,6 @@ from click.testing import CliRunner
 
 from aiwf.interface.cli.cli import cli
 from aiwf.domain.models.workflow_state import (
-    ExecutionMode,
     WorkflowPhase,
     WorkflowStage,
     WorkflowState,
@@ -31,7 +30,6 @@ def _make_state(
         "phase": phase,
         "stage": stage,
         "status": WorkflowStatus.IN_PROGRESS,
-        "execution_mode": ExecutionMode.INTERACTIVE,
         "ai_providers": {"planner": "manual"},
         "standards_hash": "abc123",
     }

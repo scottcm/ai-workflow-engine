@@ -7,9 +7,12 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from aiwf.domain.providers.ai_provider import AIProvider
 
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import WorkflowStatus
@@ -37,6 +40,7 @@ class JpaMtProfile(WorkflowProfile):
                    For loading from file, use from_config_file() instead.
         """
         self.config = config if config is not None else JpaMtConfig()
+        self._ai_provider: "AIProvider | None" = None  # Lazy cache for ADR-0010
 
     @classmethod
     def from_config_file(cls, config_path: Path | str | None = None) -> "JpaMtProfile":
@@ -75,6 +79,29 @@ class JpaMtProfile(WorkflowProfile):
 
         config = JpaMtConfig.from_yaml(config_path)
         return cls(config=config)
+
+    @property
+    def ai_provider(self) -> "AIProvider | None":
+        """Get the configured AI provider, if any.
+
+        Lazy initialization pattern (ADR-0010): Provider is created on first
+        access and cached for reuse. Returns None if no ai_provider configured.
+
+        For testing, inject mock directly via self._ai_provider = mock.
+
+        Raises:
+            ValueError: If ai_provider is 'manual' (can't generate content)
+            KeyError: If ai_provider key is not registered
+        """
+        if self._ai_provider is None and self.config.ai_provider:
+            if self.config.ai_provider == "manual":
+                raise ValueError(
+                    "Cannot use 'manual' as profile ai_provider. "
+                    "'manual' means no AI - use a real provider like 'claude-code'."
+                )
+            from aiwf.domain.providers.provider_factory import AIProviderFactory
+            self._ai_provider = AIProviderFactory.create(self.config.ai_provider)
+        return self._ai_provider
 
     @classmethod
     def get_metadata(cls) -> dict[str, Any]:
@@ -759,8 +786,8 @@ class JpaMtProfile(WorkflowProfile):
         # Closing sections (e.g., Open Questions)
         for section in expected["closing"]:
             lines.append(f"## {section['section']}")
-            # Select guidance based on open_questions_mode config
-            guidance_key = f"guidance_{self.config.open_questions_mode}"
+            # Select guidance based on assume_answers config
+            guidance_key = "guidance_assume" if self.config.assume_answers else "guidance_manual"
             if guidance_key in section:
                 lines.extend(["", section[guidance_key].strip(), ""])
             elif "guidance" in section:

@@ -278,7 +278,7 @@ expected_output:
   # Closing sections always included
   closing:
     - section: Open Questions
-      # Guidance varies based on open_questions_mode config - profile selects which to use
+      # Guidance varies based on assume_answers config - profile selects which to use
       guidance_manual: |
         Use this section for decisions that:
         - Have multiple valid approaches with different trade-offs
