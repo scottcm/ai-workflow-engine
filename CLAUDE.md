@@ -22,95 +22,47 @@ AI agent guide for the AI Workflow Engine codebase.
   poetry run aiwf list
   ```
 
-## Context Recovery and Working Documents
+## Working Documents
 
-**After context compression, ALWAYS read the active working document first.**
+Two documents preserve state across context boundaries:
 
-Working documents (e.g., `workflow-process-analysis.md`) preserve implementation state across context boundaries. They prevent costly re-discovery of codebase knowledge.
+| Document | Purpose | Lifespan |
+|----------|---------|----------|
+| `memory.md` | Session progress, active task, what's done | Per-task, prune often |
+| `knowledge.md` | Stable facts, decisions, file locations | Long-term reference |
 
-### Working Document Lifecycle
+### Context Recovery Protocol
+
+**After context compression, ALWAYS:**
+1. Read `memory.md` FIRST (current task state)
+2. Read `knowledge.md` if needed (reference facts)
+3. Update Active Task before starting work
+4. Prune completed items from memory.md
+
+### Memory File Lifecycle
 
 ```
-1. PLAN: Write what you're about to do, why, and how
-2. EXECUTE: Do the work, update progress as you go
-3. RECORD: Add results/findings to permanent sections
-4. CLEAN: Remove detailed plan steps, keep only what's needed for context
+1. START: Read memory.md, update Active Task
+2. WORK: Update progress as you go
+3. LEARN: Add discoveries to Reference Knowledge
+4. FINISH: Clear Active Task, prune Status to last 5 items
 ```
 
-### Required Sections
+### Required Sections in memory.md
 
-| Section | When to Write | Purpose |
-|---------|---------------|---------|
-| **Active Task** | BEFORE starting | What you're doing, why, next steps |
-| **Reference Knowledge** | After research | Permanent facts that shouldn't be re-discovered |
-| **Decisions** | When choices are made | Why X was chosen, what was rejected |
-| **Status** | After completing items | What's done, what's pending |
+| Section | Purpose | Persistence |
+|---------|---------|-------------|
+| **Active Task** | Current work (ONE task only) | Clear when done |
+| **Decisions** | Why X was chosen | Keep with rationale |
+| **Reference Knowledge** | Session-specific facts | Move to knowledge.md when stable |
+| **Status** | Completed items | Prune to last 5 |
 
-### Active Task Section (CRITICAL)
+### Keeping Memory Small
 
-```markdown
-## Active Task
-
-**Question:** What are you trying to answer/accomplish?
-**Why:** Context and motivation
-**Approach:**
-1. Step I will take first
-2. Step I will take second
-3. ...
-
-**Progress:**
-- [x] Step 1 complete - found X
-- [ ] Step 2 in progress
-```
-
-**Protocol:**
-1. BEFORE starting: Write question, why, and approach steps
-2. DURING work: Check off steps, note findings
-3. AFTER completing: Move findings to Reference Knowledge, clear Active Task
-
-### Reference Knowledge Section
-
-**Purpose:** Store facts that required code exploration so they don't need re-discovery.
-
-```markdown
-## Reference Knowledge
-
-### Approval Gates (ADR-0012, ADR-0015)
-
-Each gate asks a specific question:
-| Phase | Stage | Question |
-|-------|-------|----------|
-| PLAN | PROMPT | "Is this planning prompt ready to send to AI?" |
-| PLAN | RESPONSE | "Is this plan acceptable?" |
-...
-
-Key behavior: Gates run AFTER content creation, not when user issues `approve`.
-
-### Where Things Are Configured
-
-| Concept | Location | Notes |
-|---------|----------|-------|
-| open_questions_mode | profiles/jpa_mt/config.py | Controls response content, not workflow |
-| ApprovalConfig | aiwf/application/approval_config.py | Per-stage gate configuration |
-```
-
-### Decisions Format
-
-```markdown
-## Decisions
-
-| # | Decision | Rationale | Alternatives Rejected |
-|---|----------|-----------|----------------------|
-| D1 | Use ApprovalConfig, not ExecutionMode | ApprovalConfig is granular per-stage | ExecutionMode is unused, binary |
-```
-
-### Cleanup Guidelines
-
-After completing a task:
-1. **Keep:** Reference Knowledge (permanent facts)
-2. **Keep:** Decisions with rationale
-3. **Remove:** Detailed approach steps (they're done)
-4. **Summarize:** Reduce verbose findings to key points
+- ONE active task at a time
+- Prune Status section aggressively (last 5 items)
+- Move stable facts from Reference Knowledge to knowledge.md
+- Remove detailed approach steps after completion
 
 ## Quick Reference
 

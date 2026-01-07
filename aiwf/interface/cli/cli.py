@@ -41,6 +41,17 @@ def _get_json_mode(ctx: click.Context) -> bool:
     return bool(obj.get("json", False))
 
 
+def _get_project_dir(ctx: click.Context) -> Path:
+    """Get project directory from context (set by --project-dir or defaults to cwd)."""
+    obj = ctx.obj or {}
+    return obj.get("project_dir", Path.cwd())
+
+
+def _get_sessions_root(ctx: click.Context) -> Path:
+    """Get sessions root directory derived from project_dir."""
+    return _get_project_dir(ctx) / ".aiwf" / "sessions"
+
+
 def _format_error(e: Exception) -> str:
     """Format exception into user-friendly message."""
     if isinstance(e, FileNotFoundError):
@@ -60,10 +71,17 @@ def _emit_progress(state) -> None:
 
 @click.group(help="AI Workflow Engine CLI.")
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON on stdout.")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, file_okay=False, resolve_path=True),
+    default=None,
+    help="Project root directory (default: current directory)",
+)
 @click.pass_context
-def cli(ctx: click.Context, json_output: bool) -> None:
+def cli(ctx: click.Context, json_output: bool, project_dir: str | None) -> None:
     ctx.ensure_object(dict)
     ctx.obj["json"] = bool(json_output)
+    ctx.obj["project_dir"] = Path(project_dir) if project_dir else Path.cwd()
 
 
 @cli.command("step")
@@ -81,10 +99,11 @@ def step_cmd(ctx: click.Context, session_id: str, events: bool) -> None:
             from aiwf.domain.events.stderr_observer import StderrEventObserver
             event_emitter.subscribe(StderrEventObserver())
 
-        session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+        sessions_root = _get_sessions_root(ctx)
+        session_store = SessionStore(sessions_root=sessions_root)
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
-            sessions_root=DEFAULT_SESSIONS_ROOT,
+            sessions_root=sessions_root,
             event_emitter=event_emitter,
         )
 
@@ -155,9 +174,10 @@ def status_cmd(ctx: click.Context, session_id: str) -> None:
     try:
         from aiwf.domain.persistence.session_store import SessionStore
 
-        session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+        sessions_root = _get_sessions_root(ctx)
+        session_store = SessionStore(sessions_root=sessions_root)
         state = session_store.load(session_id)
-        session_path = str(DEFAULT_SESSIONS_ROOT / session_id)
+        session_path = str(sessions_root / session_id)
 
         phase = state.phase.name
         status = state.status.name
@@ -197,7 +217,7 @@ def status_cmd(ctx: click.Context, session_id: str) -> None:
                     phase="",
                     status="",
                     iteration=None,
-                    session_path=str(DEFAULT_SESSIONS_ROOT / session_id),
+                    session_path=str(_get_sessions_root(ctx) / session_id),
                     error=str(e),
                 )
             )
@@ -222,7 +242,8 @@ def approve_cmd(ctx: click.Context, session_id: str, fs_ability: str | None, has
         from aiwf.domain.persistence.session_store import SessionStore
         from aiwf.domain.events.emitter import WorkflowEventEmitter
 
-        cfg = load_config(project_root=Path.cwd(), user_home=Path.home())
+        project_dir = _get_project_dir(ctx)
+        cfg = load_config(project_root=project_dir, user_home=Path.home())
 
         # Determine effective hash_prompts
         effective_hash = cfg.get("hash_prompts", False)
@@ -236,10 +257,11 @@ def approve_cmd(ctx: click.Context, session_id: str, fs_ability: str | None, has
             from aiwf.domain.events.stderr_observer import StderrEventObserver
             event_emitter.subscribe(StderrEventObserver())
 
-        session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+        sessions_root = _get_sessions_root(ctx)
+        session_store = SessionStore(sessions_root=sessions_root)
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
-            sessions_root=DEFAULT_SESSIONS_ROOT,
+            sessions_root=sessions_root,
             event_emitter=event_emitter,
         )
 
@@ -331,10 +353,11 @@ def reject_cmd(ctx: click.Context, session_id: str, feedback: str) -> None:
         from aiwf.application.workflow_orchestrator import WorkflowOrchestrator, InvalidCommand
         from aiwf.domain.persistence.session_store import SessionStore
 
-        session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+        sessions_root = _get_sessions_root(ctx)
+        session_store = SessionStore(sessions_root=sessions_root)
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
-            sessions_root=DEFAULT_SESSIONS_ROOT,
+            sessions_root=sessions_root,
         )
 
         state = orchestrator.reject(session_id, feedback=feedback)
@@ -414,10 +437,11 @@ def retry_cmd(ctx: click.Context, session_id: str, feedback: str) -> None:
         from aiwf.application.workflow_orchestrator import WorkflowOrchestrator, InvalidCommand
         from aiwf.domain.persistence.session_store import SessionStore
 
-        session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+        sessions_root = _get_sessions_root(ctx)
+        session_store = SessionStore(sessions_root=sessions_root)
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
-            sessions_root=DEFAULT_SESSIONS_ROOT,
+            sessions_root=sessions_root,
         )
 
         state = orchestrator.retry(session_id, feedback=feedback)
@@ -496,7 +520,8 @@ def list_cmd(
     try:
         from aiwf.domain.persistence.session_store import SessionStore
 
-        session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+        sessions_root = _get_sessions_root(ctx)
+        session_store = SessionStore(sessions_root=sessions_root)
         session_ids = session_store.list_sessions()
 
         sessions: list[SessionSummary] = []
@@ -788,7 +813,7 @@ def _validate_ai_provider(key: str) -> list[ValidationResult]:
 
 
 def _validate_standards_provider(
-    key: str, profile_key: str | None
+    key: str, profile_key: str | None, project_dir: Path | None = None
 ) -> list[ValidationResult]:
     """Validate a single standards provider.
 
@@ -808,7 +833,8 @@ def _validate_standards_provider(
 
     try:
         # Determine which profile to use
-        cfg = load_config(project_root=Path.cwd(), user_home=Path.home())
+        project_root = project_dir or Path.cwd()
+        cfg = load_config(project_root=project_root, user_home=Path.home())
         profile_to_use = profile_key or cfg.get("profile")
 
         # Profile is required
@@ -907,6 +933,7 @@ def validate_cmd(
         from aiwf.domain.standards import StandardsProviderFactory
         import profiles.jpa_mt  # noqa: F401
 
+        project_dir = _get_project_dir(ctx)
         results: list[ValidationResult] = []
 
         if provider_type in ("ai", "all"):
@@ -921,11 +948,11 @@ def validate_cmd(
         if provider_type in ("standards", "all"):
             if provider_key and provider_type == "standards":
                 # Validate specific standards provider
-                results.extend(_validate_standards_provider(provider_key, profile_key))
+                results.extend(_validate_standards_provider(provider_key, profile_key, project_dir))
             else:
                 # Validate all standards providers
                 for key in StandardsProviderFactory.list_providers():
-                    results.extend(_validate_standards_provider(key, profile_key))
+                    results.extend(_validate_standards_provider(key, profile_key, project_dir))
 
         all_passed = all(r.passed for r in results)
         exit_code = 0 if all_passed else 1

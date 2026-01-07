@@ -85,6 +85,8 @@ Core commands remain at the top level:
 # Core commands (profile-agnostic)
 aiwf step <session-id>
 aiwf approve <session-id>
+aiwf reject <session-id> --feedback "..."
+aiwf retry <session-id> --feedback "..."
 aiwf status <session-id>
 aiwf list
 aiwf profiles
@@ -418,6 +420,12 @@ Phases 1, 2, 3 can run in parallel. Phases 5, 6 can run in parallel after their 
    - `<<<FILE:>>>` markers owned by profile (profile parses them)
    - `@@@REVIEW_META` owned by profile (profile determines verdict)
    - Engine only needs the parsed result (files, pass/fail)
+
+10. **Project root determines session and config location**
+    - Project root defaults to current working directory
+    - `--project-dir` CLI option overrides the default
+    - All paths (`.aiwf/sessions/`, `.aiwf/config.yml`) resolve relative to project root
+    - Enables running from any directory without `cd`
 
 ---
 
