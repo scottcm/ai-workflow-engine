@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from profiles.jpa_mt.standards import JpaMtStandardsProvider, SCOPE_PREFIXES
+from profiles.jpa_mt.standards import JpaMtStandardsProvider
 from aiwf.domain.errors import ProviderError
 
 
@@ -96,7 +96,7 @@ class TestJpaMtStandardsProviderLoadRules:
         config = {"rules_path": str(tmp_path)}
         provider = JpaMtStandardsProvider(config)
 
-        rules = provider._load_rules()
+        rules = provider._load_rules([])  # Empty list = load all files
 
         assert len(rules) == 1  # One category (from file)
         category = list(rules.keys())[0]
@@ -119,7 +119,7 @@ class TestJpaMtStandardsProviderLoadRules:
         config = {"rules_path": str(tmp_path)}
         provider = JpaMtStandardsProvider(config)
 
-        rules = provider._load_rules()
+        rules = provider._load_rules([])  # Empty list = load all files
 
         category = list(rules.keys())[0]
         assert len(rules[category]) == 2
@@ -138,7 +138,7 @@ class TestJpaMtStandardsProviderLoadRules:
         config = {"rules_path": str(tmp_path)}
         provider = JpaMtStandardsProvider(config)
 
-        rules = provider._load_rules()
+        rules = provider._load_rules([])  # Empty list = load all files
 
         category = list(rules.keys())[0]
         assert ("JV-LIB-003", "m", "Lombok is permitted.") in rules[category]
@@ -159,57 +159,16 @@ class TestJpaMtStandardsProviderLoadRules:
         config = {"rules_path": str(tmp_path)}
         provider = JpaMtStandardsProvider(config)
 
-        rules = provider._load_rules()
+        rules = provider._load_rules([])  # Empty list = load all files
 
         assert len(rules) == 2  # Two categories (from two files)
 
 
-class TestJpaMtStandardsProviderScopeFiltering:
-    """Tests for scope-based rule filtering."""
+class TestJpaMtStandardsProviderPrefixFiltering:
+    """Tests for prefix-based rule filtering."""
 
-    def test_scope_prefixes_defined(self):
-        """SCOPE_PREFIXES defines expected scopes."""
-        assert "domain" in SCOPE_PREFIXES
-        assert "service" in SCOPE_PREFIXES
-        assert "api" in SCOPE_PREFIXES
-        assert "full" in SCOPE_PREFIXES
-
-    def test_domain_scope_includes_correct_prefixes(self):
-        """domain scope includes JV-, JPA-, PKG-, DOM-, NAM-, MT-."""
-        prefixes = SCOPE_PREFIXES["domain"]
-        assert "JV-" in prefixes
-        assert "JPA-" in prefixes
-        assert "PKG-" in prefixes
-        assert "DOM-" in prefixes
-        assert "NAM-" in prefixes
-        assert "MT-" in prefixes
-        assert "SVC-" not in prefixes
-
-    def test_service_scope_extends_domain(self):
-        """service scope includes domain prefixes plus SVC-."""
-        domain_prefixes = set(SCOPE_PREFIXES["domain"])
-        service_prefixes = set(SCOPE_PREFIXES["service"])
-
-        assert domain_prefixes.issubset(service_prefixes)
-        assert "SVC-" in service_prefixes
-
-    def test_api_scope_extends_service(self):
-        """api scope includes service prefixes plus CTL-, DTO-, MAP-, API-."""
-        service_prefixes = set(SCOPE_PREFIXES["service"])
-        api_prefixes = set(SCOPE_PREFIXES["api"])
-
-        assert service_prefixes.issubset(api_prefixes)
-        assert "CTL-" in api_prefixes
-        assert "DTO-" in api_prefixes
-        assert "MAP-" in api_prefixes
-        assert "API-" in api_prefixes
-
-    def test_full_scope_is_empty(self):
-        """full scope has empty prefixes list (includes all)."""
-        assert SCOPE_PREFIXES["full"] == []
-
-    def test_filter_by_domain_scope(self, tmp_path: Path):
-        """create_bundle filters correctly for domain scope."""
+    def test_filter_by_domain_prefixes(self, tmp_path: Path):
+        """create_bundle filters correctly with domain prefixes."""
         rules_file = tmp_path / "test.rules.yml"
         rules_file.write_text(
             """rules:
@@ -222,39 +181,45 @@ class TestJpaMtStandardsProviderScopeFiltering:
         config = {"rules_path": str(tmp_path)}
         provider = JpaMtStandardsProvider(config)
 
-        bundle = provider.create_bundle({"scope": "domain"})
+        bundle = provider.create_bundle({
+            "scope": "domain",
+            "standards_prefixes": ["JV-", "JPA-", "PKG-", "DOM-", "NAM-", "MT-"],
+        })
 
         assert "JPA-ENT-001" in bundle
         assert "SVC-BIZ-001" not in bundle
         assert "CTL-NAM-001" not in bundle
 
-    def test_filter_by_service_scope(self, tmp_path: Path):
-        """create_bundle filters correctly for service scope."""
+    def test_filter_by_service_prefixes(self, tmp_path: Path):
+        """create_bundle filters correctly with service prefixes (layer-specific)."""
         rules_file = tmp_path / "test.rules.yml"
         rules_file.write_text(
             """rules:
-  JPA-ENT-001: 'C: JPA rule (should include).'
+  JPA-ENT-001: 'C: JPA rule (should exclude - domain layer).'
   SVC-BIZ-001: 'C: Service rule (should include).'
-  CTL-NAM-001: 'C: Controller rule (should exclude).'
+  CTL-NAM-001: 'C: Controller rule (should exclude - api layer).'
 """
         )
 
         config = {"rules_path": str(tmp_path)}
         provider = JpaMtStandardsProvider(config)
 
-        bundle = provider.create_bundle({"scope": "service"})
+        bundle = provider.create_bundle({
+            "scope": "service",
+            "standards_prefixes": ["SVC-"],
+        })
 
-        assert "JPA-ENT-001" in bundle
-        assert "SVC-BIZ-001" in bundle
-        assert "CTL-NAM-001" not in bundle
+        assert "JPA-ENT-001" not in bundle  # Domain layer, excluded
+        assert "SVC-BIZ-001" in bundle       # Service layer, included
+        assert "CTL-NAM-001" not in bundle   # API layer, excluded
 
-    def test_filter_by_api_scope(self, tmp_path: Path):
-        """create_bundle filters correctly for api scope."""
+    def test_filter_by_api_prefixes(self, tmp_path: Path):
+        """create_bundle filters correctly with api prefixes (layer-specific)."""
         rules_file = tmp_path / "test.rules.yml"
         rules_file.write_text(
             """rules:
-  JPA-ENT-001: 'C: JPA rule (should include).'
-  SVC-BIZ-001: 'C: Service rule (should include).'
+  JPA-ENT-001: 'C: JPA rule (should exclude - domain layer).'
+  SVC-BIZ-001: 'C: Service rule (should exclude - service layer).'
   CTL-NAM-001: 'C: Controller rule (should include).'
 """
         )
@@ -262,14 +227,17 @@ class TestJpaMtStandardsProviderScopeFiltering:
         config = {"rules_path": str(tmp_path)}
         provider = JpaMtStandardsProvider(config)
 
-        bundle = provider.create_bundle({"scope": "api"})
+        bundle = provider.create_bundle({
+            "scope": "api",
+            "standards_prefixes": ["CTL-", "DTO-", "MAP-", "API-"],
+        })
 
-        assert "JPA-ENT-001" in bundle
-        assert "SVC-BIZ-001" in bundle
-        assert "CTL-NAM-001" in bundle
+        assert "JPA-ENT-001" not in bundle   # Domain layer, excluded
+        assert "SVC-BIZ-001" not in bundle   # Service layer, excluded
+        assert "CTL-NAM-001" in bundle       # API layer, included
 
-    def test_filter_by_full_scope_includes_all(self, tmp_path: Path):
-        """create_bundle includes all rules for full scope."""
+    def test_filter_with_empty_prefixes_includes_all(self, tmp_path: Path):
+        """create_bundle includes all rules when prefixes list is empty."""
         rules_file = tmp_path / "test.rules.yml"
         rules_file.write_text(
             """rules:
@@ -283,7 +251,10 @@ class TestJpaMtStandardsProviderScopeFiltering:
         config = {"rules_path": str(tmp_path)}
         provider = JpaMtStandardsProvider(config)
 
-        bundle = provider.create_bundle({"scope": "full"})
+        bundle = provider.create_bundle({
+            "scope": "full",
+            "standards_prefixes": [],  # Empty = include all
+        })
 
         assert "JPA-ENT-001" in bundle
         assert "SVC-BIZ-001" in bundle
@@ -293,19 +264,6 @@ class TestJpaMtStandardsProviderScopeFiltering:
 
 class TestJpaMtStandardsProviderCreateBundle:
     """Tests for create_bundle method."""
-
-    def test_create_bundle_raises_on_unknown_scope(self, tmp_path: Path):
-        """create_bundle raises ValueError for unknown scope."""
-        rules_file = tmp_path / "test.rules.yml"
-        rules_file.write_text("test:\n  TEST-001: 'C: Test rule'\n")
-
-        config = {"rules_path": str(tmp_path)}
-        provider = JpaMtStandardsProvider(config)
-
-        with pytest.raises(ValueError) as exc_info:
-            provider.create_bundle({"scope": "unknown"})
-
-        assert "Unknown scope" in str(exc_info.value)
 
     def test_create_bundle_raises_on_missing_scope(self, tmp_path: Path):
         """create_bundle raises ValueError when scope is missing."""
@@ -318,7 +276,7 @@ class TestJpaMtStandardsProviderCreateBundle:
         with pytest.raises(ValueError) as exc_info:
             provider.create_bundle({})
 
-        assert "Unknown scope" in str(exc_info.value)
+        assert "scope is required" in str(exc_info.value)
 
     def test_create_bundle_formats_as_markdown(self, tmp_path: Path):
         """create_bundle returns properly formatted markdown."""

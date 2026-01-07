@@ -379,8 +379,19 @@ class WorkflowOrchestrator:
         # Get profile instance
         profile = ProfileFactory.create(state.profile)
 
-        # Build context from state
+        # Map phase to filenames (engine owns these conventions)
+        phase_file_map = {
+            WorkflowPhase.PLAN: ("planning-prompt.md", "planning-response.md"),
+            WorkflowPhase.GENERATE: ("generation-prompt.md", "generation-response.md"),
+            WorkflowPhase.REVIEW: ("review-prompt.md", "review-response.md"),
+            WorkflowPhase.REVISE: ("revision-prompt.md", "revision-response.md"),
+        }
+        prompt_filename, response_filename = phase_file_map[state.phase]
+
+        # Build context with engine-owned values (profiles shouldn't reconstruct these)
         context = self._build_provider_context(state)
+        context["prompt_filename"] = prompt_filename
+        context["response_filename"] = response_filename
 
         # Get phase-specific prompt from profile
         phase_prompt_methods = {
@@ -394,15 +405,6 @@ class WorkflowOrchestrator:
             raise ValueError(f"No prompt generation for phase: {state.phase}")
 
         profile_prompt = phase_prompt_methods[state.phase](context)
-
-        # Map phase to filenames
-        phase_file_map = {
-            WorkflowPhase.PLAN: ("planning-prompt.md", "planning-response.md"),
-            WorkflowPhase.GENERATE: ("generation-prompt.md", "generation-response.md"),
-            WorkflowPhase.REVIEW: ("review-prompt.md", "review-response.md"),
-            WorkflowPhase.REVISE: ("revision-prompt.md", "revision-response.md"),
-        }
-        prompt_filename, response_filename = phase_file_map[state.phase]
 
         # Create iteration directory if needed
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
@@ -469,6 +471,8 @@ class WorkflowOrchestrator:
         # Create provider and call
         provider = AIProviderFactory.create(provider_key)
         context = self._build_provider_context(state)
+        context["prompt_filename"] = prompt_filename
+        context["response_filename"] = response_filename
 
         try:
             response = provider.generate(prompt_content, context=context)
@@ -483,8 +487,8 @@ class WorkflowOrchestrator:
                 state,
                 f"Awaiting {response_filename} (manual provider)"
             )
-        elif isinstance(response, AIProviderResult):
-            # SDK-based provider - handle result object
+        else:
+            # AIProviderResult - handle result object
             if response.response:
                 response_path.write_text(response.response, encoding="utf-8")
                 self._add_message(state, f"Created {response_filename}")
@@ -495,10 +499,6 @@ class WorkflowOrchestrator:
                     full_path.parent.mkdir(parents=True, exist_ok=True)
                     full_path.write_text(content, encoding="utf-8")
                     self._add_message(state, f"Created code/{file_path}")
-        else:
-            # Legacy string response
-            response_path.write_text(response, encoding="utf-8")
-            self._add_message(state, f"Created {response_filename}")
 
     def _action_check_verdict(self, state: WorkflowState, session_dir: Path) -> None:
         """Check review verdict to determine next state.
@@ -535,6 +535,8 @@ class WorkflowOrchestrator:
             self._add_message(state, "Review verdict: FAIL → revision required")
             # Create revision prompt for new iteration
             self._action_create_prompt(state, session_dir)
+            # Run gate to trigger auto-continue to REVISE[RESPONSE]
+            self._run_gate_after_action(state, session_dir)
         else:
             # No valid verdict found - store error but continue
             state.last_error = f"Invalid or missing review verdict: '{verdict}'"
@@ -899,8 +901,15 @@ class WorkflowOrchestrator:
         return ctx
 
     def _build_provider_context(self, state: WorkflowState) -> dict[str, Any]:
-        """Context for response providers."""
-        return self._build_base_context(state)
+        """Context for response providers.
+
+        Includes phase and stage so providers can determine their role
+        without parsing prompt content.
+        """
+        ctx = self._build_base_context(state)
+        ctx["phase"] = state.phase.value if state.phase else None
+        ctx["stage"] = state.stage.value if state.stage else None
+        return ctx
 
     def _emit(
         self,

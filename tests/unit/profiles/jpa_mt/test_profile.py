@@ -89,12 +89,12 @@ class TestConditionalProcessing:
         result = profile._resolve_variables(text, variables)
         assert result == "public class User {"
 
-    def test_undefined_var_becomes_empty(self, profile):
-        """Undefined variables become empty strings."""
+    def test_undefined_var_preserved_as_placeholder(self, profile):
+        """Undefined variables are preserved as placeholders for engine resolution."""
         text = "Value: [{{undefined}}]"
         variables = {}
         result = profile._resolve_variables(text, variables)
-        assert result == "Value: []"
+        assert result == "Value: [{{undefined}}]"
 
     def test_multiline_conditional(self, profile):
         """Conditional blocks can span multiple lines."""
@@ -320,13 +320,15 @@ assume_answers: true
         assert profile.config.base_package == "com.example.app"
         assert profile.config.assume_answers is False
 
-    def test_constructor_no_file_io(self):
-        """Constructor with None config doesn't do file I/O."""
-        # This verifies the refactored constructor doesn't load files
-        profile = JpaMtProfile()
+    def test_constructor_uses_defaults_when_no_config_file(self):
+        """Constructor uses defaults when config.yml doesn't exist."""
+        # When config.yml doesn't exist, should use default JpaMtConfig
+        with patch.object(Path, "exists", return_value=False):
+            profile = JpaMtProfile()
 
-        # Should have default config without file I/O
+        # Should have default config values
         assert profile.config.base_package == "com.example.app"
+        assert profile.config.assume_answers is False
 
 
 class TestAIProviderProperty:

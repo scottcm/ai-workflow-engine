@@ -347,21 +347,39 @@ public class Customer {
 class TestConventionContract:
     """Contract: Convention variables are resolved correctly in prompts."""
 
-    def test_undefined_variables_do_not_leave_placeholders(self, profile):
-        """Undefined variables should not leave {{placeholder}} in output."""
+    def test_conventions_resolve_all_profile_variables(self, profile):
+        """When conventions are specified, all profile variables should resolve."""
         context = {
             "entity": "Customer",
             "table": "customers",
             "bounded_context": "crm",
             "scope": "domain",
+            "conventions": "control-plane",  # Specify conventions
         }
         prompt = profile.generate_planning_prompt(context)
 
-        # Should not have unresolved {{var}} patterns (except engine-managed ones)
-        # Engine-managed: {{STANDARDS}} is resolved by PromptAssembler, not profile
+        # With conventions, no profile variables should remain unresolved
+        # Engine variables ({{STANDARDS}}, {{PLAN}}) are preserved for PromptAssembler
         import re
-        unresolved = re.findall(r"\{\{(?!STANDARDS)\w+\}\}", prompt)
+        unresolved = re.findall(r"\{\{(?!STANDARDS|PLAN)\w+\}\}", prompt)
         assert len(unresolved) == 0, f"Found unresolved placeholders: {unresolved}"
+
+    def test_missing_conventions_preserves_placeholders(self, profile):
+        """Without conventions, convention-based variables remain as placeholders."""
+        context = {
+            "entity": "Customer",
+            "table": "customers",
+            "bounded_context": "crm",
+            "scope": "domain",
+            # No conventions specified
+        }
+        prompt = profile.generate_planning_prompt(context)
+
+        # Convention variables should remain as placeholders for engine to flag
+        import re
+        unresolved = re.findall(r"\{\{\w+\}\}", prompt)
+        # Should have some unresolved (tech_stack, entity_class, etc.)
+        assert len(unresolved) > 0, "Expected some unresolved convention variables"
 
     def test_context_values_appear_in_prompt(self, profile):
         """Context values (entity, table, etc.) must appear in the prompt."""

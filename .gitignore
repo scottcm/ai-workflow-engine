@@ -268,5 +268,12 @@ file_mapping.txt
 gemini_prompt.md
 m4_plan.md
 .pytest_tmp
-profiles/jpa_mt/config.yml
+
+# Profile configs (use .example files as templates)
+profiles/*/config.yml
+
+# User testing directory (project-specific test data)
+UserTesting/
+
+# Legacy test data location
 LIVE

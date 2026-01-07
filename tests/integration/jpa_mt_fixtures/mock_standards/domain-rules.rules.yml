@@ -1,0 +1,21 @@
+# Mock Domain Layer Rules for E2E Testing
+# These rules are used to verify scope filtering in integration tests
+
+rules:
+  - id: DOM-001
+    title: "Entity must have @Entity annotation"
+    scope: domain
+    layer: domain
+    severity: error
+    description: |
+      All JPA entities must be annotated with @Entity.
+      This is a mock rule for testing scope filtering.
+
+  - id: JPA-001
+    title: "Repository must extend JpaRepository"
+    scope: domain
+    layer: domain
+    severity: error
+    description: |
+      Repository interfaces must extend JpaRepository<Entity, ID>.
+      This is a mock rule for testing scope filtering.

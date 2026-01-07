@@ -15,7 +15,6 @@ from unittest.mock import MagicMock
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import (
-    ExecutionMode,
     WorkflowPhase,
     WorkflowStage,
     WorkflowStatus,
@@ -64,7 +63,6 @@ def session_with_fake_provider(
             "reviser": "fake",
         },
         context={"entity": "TestEntity"},
-        execution_mode=ExecutionMode.AUTOMATED,
     )
     return session_id
 
@@ -210,8 +208,7 @@ class TestFakeProviderFullWorkflow:
                 "reviser": "fake-fail",
             },
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.AUTOMATED,
-        )
+            )
 
         # Run through to first review
         orchestrator.init(session_id)

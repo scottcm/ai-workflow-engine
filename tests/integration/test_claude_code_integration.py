@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from aiwf.domain.errors import ProviderError
-from aiwf.domain.models.ai_provider_result import AIAIProviderResult
+from aiwf.domain.models.ai_provider_result import AIProviderResult
 from aiwf.domain.providers.claude_code_provider import ClaudeCodeAIProvider
 
 

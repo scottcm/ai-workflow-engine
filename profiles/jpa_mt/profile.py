@@ -36,10 +36,18 @@ class JpaMtProfile(WorkflowProfile):
         """Initialize profile with optional config.
 
         Args:
-            config: Profile configuration. If None, uses default JpaMtConfig.
-                   For loading from file, use from_config_file() instead.
+            config: Profile configuration. If None, auto-loads config.yml from
+                   profile directory (if exists) or uses default JpaMtConfig.
         """
-        self.config = config if config is not None else JpaMtConfig()
+        if config is not None:
+            self.config = config
+        else:
+            # Auto-load config.yml from profile directory if it exists
+            config_path = Path(__file__).parent / "config.yml"
+            if config_path.exists():
+                self.config = JpaMtConfig.from_yaml(config_path)
+            else:
+                self.config = JpaMtConfig()
         self._ai_provider: "AIProvider | None" = None  # Lazy cache for ADR-0010
 
     @classmethod
@@ -343,8 +351,9 @@ class JpaMtProfile(WorkflowProfile):
         for pass_num in range(max_passes):
             def replace(match: re.Match) -> str:
                 key = match.group(1)
-                # Return empty string for undefined vars (graceful handling)
-                return variables.get(key, "")
+                # Preserve unknown variables as placeholders for engine to resolve
+                # (or to surface as errors if truly undefined)
+                return variables.get(key, match.group(0))
 
             new_text = pattern.sub(replace, text)
             if new_text == text:

@@ -14,7 +14,6 @@ from aiwf.application.approval_config import ApprovalConfig
 from aiwf.domain.models.approval_result import ApprovalDecision
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import (
-    ExecutionMode,
     WorkflowPhase,
     WorkflowStage,
     WorkflowStatus,
@@ -175,7 +174,6 @@ class TestFullWorkflowWithSkipApprovers:
             profile="test-profile",
             providers={"planner": "manual", "generator": "manual", "reviewer": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Write response files and approve through workflow
@@ -251,7 +249,6 @@ class TestManualApproverPauses:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Initialize
@@ -289,7 +286,6 @@ class TestManualApproverPauses:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Get to PLAN RESPONSE
@@ -346,7 +342,6 @@ class TestAIApproverBehavior:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Get to PLAN RESPONSE
@@ -402,7 +397,6 @@ class TestAIApproverBehavior:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Get to PLAN RESPONSE
@@ -455,7 +449,6 @@ class TestAIApproverBehavior:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Get to PLAN RESPONSE
@@ -516,7 +509,6 @@ class TestPromptRejectionBehavior:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Initialize to PLAN PROMPT
@@ -594,7 +586,6 @@ class TestPromptRejectionBehavior:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Initialize to PLAN PROMPT
@@ -653,7 +644,6 @@ class TestSuggestedContentHandling:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Initialize to PLAN PROMPT
@@ -706,7 +696,6 @@ class TestSuggestedContentHandling:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Get to PLAN RESPONSE
@@ -750,7 +739,6 @@ class TestRetryCountAndMixedConfig:
             profile="test-profile",
             providers={"planner": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Initialize
@@ -808,7 +796,6 @@ class TestRetryCountAndMixedConfig:
             profile="test-profile",
             providers={"planner": "manual", "generator": "manual"},
             context={"entity": "TestEntity"},
-            execution_mode=ExecutionMode.INTERACTIVE,
         )
 
         # Initialize

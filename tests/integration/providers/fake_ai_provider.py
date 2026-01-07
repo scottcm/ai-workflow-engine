@@ -5,11 +5,12 @@ Used for integration testing to simulate AI responses without making actual API 
 
 from typing import Any, Callable
 
+from aiwf.domain.models.ai_provider_result import AIProviderResult
 from aiwf.domain.providers.ai_provider import AIProvider
 from aiwf.domain.models.workflow_state import WorkflowPhase
 
 
-# Type for response generators
+# Type for response generators - returns response content string
 ResponseGenerator = Callable[[str, dict[str, Any] | None], str]
 
 
@@ -74,6 +75,9 @@ The code meets all requirements.
 
 @@@REVIEW_META
 verdict: PASS
+issues_total: 0
+issues_critical: 0
+missing_inputs: 0
 @@@
 """
 
@@ -87,6 +91,9 @@ The code needs revisions.
 
 @@@REVIEW_META
 verdict: FAIL
+issues_total: 1
+issues_critical: 0
+missing_inputs: 0
 @@@
 """
 
@@ -170,56 +177,63 @@ public class MockEntity {
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> str:
+    ) -> AIProviderResult:
         """Generate a fake response.
 
         Priority order:
         1. Custom generator function
         2. Phase-specific response from phase_responses
         3. Default response if provided
-        4. Built-in defaults based on detected phase
+        4. Built-in defaults based on context phase
+
+        Returns:
+            AIProviderResult with response content
         """
         self.call_history.append((prompt, context))
 
         # Priority 1: Custom generator
         if self._generator is not None:
-            return self._generator(prompt, context)
+            content = self._generator(prompt, context)
+            return AIProviderResult(response=content)
 
-        # Detect phase from prompt filename patterns
-        detected_phase = self._detect_phase(prompt)
+        # Get phase from context (preferred) or detect from prompt (fallback)
+        detected_phase = self._get_phase_from_context(context)
 
         # Priority 2: Explicit phase response
         if detected_phase and detected_phase in self._phase_responses:
-            return self._phase_responses[detected_phase]
+            return AIProviderResult(response=self._phase_responses[detected_phase])
 
         # Priority 3: Default response
         if self._default_response is not None:
-            return self._default_response
+            return AIProviderResult(response=self._default_response)
 
         # Priority 4: Built-in defaults
         if detected_phase and detected_phase in self._defaults:
-            return self._defaults[detected_phase]
+            return AIProviderResult(response=self._defaults[detected_phase])
 
         # Fallback
-        return "# Mock Response\n\nThis is a fallback mock response."
+        return AIProviderResult(response="# Mock Response\n\nThis is a fallback mock response.")
 
-    def _detect_phase(self, prompt: str) -> WorkflowPhase | None:
-        """Detect workflow phase from prompt content.
+    def _get_phase_from_context(self, context: dict[str, Any] | None) -> WorkflowPhase | None:
+        """Get workflow phase from context.
 
-        Looks for response filename hints in the prompt.
+        Context should include 'phase' key with the phase value (e.g., 'plan', 'generate').
         """
-        prompt_lower = prompt.lower()
+        if context is None:
+            return None
 
-        if "planning-response" in prompt_lower:
-            return WorkflowPhase.PLAN
-        elif "generation-response" in prompt_lower:
-            return WorkflowPhase.GENERATE
-        elif "review-response" in prompt_lower:
-            return WorkflowPhase.REVIEW
-        elif "revision-response" in prompt_lower:
-            return WorkflowPhase.REVISE
+        phase_value = context.get("phase")
+        if phase_value is None:
+            return None
 
-        return None
+        # Map phase string to WorkflowPhase enum
+        phase_map = {
+            "plan": WorkflowPhase.PLAN,
+            "generate": WorkflowPhase.GENERATE,
+            "review": WorkflowPhase.REVIEW,
+            "revise": WorkflowPhase.REVISE,
+        }
+        return phase_map.get(phase_value)
 
     def reset_history(self) -> None:
         """Clear call history."""

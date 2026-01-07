@@ -1,0 +1,21 @@
+# Mock Service Layer Rules for E2E Testing
+# These rules are used to verify scope filtering in integration tests
+
+rules:
+  - id: SVC-001
+    title: "Service must use @Service annotation"
+    scope: service
+    layer: service
+    severity: error
+    description: |
+      All service classes must be annotated with @Service.
+      This is a mock rule for testing scope filtering.
+
+  - id: SVC-002
+    title: "Service methods must be transactional"
+    scope: service
+    layer: service
+    severity: warning
+    description: |
+      Service methods that modify data should use @Transactional.
+      This is a mock rule for testing scope filtering.

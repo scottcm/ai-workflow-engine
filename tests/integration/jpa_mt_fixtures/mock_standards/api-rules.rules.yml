@@ -1,0 +1,30 @@
+# Mock API Layer Rules for E2E Testing
+# These rules are used to verify scope filtering in integration tests
+
+rules:
+  - id: API-001
+    title: "Controller must use @RestController"
+    scope: api
+    layer: api
+    severity: error
+    description: |
+      REST controllers must use @RestController annotation.
+      This is a mock rule for testing scope filtering.
+
+  - id: CTL-001
+    title: "Controller endpoints must be documented"
+    scope: api
+    layer: api
+    severity: warning
+    description: |
+      All API endpoints should have OpenAPI documentation.
+      This is a mock rule for testing scope filtering.
+
+  - id: DTO-001
+    title: "DTOs must be immutable records"
+    scope: api
+    layer: api
+    severity: info
+    description: |
+      Data Transfer Objects should be Java records for immutability.
+      This is a mock rule for testing scope filtering.

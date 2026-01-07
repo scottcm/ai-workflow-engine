@@ -15,18 +15,6 @@ logger = logging.getLogger(__name__)
 from aiwf.domain.errors import ProviderError
 
 
-# Scope to rule prefix mapping
-SCOPE_PREFIXES: dict[str, list[str]] = {
-    "domain": ["JV-", "JPA-", "PKG-", "DOM-", "NAM-", "MT-"],
-    "service": ["JV-", "JPA-", "PKG-", "DOM-", "NAM-", "MT-", "SVC-"],
-    "api": [
-        "JV-", "JPA-", "PKG-", "DOM-", "NAM-", "MT-",
-        "SVC-", "CTL-", "DTO-", "MAP-", "API-",
-    ],
-    "full": [],  # Empty means all rules
-}
-
-
 class JpaMtStandardsProvider:
     """Standards provider that reads YAML rules files.
 
@@ -43,7 +31,8 @@ class JpaMtStandardsProvider:
         """Initialize provider with configuration.
 
         Args:
-            config: Configuration dict with 'rules_path' key
+            config: Configuration dict with:
+                - rules_path: Path to directory containing *.rules.yml files
         """
         self.config = config
         rules_path = config.get("rules_path", "")
@@ -94,7 +83,10 @@ class JpaMtStandardsProvider:
         """Create standards bundle filtered by scope.
 
         Args:
-            context: Workflow context with 'scope' key
+            context: Workflow context with:
+                - scope: Scope name (for header)
+                - standards_files: List of file names to load
+                - standards_prefixes: List of rule ID prefixes to include (empty = all)
             connection_timeout: Ignored (filesystem provider)
             response_timeout: Ignored for simplicity (fast local reads)
 
@@ -103,7 +95,7 @@ class JpaMtStandardsProvider:
 
         Raises:
             ProviderError: If bundle creation fails or rules_path not configured
-            ValueError: If scope is unknown
+            ValueError: If required context fields missing
         """
         # Guard: ensure rules_path is configured before loading
         if not self.rules_path:
@@ -112,21 +104,28 @@ class JpaMtStandardsProvider:
             )
 
         scope = context.get("scope") if isinstance(context, dict) else None
+        standards_files = context.get("standards_files", [])
+        standards_prefixes = context.get("standards_prefixes", [])
 
-        if not scope or scope not in SCOPE_PREFIXES:
-            raise ValueError(f"Unknown scope: {scope}")
+        if not scope:
+            raise ValueError("scope is required in context")
 
-        # Load all rules from YAML files
-        all_rules = self._load_rules()
+        # Load rules from specified files only
+        all_rules = self._load_rules(standards_files)
 
-        # Filter by scope
-        filtered_rules = self._filter_by_scope(all_rules, scope)
+        # Filter by prefixes
+        filtered_rules = self._filter_by_prefixes(all_rules, standards_prefixes)
 
         # Format as markdown
         return self._format_bundle(filtered_rules, scope)
 
-    def _load_rules(self) -> dict[str, list[tuple[str, str, str]]]:
-        """Load rules from all YAML files.
+    def _load_rules(
+        self, file_names: list[str]
+    ) -> dict[str, list[tuple[str, str, str]]]:
+        """Load rules from specified YAML files.
+
+        Args:
+            file_names: List of file names to load (relative to rules_path)
 
         Detects and warns about duplicate rule IDs across files.
 
@@ -138,9 +137,17 @@ class JpaMtStandardsProvider:
 
         rules_by_category: dict[str, list[tuple[str, str, str]]] = {}
         seen_rule_ids: dict[str, str] = {}  # rule_id -> first file where seen
-        rules_files = sorted(self.rules_path.glob("*.rules.yml"))
+
+        # If no files specified, load all *.rules.yml (backward compatibility)
+        if not file_names:
+            rules_files = sorted(self.rules_path.glob("*.rules.yml"))
+        else:
+            rules_files = [self.rules_path / name for name in file_names]
 
         for file_path in rules_files:
+            if not file_path.exists():
+                logger.warning("Standards file not found: %s", file_path)
+                continue
             try:
                 category_name = self._file_to_category(file_path)
                 file_rules = self._parse_yaml_file(file_path)
@@ -276,21 +283,21 @@ class JpaMtStandardsProvider:
         # Default to no severity if format doesn't match
         return "", text
 
-    def _filter_by_scope(
-        self, rules_by_category: dict[str, list[tuple[str, str, str]]], scope: str
+    def _filter_by_prefixes(
+        self,
+        rules_by_category: dict[str, list[tuple[str, str, str]]],
+        prefixes: list[str],
     ) -> dict[str, list[tuple[str, str, str]]]:
-        """Filter rules by scope.
+        """Filter rules by ID prefixes.
 
         Args:
             rules_by_category: All rules grouped by category
-            scope: Scope name (domain, service, api, full)
+            prefixes: List of rule ID prefixes to include (empty = all)
 
         Returns:
             Filtered rules dict
         """
-        prefixes = SCOPE_PREFIXES.get(scope, [])
-
-        # Empty prefixes means include all (full scope)
+        # Empty prefixes means include all
         if not prefixes:
             return rules_by_category
 

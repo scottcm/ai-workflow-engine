@@ -23,12 +23,19 @@ class StandardsConfig(BaseModel):
     default_rules_path: str | None = None
 
 
+class ScopeStandardsConfig(BaseModel):
+    """Standards configuration for a scope."""
+
+    files: list[str] = Field(default_factory=list)  # Which files to load
+    prefixes: list[str] = Field(default_factory=list)  # Rule ID prefixes to include (empty = all)
+
+
 class ScopeConfig(BaseModel):
-    """Configuration for a scope (what artifacts to generate)."""
+    """Configuration for a scope (what to generate and which standards apply)."""
 
     description: str
     artifacts: list[str]  # e.g., ["entity", "repository"]
-    standards: list[str]  # YAML files to include
+    standards: ScopeStandardsConfig = Field(default_factory=ScopeStandardsConfig)
 
 
 class JpaMtConfig(BaseModel):
@@ -49,47 +56,59 @@ class JpaMtConfig(BaseModel):
     # Standards configuration
     standards: StandardsConfig = Field(default_factory=StandardsConfig)
 
-    # Scope definitions
+    # Scope definitions (D6: self-contained, explicit)
     scopes: dict[str, ScopeConfig] = Field(default_factory=lambda: {
         "domain": ScopeConfig(
             description="Entity + Repository",
             artifacts=["entity", "repository"],
-            standards=[
-                "JAVA_STANDARDS_ORG-marked.rules.yml",
-                "NAMING_AND_API-marked.rules.yml",
-                "PACKAGES_AND_LAYERS-marked.rules.yml",
-                "JPA_AND_DATABASE-marked.rules.yml",
-                "ARCHITECTURE_AND_MULTITENANCY-marked.rules.yml",
-            ],
+            standards=ScopeStandardsConfig(
+                files=[
+                    "JAVA_STANDARDS_ORG-marked.rules.yml",
+                    "NAMING_AND_API-marked.rules.yml",
+                    "PACKAGES_AND_LAYERS-marked.rules.yml",
+                    "JPA_AND_DATABASE-marked.rules.yml",
+                    "ARCHITECTURE_AND_MULTITENANCY-marked.rules.yml",
+                ],
+                prefixes=["JV-", "JPA-", "PKG-", "DOM-", "NAM-", "MT-"],
+            ),
         ),
         "service": ScopeConfig(
             description="Service layer",
             artifacts=["service"],
-            standards=[
-                "JAVA_STANDARDS_ORG-marked.rules.yml",
-                "NAMING_AND_API-marked.rules.yml",
-                "PACKAGES_AND_LAYERS-marked.rules.yml",
-            ],
+            standards=ScopeStandardsConfig(
+                files=[
+                    "JAVA_STANDARDS_ORG-marked.rules.yml",
+                    "NAMING_AND_API-marked.rules.yml",
+                    "PACKAGES_AND_LAYERS-marked.rules.yml",
+                ],
+                prefixes=["SVC-"],
+            ),
         ),
         "api": ScopeConfig(
             description="Controller + DTO + Mapper",
             artifacts=["controller", "dto", "mapper"],
-            standards=[
-                "JAVA_STANDARDS_ORG-marked.rules.yml",
-                "NAMING_AND_API-marked.rules.yml",
-                "PACKAGES_AND_LAYERS-marked.rules.yml",
-            ],
+            standards=ScopeStandardsConfig(
+                files=[
+                    "JAVA_STANDARDS_ORG-marked.rules.yml",
+                    "NAMING_AND_API-marked.rules.yml",
+                    "PACKAGES_AND_LAYERS-marked.rules.yml",
+                ],
+                prefixes=["CTL-", "DTO-", "MAP-", "API-"],
+            ),
         ),
         "full": ScopeConfig(
             description="All artifacts",
             artifacts=["entity", "repository", "service", "controller", "dto", "mapper"],
-            standards=[
-                "JAVA_STANDARDS_ORG-marked.rules.yml",
-                "NAMING_AND_API-marked.rules.yml",
-                "PACKAGES_AND_LAYERS-marked.rules.yml",
-                "JPA_AND_DATABASE-marked.rules.yml",
-                "ARCHITECTURE_AND_MULTITENANCY-marked.rules.yml",
-            ],
+            standards=ScopeStandardsConfig(
+                files=[
+                    "JAVA_STANDARDS_ORG-marked.rules.yml",
+                    "NAMING_AND_API-marked.rules.yml",
+                    "PACKAGES_AND_LAYERS-marked.rules.yml",
+                    "JPA_AND_DATABASE-marked.rules.yml",
+                    "ARCHITECTURE_AND_MULTITENANCY-marked.rules.yml",
+                ],
+                prefixes=[],  # Empty = all rules
+            ),
         ),
     })
 

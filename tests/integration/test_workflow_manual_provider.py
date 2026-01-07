@@ -13,7 +13,6 @@ from pathlib import Path
 
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator, InvalidCommand
 from aiwf.domain.models.workflow_state import (
-    ExecutionMode,
     WorkflowPhase,
     WorkflowStage,
     WorkflowStatus,
@@ -35,7 +34,6 @@ def session_with_manual_provider(
             "reviser": "manual",
         },
         context={"entity": "TestEntity"},
-        execution_mode=ExecutionMode.INTERACTIVE,
     )
     return session_id
 

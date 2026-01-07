@@ -10,6 +10,7 @@ import click
 
 from .config import JpaMtConfig
 from .profile import JpaMtProfile
+# Note: yaml-rules provider is registered in profile.py when JpaMtProfile is imported
 
 if TYPE_CHECKING:
     from aiwf.domain.profiles.workflow_profile import WorkflowProfile
@@ -62,12 +63,6 @@ def register(cli_group: click.Group) -> type["WorkflowProfile"]:
     @click.option("--conventions", help="Named convention set from conventions.json (e.g., control-plane)")
     @click.option("--dev", help="Developer identifier")
     @click.option("--task-id", help="Task/ticket identifier")
-    @click.option(
-        "--execution-mode",
-        type=click.Choice(["interactive", "automated"]),
-        default="interactive",
-        help="Execution mode",
-    )
     @click.option("--planner", help="Provider for planning phase")
     @click.option("--generator", help="Provider for generation phase")
     @click.option("--reviewer", help="Provider for review phase")
@@ -82,7 +77,6 @@ def register(cli_group: click.Group) -> type["WorkflowProfile"]:
         conventions: str | None,
         dev: str | None,
         task_id: str | None,
-        execution_mode: str,
         planner: str | None,
         generator: str | None,
         reviewer: str | None,
@@ -146,7 +140,6 @@ def register(cli_group: click.Group) -> type["WorkflowProfile"]:
                 profile="jpa-mt",
                 context=context,
                 metadata=metadata if metadata else None,
-                execution_mode=execution_mode,
                 providers=default_providers,
             )
 
