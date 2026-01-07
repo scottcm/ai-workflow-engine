@@ -330,9 +330,9 @@ class JpaMtProfile(WorkflowProfile):
         repeatedly substitutes {{var}} placeholders until no more remain
         or max_passes is reached.
 
-        For undefined variables, substitutes empty string (not leaving
-        the placeholder). This allows templates to handle optional
-        variables gracefully.
+        Unknown variables are preserved as-is (placeholder remains in output).
+        This allows engine-owned variables like {{STANDARDS}} to pass through
+        for later resolution by PromptAssembler.
 
         Args:
             text: Text with {{var}} placeholders and optional conditionals
