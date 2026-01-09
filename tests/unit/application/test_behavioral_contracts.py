@@ -81,7 +81,8 @@ class TestGateOrdering:
         call_order = []
 
         original_run_gate = orchestrator._run_approval_gate
-        original_approve_plan = orchestrator._approve_plan_response
+        # _approve_plan_response is now in ArtifactService
+        original_approve_plan = orchestrator._artifact_service._approve_plan_response
 
         def tracked_run_gate(*args, **kwargs):
             call_order.append("approval_gate")
@@ -92,7 +93,7 @@ class TestGateOrdering:
             return original_approve_plan(*args, **kwargs)
 
         with patch.object(orchestrator, "_run_approval_gate", tracked_run_gate):
-            with patch.object(orchestrator, "_approve_plan_response", tracked_approve_plan):
+            with patch.object(orchestrator._artifact_service, "_approve_plan_response", tracked_approve_plan):
                 with patch.object(orchestrator, "_execute_action"):
                     orchestrator._run_gate_after_action(state, session_dir)
 
