@@ -25,7 +25,9 @@ from aiwf.domain.providers.approval_factory import ApprovalProviderFactory
 
 from tests.integration.conftest import create_mock_profile, MockStandardsProvider
 from tests.integration.providers.fake_approval_provider import FakeApprovalProvider
+from tests.integration.providers.fake_ai_provider import FakeAIProvider
 from aiwf.domain.standards import StandardsProviderFactory
+from aiwf.domain.providers.provider_factory import AIProviderFactory
 
 
 # ============================================================================
@@ -148,6 +150,22 @@ def register_fake_approver(
         del ApprovalProviderFactory._registry["fake"]
 
 
+@pytest.fixture
+def fake_ai_provider() -> FakeAIProvider:
+    """Fake AI provider that returns deterministic responses."""
+    return FakeAIProvider(review_verdict="PASS")
+
+
+@pytest.fixture
+def register_fake_ai_provider(fake_ai_provider: FakeAIProvider) -> FakeAIProvider:
+    """Register fake AI provider in AIProviderFactory."""
+    AIProviderFactory.register("fake-ai", lambda: fake_ai_provider)
+    yield fake_ai_provider
+    # Cleanup
+    if "fake-ai" in AIProviderFactory._registry:
+        del AIProviderFactory._registry["fake-ai"]
+
+
 # ============================================================================
 # Test 1: Full Workflow with Skip Approvers
 # ============================================================================
@@ -162,11 +180,25 @@ class TestFullWorkflowWithSkipApprovers:
         session_store: SessionStore,
         register_mock_profile: MagicMock,
     ) -> None:
-        """INIT → PLAN[P] → PLAN[R] → GEN[P] → GEN[R] → REV[P] → REV[R] → COMPLETE."""
+        """INIT → PLAN[P] → PLAN[R] → GEN[P] → GEN[R] → REV[P] → REV[R] → COMPLETE.
+
+        Uses manual approver for PROMPT stages to allow stepping through,
+        and skip approver for RESPONSE stages to auto-advance after file write.
+        """
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
             sessions_root=sessions_root,
-            approval_config=ApprovalConfig(default_approver="skip"),
+            approval_config=ApprovalConfig(
+                stages={
+                    # Manual for PROMPT stages (to step through)
+                    "plan.prompt": {"approver": "manual"},
+                    "plan.response": {"approver": "skip"},
+                    "generate.prompt": {"approver": "manual"},
+                    "generate.response": {"approver": "skip"},
+                    "review.prompt": {"approver": "manual"},
+                    "review.response": {"approver": "skip"},
+                }
+            ),
         )
 
         # Initialize session
@@ -186,35 +218,26 @@ class TestFullWorkflowWithSkipApprovers:
         assert state.phase == WorkflowPhase.PLAN
         assert state.stage == WorkflowStage.PROMPT
 
-        # Approve PLAN PROMPT -> PLAN RESPONSE
-        state = orchestrator.approve(session_id)
-        assert state.phase == WorkflowPhase.PLAN
-        assert state.stage == WorkflowStage.RESPONSE
-
-        # Write planning response and approve
+        # Write PLAN response BEFORE approving PROMPT (skip approver at RESPONSE needs file to exist)
         (iteration_dir / "planning-response.md").write_text("# Plan\n\n1. Step one")
+
+        # Approve PLAN PROMPT -> skip auto-advances through RESPONSE to GENERATE PROMPT
         state = orchestrator.approve(session_id)
         assert state.phase == WorkflowPhase.GENERATE
         assert state.stage == WorkflowStage.PROMPT
 
-        # Approve GENERATE PROMPT -> GENERATE RESPONSE
-        state = orchestrator.approve(session_id)
-        assert state.phase == WorkflowPhase.GENERATE
-        assert state.stage == WorkflowStage.RESPONSE
-
-        # Write generation response and approve
+        # Write GENERATE response BEFORE approving PROMPT
         (iteration_dir / "generation-response.md").write_text("```java\npublic class Test {}\n```")
+
+        # Approve GENERATE PROMPT -> skip auto-advances through RESPONSE to REVIEW PROMPT
         state = orchestrator.approve(session_id)
         assert state.phase == WorkflowPhase.REVIEW
         assert state.stage == WorkflowStage.PROMPT
 
-        # Approve REVIEW PROMPT -> REVIEW RESPONSE
-        state = orchestrator.approve(session_id)
-        assert state.phase == WorkflowPhase.REVIEW
-        assert state.stage == WorkflowStage.RESPONSE
-
-        # Write review response (PASS verdict) and approve
+        # Write REVIEW response BEFORE approving PROMPT
         (iteration_dir / "review-response.md").write_text("PASS\n\nLooks good.")
+
+        # Approve REVIEW PROMPT -> skip auto-advances through RESPONSE to COMPLETE
         state = orchestrator.approve(session_id)
 
         # Workflow should complete
@@ -276,7 +299,7 @@ class TestManualApproverPauses:
             sessions_root=sessions_root,
             approval_config=ApprovalConfig(
                 stages={
-                    "plan.prompt": {"approver": "skip"},
+                    "plan.prompt": {"approver": "manual"},  # Manual to control stepping
                     "plan.response": {"approver": "manual"},
                 }
             ),
@@ -290,7 +313,10 @@ class TestManualApproverPauses:
 
         # Get to PLAN RESPONSE
         state = orchestrator.init(session_id)
-        state = orchestrator.approve(session_id)  # Skip PLAN PROMPT
+        assert state.phase == WorkflowPhase.PLAN
+        assert state.stage == WorkflowStage.PROMPT
+
+        state = orchestrator.approve(session_id)  # Manual approve PLAN PROMPT
         assert state.phase == WorkflowPhase.PLAN
         assert state.stage == WorkflowStage.RESPONSE
 
@@ -314,26 +340,27 @@ class TestManualApproverPauses:
 
 
 class TestAIApproverBehavior:
-    """Tests 4-6: AI approver approval, rejection, and max retries."""
+    """Tests 4-6+: AI approver approval, rejection, and max retries."""
 
-    def test_ai_approver_approves_and_advances(
+    def test_ai_approver_approves_prompt_and_advances(
         self,
         sessions_root: Path,
         session_store: SessionStore,
         register_mock_profile: MagicMock,
-        register_fake_approver: FakeApprovalProvider,
     ) -> None:
-        """PLAN[RESPONSE] → AI:APPROVED → GENERATE[PROMPT]."""
-        # Configure fake approver to approve
-        register_fake_approver._decisions = [ApprovalDecision.APPROVED]
+        """PLAN[PROMPT] → skip:APPROVED → PLAN[RESPONSE].
 
+        Tests the happy path where approver approves prompt immediately.
+        Uses skip approver which returns APPROVED - from engine's perspective,
+        APPROVED is APPROVED regardless of source.
+        """
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
             sessions_root=sessions_root,
             approval_config=ApprovalConfig(
                 stages={
-                    "plan.prompt": {"approver": "skip"},
-                    "plan.response": {"approver": "fake"},
+                    "plan.prompt": {"approver": "skip"},  # Auto-approve
+                    "plan.response": {"approver": "manual"},  # Pause to verify we reached RESPONSE
                 }
             ),
         )
@@ -344,17 +371,56 @@ class TestAIApproverBehavior:
             context={"entity": "TestEntity"},
         )
 
-        # Get to PLAN RESPONSE
+        # Initialize - skip at plan.prompt auto-approves, advances to RESPONSE
         state = orchestrator.init(session_id)
-        state = orchestrator.approve(session_id)
+
+        # Should have advanced to PLAN RESPONSE (skip approved the prompt)
+        assert state.phase == WorkflowPhase.PLAN
         assert state.stage == WorkflowStage.RESPONSE
+        assert state.status == WorkflowStatus.IN_PROGRESS
+        assert state.approval_feedback is None
 
-        # Write response file
-        session_dir = sessions_root / session_id
-        iteration_dir = session_dir / "iteration-1"
-        (iteration_dir / "planning-response.md").write_text("# Plan")
+    def test_ai_approver_approves_response_and_advances(
+        self,
+        sessions_root: Path,
+        session_store: SessionStore,
+        register_mock_profile: MagicMock,
+        register_fake_approver: FakeApprovalProvider,
+        register_fake_ai_provider: FakeAIProvider,
+    ) -> None:
+        """PLAN[RESPONSE] → AI:APPROVED → GENERATE[PROMPT].
 
-        # Approve PLAN RESPONSE - AI should approve and advance
+        Uses FakeAIProvider so response is created when CALL_AI runs.
+        Gate runs immediately after with FakeApprovalProvider.
+        """
+        # Configure fake approver to approve
+        register_fake_approver._decisions = [ApprovalDecision.APPROVED]
+
+        orchestrator = WorkflowOrchestrator(
+            session_store=session_store,
+            sessions_root=sessions_root,
+            approval_config=ApprovalConfig(
+                stages={
+                    "plan.prompt": {"approver": "manual"},  # Manual to control stepping
+                    "plan.response": {"approver": "fake"},  # AI approver evaluates response
+                }
+            ),
+        )
+
+        session_id = orchestrator.initialize_run(
+            profile="test-profile",
+            providers={"planner": "fake-ai"},  # FakeAIProvider creates response
+            context={"entity": "TestEntity"},
+        )
+
+        # Initialize to PLAN PROMPT
+        state = orchestrator.init(session_id)
+        assert state.phase == WorkflowPhase.PLAN
+        assert state.stage == WorkflowStage.PROMPT
+
+        # Approve PLAN PROMPT → transitions to RESPONSE → CALL_AI runs →
+        # FakeAIProvider creates response → gate runs → FakeApprovalProvider approves →
+        # auto-continues to GENERATE PROMPT
         state = orchestrator.approve(session_id)
 
         assert state.phase == WorkflowPhase.GENERATE
@@ -368,12 +434,12 @@ class TestAIApproverBehavior:
         session_store: SessionStore,
         register_mock_profile: MagicMock,
         register_fake_approver: FakeApprovalProvider,
+        register_fake_ai_provider: FakeAIProvider,
     ) -> None:
         """PLAN[RESPONSE] → AI:REJECTED → retry → AI:APPROVED.
 
-        Note: Retry requires a response provider that returns content.
-        With manual provider, the retry would pause waiting for user input.
-        This test verifies the retry mechanism with proper provider setup.
+        Uses FakeAIProvider so retry can regenerate response.
+        Gate runs after each CALL_AI with FakeApprovalProvider.
         """
         # Configure: reject first, approve second
         register_fake_approver._decisions = [
@@ -387,7 +453,7 @@ class TestAIApproverBehavior:
             sessions_root=sessions_root,
             approval_config=ApprovalConfig(
                 stages={
-                    "plan.prompt": {"approver": "skip"},
+                    "plan.prompt": {"approver": "manual"},  # Manual to control stepping
                     "plan.response": {"approver": "fake", "max_retries": 3},
                 }
             ),
@@ -395,27 +461,21 @@ class TestAIApproverBehavior:
 
         session_id = orchestrator.initialize_run(
             profile="test-profile",
-            providers={"planner": "manual"},
+            providers={"planner": "fake-ai"},  # FakeAIProvider for retry
             context={"entity": "TestEntity"},
         )
 
-        # Get to PLAN RESPONSE
+        # Initialize to PLAN PROMPT
         state = orchestrator.init(session_id)
+        assert state.phase == WorkflowPhase.PLAN
+        assert state.stage == WorkflowStage.PROMPT
+
+        # Approve PLAN PROMPT → transitions to RESPONSE → CALL_AI runs →
+        # FakeAIProvider creates response → gate runs → REJECTED →
+        # retry: CALL_AI again → gate runs → APPROVED → auto-continues
         state = orchestrator.approve(session_id)
 
-        # Write response file
-        session_dir = sessions_root / session_id
-        iteration_dir = session_dir / "iteration-1"
-        (iteration_dir / "planning-response.md").write_text("# Plan v1")
-
-        # First approve - rejects, retry logic kicks in
-        # Retry: gate(1) rejects, regenerate, gate(2) approves
-        state = orchestrator.approve(session_id)
-
-        # With manual provider and max_retries=3, retry runs twice:
-        # 1. Initial approval check - REJECTED
-        # 2. After regeneration - APPROVED (per fake_approver decisions)
-        # The workflow advances after second check succeeds
+        # Retry succeeded, workflow advanced
         assert state.approval_feedback is None  # Cleared after success
         assert state.retry_count == 0  # Cleared after success
         assert state.phase == WorkflowPhase.GENERATE
@@ -428,8 +488,13 @@ class TestAIApproverBehavior:
         session_store: SessionStore,
         register_mock_profile: MagicMock,
         register_fake_approver: FakeApprovalProvider,
+        register_fake_ai_provider: FakeAIProvider,
     ) -> None:
-        """PLAN[RESPONSE] → AI:REJECTED × (max+1) → stays IN_PROGRESS."""
+        """PLAN[RESPONSE] → AI:REJECTED × (max+1) → stays IN_PROGRESS.
+
+        Uses FakeAIProvider so retry can regenerate response.
+        FakeApprovalProvider always rejects until max_retries exhausted.
+        """
         # Configure: always reject
         register_fake_approver._decisions = [ApprovalDecision.REJECTED]
         register_fake_approver._feedback = "Not good enough"
@@ -439,7 +504,7 @@ class TestAIApproverBehavior:
             sessions_root=sessions_root,
             approval_config=ApprovalConfig(
                 stages={
-                    "plan.prompt": {"approver": "skip"},
+                    "plan.prompt": {"approver": "manual"},  # Manual to control stepping
                     "plan.response": {"approver": "fake", "max_retries": 2},
                 }
             ),
@@ -447,23 +512,21 @@ class TestAIApproverBehavior:
 
         session_id = orchestrator.initialize_run(
             profile="test-profile",
-            providers={"planner": "manual"},
+            providers={"planner": "fake-ai"},  # FakeAIProvider for retry
             context={"entity": "TestEntity"},
         )
 
-        # Get to PLAN RESPONSE
+        # Initialize to PLAN PROMPT
         state = orchestrator.init(session_id)
+        assert state.phase == WorkflowPhase.PLAN
+        assert state.stage == WorkflowStage.PROMPT
+
+        # Approve PLAN PROMPT → transitions to RESPONSE → CALL_AI runs →
+        # FakeAIProvider creates response → gate runs → REJECTED →
+        # retry loop exhausts max_retries
         state = orchestrator.approve(session_id)
 
-        # Write response file
-        session_dir = sessions_root / session_id
-        iteration_dir = session_dir / "iteration-1"
-        (iteration_dir / "planning-response.md").write_text("# Plan")
-
-        # Approve - should exhaust retries
-        state = orchestrator.approve(session_id)
-
-        # Should stay IN_PROGRESS (not ERROR)
+        # Should stay IN_PROGRESS with error (not ERROR status)
         assert state.status == WorkflowStatus.IN_PROGRESS
         assert state.last_error is not None
         assert "rejected" in state.last_error.lower()
@@ -486,7 +549,12 @@ class TestPromptRejectionBehavior:
         register_mock_profile: MagicMock,
         register_fake_approver: FakeApprovalProvider,
     ) -> None:
-        """PLAN[PROMPT] → AI:REJECTED → pauses (no retry)."""
+        """PLAN[PROMPT] → AI:REJECTED → pauses with feedback.
+
+        Gate runs during init() after CREATE_PROMPT action.
+        When rejected and profile can't regenerate, workflow pauses with feedback.
+        Note: Calling approve() would mean "proceed anyway" and advance.
+        """
         # Configure to reject
         register_fake_approver._decisions = [ApprovalDecision.REJECTED]
         register_fake_approver._feedback = "Prompt needs work"
@@ -511,18 +579,15 @@ class TestPromptRejectionBehavior:
             context={"entity": "TestEntity"},
         )
 
-        # Initialize to PLAN PROMPT
+        # Initialize - gate runs after CREATE_PROMPT, fake approver rejects
         state = orchestrator.init(session_id)
-        assert state.stage == WorkflowStage.PROMPT
 
-        # Approve - should reject and pause (no retry for PROMPT without regeneration)
-        state = orchestrator.approve(session_id)
-
-        # Should pause with feedback
+        # Should be paused at PROMPT with feedback (not advanced)
         assert state.phase == WorkflowPhase.PLAN
         assert state.stage == WorkflowStage.PROMPT
+        assert state.pending_approval is True
         assert state.approval_feedback == "Prompt needs work"
-        # Only 1 call - no retry loop for PROMPT
+        # Only 1 call - no retry loop for PROMPT without regeneration
         assert register_fake_approver.call_count == 1
 
     def test_prompt_rejection_with_regeneration_succeeds(
@@ -533,7 +598,14 @@ class TestPromptRejectionBehavior:
         register_mock_standards: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """PLAN[PROMPT] → AI:REJECTED → regenerate → AI:APPROVED."""
+        """PLAN[PROMPT] → AI:REJECTED → regenerate → AI:APPROVED → RESPONSE.
+
+        Gate runs during init() after CREATE_PROMPT.
+        When rejected and profile CAN regenerate:
+        1. Profile regenerates prompt
+        2. Gate re-runs with new prompt
+        3. Approved on second try → auto-continues to RESPONSE
+        """
         # Set up fake approver: reject first, approve second
         fake_approver = FakeApprovalProvider(
             decisions=[ApprovalDecision.REJECTED, ApprovalDecision.APPROVED],
@@ -578,7 +650,10 @@ class TestPromptRejectionBehavior:
             session_store=session_store,
             sessions_root=sessions_root,
             approval_config=ApprovalConfig(
-                stages={"plan.prompt": {"approver": "fake"}}
+                stages={
+                    "plan.prompt": {"approver": "fake"},
+                    "plan.response": {"approver": "manual"},  # Pause at RESPONSE
+                }
             ),
         )
 
@@ -588,17 +663,17 @@ class TestPromptRejectionBehavior:
             context={"entity": "TestEntity"},
         )
 
-        # Initialize to PLAN PROMPT
+        # Initialize - gate runs after CREATE_PROMPT:
+        # 1. Fake approver rejects → profile regenerates → gate re-runs → approves
+        # 2. Auto-continues to RESPONSE (pauses due to manual approver)
         state = orchestrator.init(session_id)
 
-        # Approve - should reject, regenerate, then approve and transition
-        state = orchestrator.approve(session_id)
-
-        # Should have called regenerate_prompt
+        # Should have called regenerate_prompt during init's gate handling
         mock_profile_with_regeneration.regenerate_prompt.assert_called_once()
-        # Regeneration approved - approval state cleared and transitioned to RESPONSE
+
+        # Should be at RESPONSE after successful regeneration+approval
         assert state.phase == WorkflowPhase.PLAN
-        assert state.stage == WorkflowStage.RESPONSE  # Transitioned after successful retry
+        assert state.stage == WorkflowStage.RESPONSE
         assert state.approval_feedback is None  # Cleared after approval
         assert fake_approver.call_count == 2
 
@@ -621,7 +696,12 @@ class TestSuggestedContentHandling:
         register_mock_profile: MagicMock,
         register_fake_approver: FakeApprovalProvider,
     ) -> None:
-        """PLAN[PROMPT] → AI:REJECTED+suggested → content written to file."""
+        """PLAN[PROMPT] → AI:REJECTED+suggested → content written to file.
+
+        Gate runs during init() after CREATE_PROMPT.
+        When rejected with suggested_content and allow_rewrite=True,
+        the suggested content is written to the prompt file immediately.
+        """
         # Configure to reject with suggested content
         register_fake_approver._decisions = [ApprovalDecision.REJECTED]
         register_fake_approver._feedback = "Try this"
@@ -646,23 +726,24 @@ class TestSuggestedContentHandling:
             context={"entity": "TestEntity"},
         )
 
-        # Initialize to PLAN PROMPT
+        # Initialize - gate runs after CREATE_PROMPT, fake approver rejects with suggestion
+        # Suggested content is written to file during init()
         state = orchestrator.init(session_id)
 
-        # Check original prompt exists
+        # Verify prompt file was updated with suggested content
         session_dir = sessions_root / session_id
         iteration_dir = session_dir / "iteration-1"
         prompt_path = iteration_dir / "planning-prompt.md"
         assert prompt_path.exists()
-        original_content = prompt_path.read_text()
 
-        # Approve - should apply suggested content
-        state = orchestrator.approve(session_id)
+        content = prompt_path.read_text()
+        assert content == "# Improved Prompt\n\nBetter content."
 
-        # Prompt file should be updated
-        new_content = prompt_path.read_text()
-        assert new_content == "# Improved Prompt\n\nBetter content."
-        assert new_content != original_content
+        # State should have pending_approval and feedback
+        assert state.phase == WorkflowPhase.PLAN
+        assert state.stage == WorkflowStage.PROMPT
+        assert state.pending_approval is True
+        assert state.approval_feedback == "Try this"
 
     def test_suggested_content_stored_for_response(
         self,
@@ -670,8 +751,13 @@ class TestSuggestedContentHandling:
         session_store: SessionStore,
         register_mock_profile: MagicMock,
         register_fake_approver: FakeApprovalProvider,
+        register_fake_ai_provider: FakeAIProvider,
     ) -> None:
-        """PLAN[RESPONSE] → AI:REJECTED+suggested → suggested_content in state."""
+        """PLAN[RESPONSE] → AI:REJECTED+suggested → suggested_content in state.
+
+        Uses FakeAIProvider so response exists when gate runs.
+        FakeApprovalProvider rejects with suggested_content.
+        """
         # Configure to reject with suggested content
         register_fake_approver._decisions = [ApprovalDecision.REJECTED]
         register_fake_approver._feedback = "Try this approach"
@@ -682,7 +768,7 @@ class TestSuggestedContentHandling:
             sessions_root=sessions_root,
             approval_config=ApprovalConfig(
                 stages={
-                    "plan.prompt": {"approver": "skip"},
+                    "plan.prompt": {"approver": "manual"},  # Manual to control stepping
                     "plan.response": {
                         "approver": "fake",
                         "allow_rewrite": True,
@@ -694,24 +780,23 @@ class TestSuggestedContentHandling:
 
         session_id = orchestrator.initialize_run(
             profile="test-profile",
-            providers={"planner": "manual"},
+            providers={"planner": "fake-ai"},  # FakeAIProvider creates response
             context={"entity": "TestEntity"},
         )
 
-        # Get to PLAN RESPONSE
+        # Initialize to PLAN PROMPT
         state = orchestrator.init(session_id)
-        state = orchestrator.approve(session_id)
+        assert state.phase == WorkflowPhase.PLAN
+        assert state.stage == WorkflowStage.PROMPT
 
-        # Write response file
-        session_dir = sessions_root / session_id
-        iteration_dir = session_dir / "iteration-1"
-        (iteration_dir / "planning-response.md").write_text("# Original Plan")
-
-        # Approve - should reject and store suggested content
+        # Approve PLAN PROMPT → transitions to RESPONSE → CALL_AI runs →
+        # FakeAIProvider creates response → gate runs → REJECTED with suggested_content
         state = orchestrator.approve(session_id)
 
         # suggested_content should be in state
         assert state.suggested_content == "# Better Response\n\nImproved plan."
+        assert state.phase == WorkflowPhase.PLAN
+        assert state.stage == WorkflowStage.RESPONSE  # Stays at RESPONSE (rejected, no retry)
 
 
 # ============================================================================
@@ -732,7 +817,12 @@ class TestRetryCountAndMixedConfig:
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
             sessions_root=sessions_root,
-            approval_config=ApprovalConfig(default_approver="skip"),
+            approval_config=ApprovalConfig(
+                stages={
+                    "plan.prompt": {"approver": "manual"},  # Manual to control stepping
+                    "plan.response": {"approver": "manual"},  # Manual to pause at RESPONSE
+                }
+            ),
         )
 
         session_id = orchestrator.initialize_run(
@@ -743,6 +833,7 @@ class TestRetryCountAndMixedConfig:
 
         # Initialize
         state = orchestrator.init(session_id)
+        assert state.stage == WorkflowStage.PROMPT
 
         # Manually set retry_count (simulating previous rejections)
         state.retry_count = 2
@@ -761,33 +852,23 @@ class TestRetryCountAndMixedConfig:
         session_store: SessionStore,
         register_mock_profile: MagicMock,
     ) -> None:
-        """skip@PLAN.P, manual@PLAN.R, skip@GEN.* → pauses only at PLAN.RESPONSE.
+        """skip@PLAN.P, manual@PLAN.R, manual@GEN.P → skip auto-advances, manual pauses.
 
         This test verifies that mixed approver configurations work correctly.
         Skip approvers auto-advance, manual approvers pause for user decision.
 
-        Note: With manual approver, each `approve` call runs the gate which
-        returns None. The user's approve command IS the manual approval.
-        To advance past a manual gate, the user reviews the artifact and
-        runs approve - this is treated as the approval decision.
+        With skip at plan.prompt: init() auto-continues through PROMPT to RESPONSE.
+        With manual at plan.response: workflow pauses waiting for user approval.
+        After approval: advances to GENERATE.PROMPT (pauses for manual approver).
         """
-        # Use fake approver that approves on second call to simulate
-        # "manual review then approval" flow
-        fake_approver = FakeApprovalProvider(
-            # First call returns None-like behavior (we'll handle in config)
-            decisions=[ApprovalDecision.APPROVED],
-        )
-        ApprovalProviderFactory.register("fake-manual", lambda: fake_approver)
-
         orchestrator = WorkflowOrchestrator(
             session_store=session_store,
             sessions_root=sessions_root,
             approval_config=ApprovalConfig(
                 stages={
-                    "plan.prompt": {"approver": "skip"},
+                    "plan.prompt": {"approver": "skip"},  # Auto-continue
                     "plan.response": {"approver": "manual"},  # Pauses
-                    "generate.prompt": {"approver": "skip"},
-                    "generate.response": {"approver": "skip"},
+                    "generate.prompt": {"approver": "manual"},  # Pauses
                 }
             ),
         )
@@ -798,15 +879,14 @@ class TestRetryCountAndMixedConfig:
             context={"entity": "TestEntity"},
         )
 
-        # Initialize
+        # Initialize - skip at plan.prompt auto-continues to RESPONSE
         state = orchestrator.init(session_id)
-        assert state.stage == WorkflowStage.PROMPT
+        # With skip at plan.prompt, init auto-continues past PROMPT to RESPONSE
+        # (pauses at RESPONSE because manual approver there)
+        assert state.phase == WorkflowPhase.PLAN
+        assert state.stage == WorkflowStage.RESPONSE  # Auto-continued to here
 
-        # Skip PLAN PROMPT (skip approver)
-        state = orchestrator.approve(session_id)
-        assert state.stage == WorkflowStage.RESPONSE
-
-        # Write response
+        # Write response (we're already at RESPONSE stage)
         session_dir = sessions_root / session_id
         iteration_dir = session_dir / "iteration-1"
         (iteration_dir / "planning-response.md").write_text("# Plan")
@@ -814,11 +894,7 @@ class TestRetryCountAndMixedConfig:
         # Approve at PLAN RESPONSE - manual approver, user's command IS the approval
         state = orchestrator.approve(session_id)
 
-        # Advanced to GENERATE PROMPT (user's approve is the decision)
+        # Advanced to GENERATE PROMPT (pauses for manual approver there)
         assert state.phase == WorkflowPhase.GENERATE
         assert state.stage == WorkflowStage.PROMPT
         assert state.status == WorkflowStatus.IN_PROGRESS
-
-        # Cleanup
-        if "fake-manual" in ApprovalProviderFactory._registry:
-            del ApprovalProviderFactory._registry["fake-manual"]

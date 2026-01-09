@@ -85,6 +85,14 @@ class WorkflowOrchestrator:
     event_emitter: "WorkflowEventEmitter | None" = None
     approval_config: ApprovalConfig = field(default_factory=ApprovalConfig)
 
+    # Phase-to-filename mapping (DRY: single source of truth)
+    _PHASE_FILES: ClassVar[dict[WorkflowPhase, tuple[str, str]]] = {
+        WorkflowPhase.PLAN: ("planning-prompt.md", "planning-response.md"),
+        WorkflowPhase.GENERATE: ("generation-prompt.md", "generation-response.md"),
+        WorkflowPhase.REVIEW: ("review-prompt.md", "review-response.md"),
+        WorkflowPhase.REVISE: ("revision-prompt.md", "revision-response.md"),
+    }
+
     def __post_init__(self) -> None:
         if self.event_emitter is None:
             from aiwf.domain.events.emitter import WorkflowEventEmitter
@@ -380,14 +388,8 @@ class WorkflowOrchestrator:
         # Get profile instance
         profile = ProfileFactory.create(state.profile)
 
-        # Map phase to filenames (engine owns these conventions)
-        phase_file_map = {
-            WorkflowPhase.PLAN: ("planning-prompt.md", "planning-response.md"),
-            WorkflowPhase.GENERATE: ("generation-prompt.md", "generation-response.md"),
-            WorkflowPhase.REVIEW: ("review-prompt.md", "review-response.md"),
-            WorkflowPhase.REVISE: ("revision-prompt.md", "revision-response.md"),
-        }
-        prompt_filename, response_filename = phase_file_map[state.phase]
+        # Get filenames from class constant (DRY)
+        prompt_filename, response_filename = self._PHASE_FILES[state.phase]
 
         # Build context with engine-owned values (profiles shouldn't reconstruct these)
         context = self._build_provider_context(state)
@@ -451,14 +453,8 @@ class WorkflowOrchestrator:
         if provider_key is None:
             raise ValueError(f"No provider configured for role: {role}")
 
-        # Map phase to filenames
-        phase_file_map = {
-            WorkflowPhase.PLAN: ("planning-prompt.md", "planning-response.md"),
-            WorkflowPhase.GENERATE: ("generation-prompt.md", "generation-response.md"),
-            WorkflowPhase.REVIEW: ("review-prompt.md", "review-response.md"),
-            WorkflowPhase.REVISE: ("revision-prompt.md", "revision-response.md"),
-        }
-        prompt_filename, response_filename = phase_file_map[state.phase]
+        # Get filenames from class constant (DRY)
+        prompt_filename, response_filename = self._PHASE_FILES[state.phase]
 
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
         prompt_path = iteration_dir / prompt_filename
@@ -1205,6 +1201,7 @@ class WorkflowOrchestrator:
         # Try suggested_content if available and allowed
         if result.suggested_content and stage_config.allow_rewrite:
             self._apply_suggested_content_to_prompt(state, session_dir, result.suggested_content)
+            state.pending_approval = True  # User should review and approve
             self._add_message(state, "Suggested content applied to prompt file")
             self.session_store.save(state)
             return state
@@ -1221,6 +1218,7 @@ class WorkflowOrchestrator:
                 pass  # Fall through to user pause
 
         # Pause for user to review/edit and re-approve
+        state.pending_approval = True
         self._add_message(state, f"Prompt rejected: {result.feedback or 'no feedback'}")
         self.session_store.save(state)
         return state
@@ -1309,7 +1307,7 @@ class WorkflowOrchestrator:
             state.approval_feedback = new_result.feedback
             state.retry_count += 1
 
-        # Max retries exceeded
+        # Max retries exceeded - pause for human intervention
         if state.retry_count > stage_config.max_retries and stage_config.max_retries > 0:
             state.last_error = (
                 f"Approval rejected after {state.retry_count} attempts. "
@@ -1319,6 +1317,8 @@ class WorkflowOrchestrator:
                 state, "Approval failed: max retries exceeded. Review feedback and retry or cancel."
             )
 
+        # Pause workflow for human intervention
+        state.pending_approval = True
         self.session_store.save(state)
         return state
 
@@ -1344,17 +1344,11 @@ class WorkflowOrchestrator:
             session_dir: Session directory
             suggested_content: The suggested prompt content to apply
         """
-        # Map phase to prompt filename
-        phase_prompt_map = {
-            WorkflowPhase.PLAN: "planning-prompt.md",
-            WorkflowPhase.GENERATE: "generation-prompt.md",
-            WorkflowPhase.REVIEW: "review-prompt.md",
-            WorkflowPhase.REVISE: "revision-prompt.md",
-        }
-
-        prompt_filename = phase_prompt_map.get(state.phase)
-        if not prompt_filename:
+        # Get prompt filename from class constant (DRY)
+        if state.phase not in self._PHASE_FILES:
             return
+
+        prompt_filename = self._PHASE_FILES[state.phase][0]  # First element is prompt filename
 
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
         prompt_path = iteration_dir / prompt_filename
@@ -1379,15 +1373,8 @@ class WorkflowOrchestrator:
         """
         from aiwf.application.prompt_assembler import PromptAssembler
 
-        # Map phase to filenames
-        phase_file_map = {
-            WorkflowPhase.PLAN: ("planning-prompt.md", "planning-response.md"),
-            WorkflowPhase.GENERATE: ("generation-prompt.md", "generation-response.md"),
-            WorkflowPhase.REVIEW: ("review-prompt.md", "review-response.md"),
-            WorkflowPhase.REVISE: ("revision-prompt.md", "revision-response.md"),
-        }
-
-        prompt_filename, response_filename = phase_file_map.get(
+        # Get filenames from class constant (DRY)
+        prompt_filename, response_filename = self._PHASE_FILES.get(
             state.phase, ("prompt.md", "response.md")
         )
 
