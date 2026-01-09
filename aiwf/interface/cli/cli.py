@@ -17,7 +17,6 @@ from aiwf.interface.cli.output_models import (
     ProviderSummary,
     ProvidersOutput,
     RejectOutput,
-    RetryOutput,
     SessionSummary,
     StatusOutput,
     StepOutput,
@@ -421,87 +420,6 @@ def reject_cmd(ctx: click.Context, session_id: str, feedback: str) -> None:
             )
             raise click.exceptions.Exit(1)
         click.echo(f"Cannot reject: {error_msg}", err=True)
-        raise click.exceptions.Exit(1)
-
-
-@cli.command("retry")
-@click.argument("session_id", type=str)
-@click.option("--feedback", "-f", required=True, help="Feedback for regeneration")
-@click.pass_context
-def retry_cmd(ctx: click.Context, session_id: str, feedback: str) -> None:
-    """Retry current phase with feedback.
-
-    Transitions back to PROMPT stage to regenerate with feedback.
-    """
-    try:
-        from aiwf.application.workflow_orchestrator import WorkflowOrchestrator, InvalidCommand
-        from aiwf.domain.persistence.session_store import SessionStore
-
-        sessions_root = _get_sessions_root(ctx)
-        session_store = SessionStore(sessions_root=sessions_root)
-        orchestrator = WorkflowOrchestrator(
-            session_store=session_store,
-            sessions_root=sessions_root,
-        )
-
-        state = orchestrator.retry(session_id, feedback=feedback)
-        _emit_progress(state)
-
-        phase = state.phase.name
-        stage = state.stage.value if state.stage else None
-        status = state.status.name
-
-        if _get_json_mode(ctx):
-            _json_emit(
-                RetryOutput(
-                    exit_code=0,
-                    session_id=session_id,
-                    phase=phase,
-                    stage=stage,
-                    status=status,
-                )
-            )
-            raise click.exceptions.Exit(0)
-
-        # Plain text output
-        click.echo(f"phase={phase}")
-        if stage:
-            click.echo(f"stage={stage}")
-        click.echo(f"status={status}")
-
-    except click.exceptions.Exit:
-        raise
-    except InvalidCommand as e:
-        error_msg = str(e)
-        if _get_json_mode(ctx):
-            _json_emit(
-                RetryOutput(
-                    exit_code=1,
-                    session_id=session_id,
-                    phase="",
-                    stage="",
-                    status="",
-                    error=error_msg,
-                )
-            )
-            raise click.exceptions.Exit(1)
-        click.echo(f"Cannot retry: {error_msg}", err=True)
-        raise click.exceptions.Exit(1)
-    except Exception as e:
-        error_msg = _format_error(e)
-        if _get_json_mode(ctx):
-            _json_emit(
-                RetryOutput(
-                    exit_code=1,
-                    session_id=session_id,
-                    phase="",
-                    stage="",
-                    status="",
-                    error=error_msg,
-                )
-            )
-            raise click.exceptions.Exit(1)
-        click.echo(f"Cannot retry: {error_msg}", err=True)
         raise click.exceptions.Exit(1)
 
 

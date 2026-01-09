@@ -27,8 +27,6 @@ class TestTransitionTableValidTransitions:
             (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "approve", WorkflowPhase.GENERATE, WorkflowStage.PROMPT, Action.CREATE_PROMPT),
             # PLAN[RESPONSE] -> reject -> stay (halt)
             (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "reject", WorkflowPhase.PLAN, WorkflowStage.RESPONSE, Action.HALT),
-            # PLAN[RESPONSE] -> retry -> PLAN[RESPONSE] (regenerate response)
-            (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "retry", WorkflowPhase.PLAN, WorkflowStage.RESPONSE, Action.RETRY),
 
             # === GENERATE phase transitions ===
             # GENERATE[PROMPT] -> approve -> GENERATE[RESPONSE] (AI called)
@@ -37,16 +35,12 @@ class TestTransitionTableValidTransitions:
             (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "approve", WorkflowPhase.REVIEW, WorkflowStage.PROMPT, Action.CREATE_PROMPT),
             # GENERATE[RESPONSE] -> reject -> stay (halt)
             (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "reject", WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, Action.HALT),
-            # GENERATE[RESPONSE] -> retry -> GENERATE[RESPONSE] (regenerate response)
-            (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "retry", WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, Action.RETRY),
 
             # === REVIEW phase transitions ===
             # REVIEW[PROMPT] -> approve -> REVIEW[RESPONSE] (AI called)
             (WorkflowPhase.REVIEW, WorkflowStage.PROMPT, "approve", WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.CALL_AI),
             # REVIEW[RESPONSE] -> reject -> stay (halt)
             (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "reject", WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.HALT),
-            # REVIEW[RESPONSE] -> retry -> REVIEW[RESPONSE] (regenerate response)
-            (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "retry", WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.RETRY),
 
             # === REVISE phase transitions ===
             # REVISE[PROMPT] -> approve -> REVISE[RESPONSE] (AI called)
@@ -55,8 +49,6 @@ class TestTransitionTableValidTransitions:
             (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "approve", WorkflowPhase.REVIEW, WorkflowStage.PROMPT, Action.CREATE_PROMPT),
             # REVISE[RESPONSE] -> reject -> stay (halt)
             (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "reject", WorkflowPhase.REVISE, WorkflowStage.RESPONSE, Action.HALT),
-            # REVISE[RESPONSE] -> retry -> REVISE[RESPONSE] (regenerate response)
-            (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "retry", WorkflowPhase.REVISE, WorkflowStage.RESPONSE, Action.RETRY),
         ],
     )
     def test_valid_transition(
@@ -159,19 +151,14 @@ class TestInvalidTransitions:
     @pytest.mark.parametrize(
         "phase,stage,command",
         [
-            # Can't approve/reject/retry from INIT
+            # Can't approve/reject from INIT
             (WorkflowPhase.INIT, None, "approve"),
             (WorkflowPhase.INIT, None, "reject"),
-            (WorkflowPhase.INIT, None, "retry"),
-            # Can't reject/retry from PROMPT stages (only from RESPONSE)
+            # Can't reject from PROMPT stages (only from RESPONSE)
             (WorkflowPhase.PLAN, WorkflowStage.PROMPT, "reject"),
-            (WorkflowPhase.PLAN, WorkflowStage.PROMPT, "retry"),
             (WorkflowPhase.GENERATE, WorkflowStage.PROMPT, "reject"),
-            (WorkflowPhase.GENERATE, WorkflowStage.PROMPT, "retry"),
             (WorkflowPhase.REVIEW, WorkflowStage.PROMPT, "reject"),
-            (WorkflowPhase.REVIEW, WorkflowStage.PROMPT, "retry"),
             (WorkflowPhase.REVISE, WorkflowStage.PROMPT, "reject"),
-            (WorkflowPhase.REVISE, WorkflowStage.PROMPT, "retry"),
             # Can't init from anywhere but INIT
             (WorkflowPhase.PLAN, WorkflowStage.PROMPT, "init"),
             (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "init"),
@@ -179,17 +166,14 @@ class TestInvalidTransitions:
             (WorkflowPhase.COMPLETE, None, "approve"),
             (WorkflowPhase.COMPLETE, None, "init"),
             (WorkflowPhase.COMPLETE, None, "reject"),
-            (WorkflowPhase.COMPLETE, None, "retry"),
             (WorkflowPhase.COMPLETE, None, "cancel"),
             (WorkflowPhase.ERROR, None, "approve"),
             (WorkflowPhase.ERROR, None, "init"),
             (WorkflowPhase.ERROR, None, "reject"),
-            (WorkflowPhase.ERROR, None, "retry"),
             (WorkflowPhase.ERROR, None, "cancel"),
             (WorkflowPhase.CANCELLED, None, "approve"),
             (WorkflowPhase.CANCELLED, None, "init"),
             (WorkflowPhase.CANCELLED, None, "reject"),
-            (WorkflowPhase.CANCELLED, None, "retry"),
             (WorkflowPhase.CANCELLED, None, "cancel"),
             # Unknown commands
             (WorkflowPhase.PLAN, WorkflowStage.PROMPT, "unknown"),
@@ -218,14 +202,14 @@ class TestValidCommands:
         assert set(commands) == {"approve", "cancel"}
 
     def test_valid_commands_from_response_stage(self) -> None:
-        """RESPONSE stages accept approve, reject, retry, and cancel."""
+        """RESPONSE stages accept approve, reject, and cancel."""
         commands = TransitionTable.valid_commands(WorkflowPhase.PLAN, WorkflowStage.RESPONSE)
-        assert set(commands) == {"approve", "reject", "retry", "cancel"}
+        assert set(commands) == {"approve", "reject", "cancel"}
 
     def test_valid_commands_from_review_response(self) -> None:
         """REVIEW[RESPONSE] also accepts approve_complete and approve_revise."""
         commands = TransitionTable.valid_commands(WorkflowPhase.REVIEW, WorkflowStage.RESPONSE)
-        assert set(commands) == {"approve", "approve_complete", "approve_revise", "reject", "retry", "cancel"}
+        assert set(commands) == {"approve", "approve_complete", "approve_revise", "reject", "cancel"}
 
     def test_valid_commands_from_terminal_state(self) -> None:
         """Terminal states have no valid commands."""
@@ -271,12 +255,11 @@ class TestActionEnum:
         assert Action.CHECK_VERDICT.value == "check_verdict"
         assert Action.FINALIZE.value == "finalize"
         assert Action.HALT.value == "halt"
-        assert Action.RETRY.value == "retry"
         assert Action.CANCEL.value == "cancel"
 
     def test_action_count(self) -> None:
-        """Exactly 7 actions defined."""
-        assert len(Action) == 7
+        """Exactly 6 actions defined."""
+        assert len(Action) == 6
 
 
 class TestCheckVerdictExclusivity:
@@ -290,7 +273,7 @@ class TestCheckVerdictExclusivity:
         # Check all possible phase/stage/command combinations
         all_phases = list(WorkflowPhase)
         all_stages = [None, WorkflowStage.PROMPT, WorkflowStage.RESPONSE]
-        all_commands = ["init", "approve", "reject", "retry", "cancel",
+        all_commands = ["init", "approve", "reject", "cancel",
                         "approve_complete", "approve_revise"]
 
         for phase in all_phases:

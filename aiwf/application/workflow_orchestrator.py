@@ -164,22 +164,24 @@ class WorkflowOrchestrator:
         return state
 
     def reject(self, session_id: str, feedback: str) -> WorkflowState:
-        """Reject pending approval with feedback.
+        """Reject content and regenerate with feedback.
 
-        Only valid when pending_approval is True.
+        At RESPONSE stage with AI provider: Regenerates response using same prompt + feedback.
+        At PROMPT stage or manual provider: Stores feedback for manual intervention.
 
         Args:
             session_id: The session to reject
-            feedback: Explanation of why content was rejected
+            feedback: Explanation of what to fix
 
         Returns:
-            Updated workflow state with feedback stored
+            Updated workflow state (regenerated or paused for intervention)
 
         Raises:
             InvalidCommand: If no pending approval to reject
         """
         state = self.session_store.load(session_id)
         state.messages = []
+        session_dir = self.sessions_root / session_id
 
         if not state.pending_approval:
             raise InvalidCommand(
@@ -191,48 +193,49 @@ class WorkflowOrchestrator:
                 f"The 'reject' command is only valid when awaiting manual approval.",
             )
 
-        state.pending_approval = False
         state.approval_feedback = feedback
         self._add_message(state, f"Rejected: {feedback}")
 
+        # At RESPONSE stage with AI provider: regenerate response
+        if state.stage == WorkflowStage.RESPONSE:
+            provider_key = self._get_provider_key_for_phase(state)
+            if provider_key and provider_key != "manual":
+                # Clear pending approval and regenerate
+                state.pending_approval = False
+                self._add_message(state, "Regenerating with feedback...")
+                self._action_call_ai(state, session_dir)
+                # After regeneration, set up for approval again
+                state.pending_approval = True
+                self.session_store.save(state)
+                return state
+
+        # For PROMPT stage or manual provider: pause for user intervention
+        # Keep pending_approval True so user can approve after manual edits
+        state.pending_approval = True
+        self._add_message(state, "Awaiting manual intervention. Edit the file and run 'approve'.")
+
         self.session_store.save(state)
         return state
 
-    def retry(self, session_id: str, feedback: str) -> WorkflowState:
-        """Retry response generation with feedback.
-
-        Only valid from RESPONSE stages. Regenerates the response using the
-        same prompt with feedback context available to the provider.
+    def _get_provider_key_for_phase(self, state: WorkflowState) -> str | None:
+        """Get the AI provider key for the current phase.
 
         Args:
-            session_id: The session to retry
-            feedback: Feedback for regeneration
+            state: Current workflow state
 
         Returns:
-            Updated workflow state (stays at RESPONSE stage with new response)
-
-        Raises:
-            InvalidCommand: If retry is not valid from current state
+            Provider key (e.g., 'claude-code', 'manual') or None
         """
-        state = self.session_store.load(session_id)
-        state.messages = []
-
-        transition = TransitionTable.get_transition(state.phase, state.stage, "retry")
-        if transition is None:
-            raise InvalidCommand("retry", state.phase, state.stage)
-
-        # Store feedback for prompt regeneration
-        state.approval_feedback = feedback
-
-        # Execute the retry action
-        self._execute_action(state, transition.action, session_id)
-
-        # Update state
-        state.phase = transition.phase
-        state.stage = transition.stage
-
-        self.session_store.save(state)
-        return state
+        phase_to_role = {
+            WorkflowPhase.PLAN: "planner",
+            WorkflowPhase.GENERATE: "generator",
+            WorkflowPhase.REVIEW: "reviewer",
+            WorkflowPhase.REVISE: "revisor",
+        }
+        role = phase_to_role.get(state.phase)
+        if role and state.ai_providers:
+            return state.ai_providers.get(role)
+        return None
 
     def cancel(self, session_id: str) -> WorkflowState:
         """Cancel workflow.
@@ -355,8 +358,6 @@ class WorkflowOrchestrator:
         elif action == Action.HALT:
             # No action needed - workflow is halted
             pass
-        elif action == Action.RETRY:
-            self._action_retry(state, session_dir)
         elif action == Action.CANCEL:
             # No action needed - state update handles it
             pass
@@ -489,7 +490,15 @@ class WorkflowOrchestrator:
             )
         else:
             # AIProviderResult - handle result object
-            if response.response:
+            # Check if provider already wrote the response file (local-write providers)
+            response_path_str = str(response_path)
+            provider_wrote_response = response_path_str in response.files
+
+            if provider_wrote_response:
+                # Provider wrote the file directly - don't overwrite with console output
+                self._add_message(state, f"Created {response_filename}")
+            elif response.response:
+                # Provider returned content - write it
                 response_path.write_text(response.response, encoding="utf-8")
                 self._add_message(state, f"Created {response_filename}")
             # Handle files dict for code generation

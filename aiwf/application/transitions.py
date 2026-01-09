@@ -25,8 +25,7 @@ class Action(str, Enum):
     CALL_AI = "call_ai"              # AI provider generates response
     CHECK_VERDICT = "check_verdict"  # Engine checks review verdict (REVIEW[RESPONSE] only)
     FINALIZE = "finalize"            # Complete the workflow
-    HALT = "halt"                    # Stop workflow (reject without retry)
-    RETRY = "retry"                  # Regenerate with feedback
+    HALT = "halt"                    # Stop workflow (legacy, reject now handles regeneration)
     CANCEL = "cancel"                # User cancelled workflow
 
 
@@ -86,9 +85,6 @@ class TransitionTable:
         (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "reject"): TransitionResult(
             WorkflowPhase.PLAN, WorkflowStage.RESPONSE, Action.HALT
         ),
-        (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "retry"): TransitionResult(
-            WorkflowPhase.PLAN, WorkflowStage.RESPONSE, Action.RETRY  # Stay at RESPONSE, regenerate
-        ),
         (WorkflowPhase.PLAN, WorkflowStage.RESPONSE, "cancel"): TransitionResult(
             WorkflowPhase.CANCELLED, None, Action.CANCEL
         ),
@@ -105,9 +101,6 @@ class TransitionTable:
         ),
         (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "reject"): TransitionResult(
             WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, Action.HALT
-        ),
-        (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "retry"): TransitionResult(
-            WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, Action.RETRY  # Stay at RESPONSE, regenerate
         ),
         (WorkflowPhase.GENERATE, WorkflowStage.RESPONSE, "cancel"): TransitionResult(
             WorkflowPhase.CANCELLED, None, Action.CANCEL
@@ -134,9 +127,6 @@ class TransitionTable:
         (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "reject"): TransitionResult(
             WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.HALT
         ),
-        (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "retry"): TransitionResult(
-            WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, Action.RETRY  # Stay at RESPONSE, regenerate
-        ),
         (WorkflowPhase.REVIEW, WorkflowStage.RESPONSE, "cancel"): TransitionResult(
             WorkflowPhase.CANCELLED, None, Action.CANCEL
         ),
@@ -153,9 +143,6 @@ class TransitionTable:
         ),
         (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "reject"): TransitionResult(
             WorkflowPhase.REVISE, WorkflowStage.RESPONSE, Action.HALT
-        ),
-        (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "retry"): TransitionResult(
-            WorkflowPhase.REVISE, WorkflowStage.RESPONSE, Action.RETRY  # Stay at RESPONSE, regenerate
         ),
         (WorkflowPhase.REVISE, WorkflowStage.RESPONSE, "cancel"): TransitionResult(
             WorkflowPhase.CANCELLED, None, Action.CANCEL

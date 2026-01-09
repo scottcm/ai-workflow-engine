@@ -3,7 +3,7 @@
 These tests simulate the user workflow where:
 1. Provider returns None (manual mode)
 2. User creates response files externally
-3. User calls approve/reject/retry commands
+3. User calls approve/reject commands
 
 This tests the orchestrator's handling of manual workflows.
 """
@@ -165,8 +165,8 @@ class TestManualWorkflowPlanPhase:
         assert state.plan_hash is not None
 
 
-class TestManualWorkflowRejectRetry:
-    """Tests for reject and retry commands."""
+class TestManualWorkflowReject:
+    """Tests for reject command."""
 
     @pytest.fixture
     def session_at_plan_response(
@@ -216,21 +216,6 @@ class TestManualWorkflowRejectRetry:
 
         with pytest.raises(InvalidCommand, match="reject.*not valid"):
             orchestrator.reject(session_with_manual_provider, feedback="bad")
-
-    def test_retry_triggers_regeneration(
-        self,
-        orchestrator: WorkflowOrchestrator,
-        session_at_plan_response: str,
-    ) -> None:
-        """retry stores feedback and stays at RESPONSE."""
-        state = orchestrator.retry(
-            session_at_plan_response,
-            feedback="Add more detail about testing",
-        )
-
-        assert state.approval_feedback == "Add more detail about testing"
-        assert state.phase == WorkflowPhase.PLAN
-        assert state.stage == WorkflowStage.RESPONSE
 
 
 class TestManualWorkflowCancel:

@@ -162,13 +162,14 @@ class TestOrchestratorReject:
     Updated for Phase 2: reject() requires pending_approval=True.
     """
 
-    def test_reject_from_response_stage_halts_workflow(self) -> None:
-        """reject from RESPONSE stage with pending_approval keeps state, stores feedback."""
+    def test_reject_from_response_stage_with_manual_provider(self) -> None:
+        """reject from RESPONSE stage with manual provider keeps pending for user intervention."""
         store = Mock(spec=SessionStore)
         state = _make_state(
             phase=WorkflowPhase.PLAN,
             stage=WorkflowStage.RESPONSE,
             pending_approval=True,  # Required for Phase 2
+            ai_providers={"planner": "manual"},
         )
         store.load.return_value = state
 
@@ -183,7 +184,8 @@ class TestOrchestratorReject:
         assert result.phase == WorkflowPhase.PLAN
         assert result.stage == WorkflowStage.RESPONSE
         assert result.approval_feedback == "Needs more detail"
-        assert result.pending_approval is False  # Resolved by reject
+        # With manual provider, pending_approval stays True - user must edit and re-approve
+        assert result.pending_approval is True
 
     def test_reject_without_pending_approval_raises_error(self) -> None:
         """reject without pending_approval raises InvalidCommand."""
@@ -203,43 +205,6 @@ class TestOrchestratorReject:
         from aiwf.application.workflow_orchestrator import InvalidCommand
         with pytest.raises(InvalidCommand):
             orchestrator.reject("test-session", feedback="Bad")
-
-
-class TestOrchestratorRetry:
-    """Tests for retry command."""
-
-    def test_retry_from_response_stays_at_response(self) -> None:
-        """retry from RESPONSE stays at RESPONSE and regenerates."""
-        store = Mock(spec=SessionStore)
-        state = _make_state(phase=WorkflowPhase.PLAN, stage=WorkflowStage.RESPONSE)
-        store.load.return_value = state
-
-        orchestrator = WorkflowOrchestrator(
-            session_store=store,
-            sessions_root=Path("/tmp/sessions"),
-        )
-
-        with patch.object(orchestrator, "_execute_action"):
-            result = orchestrator.retry("test-session", feedback="Add more detail")
-
-        # Retry stays at RESPONSE stage (regenerates response, not prompt)
-        assert result.phase == WorkflowPhase.PLAN
-        assert result.stage == WorkflowStage.RESPONSE
-
-    def test_retry_from_prompt_stage_raises_error(self) -> None:
-        """retry from PROMPT stage raises InvalidCommand."""
-        store = Mock(spec=SessionStore)
-        state = _make_state(phase=WorkflowPhase.PLAN, stage=WorkflowStage.PROMPT)
-        store.load.return_value = state
-
-        orchestrator = WorkflowOrchestrator(
-            session_store=store,
-            sessions_root=Path("/tmp/sessions"),
-        )
-
-        from aiwf.application.workflow_orchestrator import InvalidCommand
-        with pytest.raises(InvalidCommand):
-            orchestrator.retry("test-session", feedback="Retry")
 
 
 class TestOrchestratorCancel:
@@ -336,30 +301,7 @@ class TestTerminalStateCommands:
             orchestrator.reject("test-session", feedback="Bad")
 
         with pytest.raises(InvalidCommand):
-            orchestrator.retry("test-session", feedback="Retry")
-
-        with pytest.raises(InvalidCommand):
             orchestrator.cancel("test-session")
-
-
-class TestFeedbackPersistence:
-    """Tests for feedback persistence in reject/retry."""
-
-    def test_retry_stores_feedback_in_approval_feedback(self) -> None:
-        """retry stores feedback in approval_feedback field."""
-        store = Mock(spec=SessionStore)
-        state = _make_state(phase=WorkflowPhase.PLAN, stage=WorkflowStage.RESPONSE)
-        store.load.return_value = state
-
-        orchestrator = WorkflowOrchestrator(
-            session_store=store,
-            sessions_root=Path("/tmp/sessions"),
-        )
-
-        with patch.object(orchestrator, "_execute_action"):
-            result = orchestrator.retry("test-session", feedback="Please add details")
-
-        assert result.approval_feedback == "Please add details"
 
 
 class TestInvalidCommandMessage:
@@ -931,13 +873,14 @@ class TestApproveCommandRedesigned:
 class TestRejectCommandRedesigned:
     """Tests for reject command with new pending-only semantics."""
 
-    def test_reject_resolves_pending_with_feedback(self, tmp_path: Path) -> None:
-        """reject command resolves pending and stores feedback."""
+    def test_reject_stores_feedback_and_awaits_intervention(self, tmp_path: Path) -> None:
+        """reject command stores feedback and awaits user intervention (for manual provider)."""
         store = Mock(spec=SessionStore)
         state = _make_state(
             phase=WorkflowPhase.PLAN,
             stage=WorkflowStage.PROMPT,
             pending_approval=True,
+            ai_providers={"planner": "manual"},
         )
         store.load.return_value = state
 
@@ -948,8 +891,8 @@ class TestRejectCommandRedesigned:
 
         result = orchestrator.reject("test-session", feedback="Needs more detail")
 
-        # pending_approval should be resolved
-        assert result.pending_approval is False
+        # pending_approval stays True for manual provider - user must edit and re-approve
+        assert result.pending_approval is True
         # Feedback should be stored
         assert result.approval_feedback == "Needs more detail"
 

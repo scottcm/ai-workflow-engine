@@ -237,17 +237,17 @@ class TestFakeProviderFullWorkflow:
         assert state.stage == WorkflowStage.RESPONSE
 
 
-class TestFakeProviderRetry:
-    """Tests for retry with fake provider."""
+class TestFakeProviderReject:
+    """Tests for reject with fake provider triggering regeneration."""
 
-    def test_retry_regenerates_response(
+    def test_reject_regenerates_response(
         self,
         orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         sessions_root: Path,
         register_fake_provider: FakeAIProvider,
     ) -> None:
-        """retry regenerates response using fake provider."""
+        """reject regenerates response using fake provider."""
         session_id = session_with_fake_provider
         provider = register_fake_provider
 
@@ -257,8 +257,8 @@ class TestFakeProviderRetry:
         # Provider called once
         assert len(provider.call_history) == 1
 
-        # Retry
-        state = orchestrator.retry(session_id, feedback="Add more detail")
+        # Reject triggers regeneration
+        state = orchestrator.reject(session_id, feedback="Add more detail")
 
         # Provider called again
         assert len(provider.call_history) == 2
@@ -267,18 +267,18 @@ class TestFakeProviderRetry:
         assert state.phase == WorkflowPhase.PLAN
         assert state.stage == WorkflowStage.RESPONSE
 
-    def test_retry_passes_feedback_in_context(
+    def test_reject_stores_feedback(
         self,
         orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         register_fake_provider: FakeAIProvider,
     ) -> None:
-        """retry stores feedback for provider context."""
+        """reject stores feedback for provider context."""
         session_id = session_with_fake_provider
 
         orchestrator.init(session_id)
         orchestrator.approve(session_id)
-        orchestrator.retry(session_id, feedback="Be more specific")
+        orchestrator.reject(session_id, feedback="Be more specific")
 
         # Verify feedback is stored
         state = orchestrator.session_store.load(session_id)
