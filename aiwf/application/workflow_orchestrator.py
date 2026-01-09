@@ -36,6 +36,7 @@ from aiwf.application.approval_config import ApprovalConfig
 from aiwf.domain.validation.path_validator import normalize_metadata_paths
 from aiwf.domain.models.prompt_sections import PromptSections
 from aiwf.domain.models.ai_provider_result import AIProviderResult
+from aiwf.application.actions import ActionDispatcher, ActionContext
 
 if TYPE_CHECKING:
     from aiwf.domain.events.emitter import WorkflowEventEmitter
@@ -92,6 +93,9 @@ class WorkflowOrchestrator:
         WorkflowPhase.REVIEW: ("review-prompt.md", "review-response.md"),
         WorkflowPhase.REVISE: ("revision-prompt.md", "revision-response.md"),
     }
+
+    # Action dispatcher for executing workflow actions
+    _action_dispatcher: ActionDispatcher = field(default_factory=ActionDispatcher, repr=False)
 
     def __post_init__(self) -> None:
         if self.event_emitter is None:
@@ -317,6 +321,24 @@ class WorkflowOrchestrator:
         self.session_store.save(state)
         return state
 
+    def _build_action_context(self, session_dir: Path) -> ActionContext:
+        """Build ActionContext for executor dispatch.
+
+        Args:
+            session_dir: Session directory path
+
+        Returns:
+            ActionContext with helpers and configuration
+        """
+        return ActionContext(
+            phase_files=self._PHASE_FILES,
+            add_message=self._add_message,
+            build_provider_context=self._build_provider_context,
+            copy_plan_to_session=self._copy_plan_to_session,
+            run_gate_after_action=self._run_gate_after_action,
+            orchestrator=self,
+        )
+
     def _execute_action(
         self,
         state: WorkflowState,
@@ -326,7 +348,7 @@ class WorkflowOrchestrator:
         """Execute an action after transition.
 
         Actions describe WHAT happens after entering a new state.
-        This method performs the actual work.
+        Delegates to ActionDispatcher for execution.
 
         Args:
             state: Current workflow state
@@ -334,23 +356,8 @@ class WorkflowOrchestrator:
             session_id: Session identifier
         """
         session_dir = self.sessions_root / session_id
-
-        if action == Action.CREATE_PROMPT:
-            self._action_create_prompt(state, session_dir)
-            self._run_gate_after_action(state, session_dir)
-        elif action == Action.CALL_AI:
-            self._action_call_ai(state, session_dir)
-            self._run_gate_after_action(state, session_dir)
-        elif action == Action.CHECK_VERDICT:
-            self._action_check_verdict(state, session_dir)
-        elif action == Action.FINALIZE:
-            self._action_finalize(state, session_dir)
-        elif action == Action.HALT:
-            # No action needed - workflow is halted
-            pass
-        elif action == Action.CANCEL:
-            # No action needed - state update handles it
-            pass
+        context = self._build_action_context(session_dir)
+        self._action_dispatcher.dispatch(action, state, session_dir, context)
 
     def _action_create_prompt(self, state: WorkflowState, session_dir: Path) -> None:
         """Create prompt file for current phase.
