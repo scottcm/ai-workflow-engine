@@ -45,6 +45,7 @@ from aiwf.application.approval import (
 from aiwf.application.providers import ProviderExecutionService
 from aiwf.application.prompts import PromptService
 from aiwf.application.artifacts import ArtifactService
+from aiwf.application.storage import SessionFileGateway
 
 if TYPE_CHECKING:
     from aiwf.domain.events.emitter import WorkflowEventEmitter
@@ -411,6 +412,8 @@ class WorkflowOrchestrator:
 
         Called when entering a PROMPT stage.
         """
+        gateway = SessionFileGateway(session_dir)
+
         # Phase-specific setup before creating the prompt
         if state.phase == WorkflowPhase.GENERATE:
             # Gate: plan must be approved before entering GENERATE
@@ -427,13 +430,8 @@ class WorkflowOrchestrator:
             state, session_dir, self._PHASE_FILES, context
         )
 
-        # Create iteration directory if needed
-        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        iteration_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write prompt file
-        prompt_path = iteration_dir / result.prompt_filename
-        prompt_path.write_text(result.user_prompt, encoding="utf-8")
+        # Write prompt file via gateway
+        gateway.write_prompt(state.current_iteration, state.phase, result.user_prompt)
 
         self._add_message(state, f"Created {result.prompt_filename}")
 
@@ -444,6 +442,8 @@ class WorkflowOrchestrator:
         For manual provider (returns None), user provides response file externally.
         For automated providers, writes response file directly.
         """
+        gateway = SessionFileGateway(session_dir)
+
         # Map phase to provider role
         phase_to_role = {
             WorkflowPhase.PLAN: "planner",
@@ -459,17 +459,15 @@ class WorkflowOrchestrator:
         if provider_key is None:
             raise ValueError(f"No provider configured for role: {role}")
 
-        # Get filenames from class constant (DRY)
-        prompt_filename, response_filename = self._PHASE_FILES[state.phase]
+        # Get filenames via gateway
+        prompt_filename = gateway.get_prompt_filename(state.phase)
+        response_filename = gateway.get_response_filename(state.phase)
 
-        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        prompt_path = iteration_dir / prompt_filename
-        response_path = iteration_dir / response_filename
-
-        # Read prompt
-        if not prompt_path.exists():
+        # Read prompt via gateway
+        if not gateway.prompt_exists(state.current_iteration, state.phase):
+            prompt_path = gateway.get_prompt_path(state.current_iteration, state.phase)
             raise ValueError(f"Prompt file not found: {prompt_path}")
-        prompt_content = prompt_path.read_text(encoding="utf-8")
+        prompt_content = gateway.read_prompt(state.current_iteration, state.phase)
 
         # Build context for provider
         context = self._build_provider_context(state)
@@ -495,6 +493,7 @@ class WorkflowOrchestrator:
         else:
             # Handle result from automated provider
             # Check if provider already wrote the response file (local-write providers)
+            response_path = gateway.get_response_path(state.current_iteration, state.phase)
             response_path_str = str(response_path)
             provider_wrote_response = response_path_str in result.files
 
@@ -502,15 +501,13 @@ class WorkflowOrchestrator:
                 # Provider wrote the file directly - don't overwrite with console output
                 self._add_message(state, f"Created {response_filename}")
             elif result.response:
-                # Provider returned content - write it
-                response_path.write_text(result.response, encoding="utf-8")
+                # Provider returned content - write it via gateway
+                gateway.write_response(state.current_iteration, state.phase, result.response)
                 self._add_message(state, f"Created {response_filename}")
             # Handle files dict for code generation
             for file_path, content in result.files.items():
                 if content is not None:
-                    full_path = iteration_dir / "code" / file_path
-                    full_path.parent.mkdir(parents=True, exist_ok=True)
-                    full_path.write_text(content, encoding="utf-8")
+                    gateway.write_code_file(state.current_iteration, file_path, content)
                     self._add_message(state, f"Created code/{file_path}")
 
     def _action_check_verdict(self, state: WorkflowState, session_dir: Path) -> None:
@@ -519,13 +516,13 @@ class WorkflowOrchestrator:
         Only called from REVIEW[RESPONSE]. Parses verdict and dynamically
         transitions to COMPLETE (PASS) or REVISE (FAIL).
         """
-        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        response_path = iteration_dir / "review-response.md"
+        gateway = SessionFileGateway(session_dir)
 
-        if not response_path.exists():
+        if not gateway.response_exists(state.current_iteration, WorkflowPhase.REVIEW):
+            response_path = gateway.get_response_path(state.current_iteration, WorkflowPhase.REVIEW)
             raise ValueError(f"Review response not found: {response_path}")
 
-        content = response_path.read_text(encoding="utf-8")
+        content = gateway.read_response(state.current_iteration, WorkflowPhase.REVIEW)
 
         # Use profile to process review response
         profile = ProfileFactory.create(state.profile)
@@ -1153,17 +1150,13 @@ class WorkflowOrchestrator:
             session_dir: Session directory
             suggested_content: The suggested prompt content to apply
         """
-        # Get prompt filename from class constant (DRY)
-        if state.phase not in self._PHASE_FILES:
+        gateway = SessionFileGateway(session_dir)
+
+        if state.phase not in gateway.PHASE_FILES:
             return
 
-        prompt_filename = self._PHASE_FILES[state.phase][0]  # First element is prompt filename
-
-        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        prompt_path = iteration_dir / prompt_filename
-
-        if prompt_path.exists():
-            prompt_path.write_text(suggested_content, encoding="utf-8")
+        if gateway.prompt_exists(state.current_iteration, state.phase):
+            gateway.write_prompt(state.current_iteration, state.phase, suggested_content)
 
     def _write_regenerated_prompt(
         self,
@@ -1180,13 +1173,10 @@ class WorkflowOrchestrator:
             session_dir: Session directory
             prompt_content: Regenerated prompt (string or PromptSections)
         """
-        # Get filenames from class constant (DRY)
-        prompt_filename, response_filename = self._PHASE_FILES.get(
-            state.phase, ("prompt.md", "response.md")
-        )
+        gateway = SessionFileGateway(session_dir)
 
-        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        iteration_dir.mkdir(parents=True, exist_ok=True)
+        # Get filenames via gateway
+        response_filename = gateway.get_response_filename(state.phase)
 
         # Construct iteration-relative response path for output instructions
         response_relpath = f"iteration-{state.current_iteration}/{response_filename}"
@@ -1196,9 +1186,8 @@ class WorkflowOrchestrator:
             prompt_content, state, session_dir, response_relpath
         )
 
-        # Write prompt file
-        prompt_path = iteration_dir / prompt_filename
-        prompt_path.write_text(final_content, encoding="utf-8")
+        # Write prompt file via gateway
+        gateway.write_prompt(state.current_iteration, state.phase, final_content)
 
 
 def _build_initial_state(
