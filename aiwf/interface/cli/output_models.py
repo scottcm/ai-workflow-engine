@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class BaseOutput(BaseModel):
     schema_version: int = 1
-    command: Literal["init", "step", "status", "approve", "reject", "list", "profiles", "providers", "validate"]
+    command: Literal["init", "status", "approve", "reject", "list", "profiles", "providers", "validate"]
     exit_code: int
     error: str | None = None
 
@@ -13,17 +13,8 @@ class InitOutput(BaseOutput):
     command: Literal["init"] = "init"
     # On init errors, session_id may be unknown; omit it from JSON via exclude_none.
     session_id: str | None = None
-
-
-class StepOutput(BaseOutput):
-    command: Literal["step"] = "step"
-    session_id: str
     phase: str | None = None
-    status: str | None = None
-    iteration: int | None = None
-    noop_awaiting_artifact: bool = False
-    awaiting_paths: list[str] = Field(default_factory=list)
-    last_error: str | None = None
+    stage: str | None = None
 
 
 class StatusOutput(BaseOutput):

@@ -19,7 +19,6 @@ from aiwf.interface.cli.output_models import (
     RejectOutput,
     SessionSummary,
     StatusOutput,
-    StepOutput,
     ValidateOutput,
     ValidationResult,
 )
@@ -81,89 +80,6 @@ def cli(ctx: click.Context, json_output: bool, project_dir: str | None) -> None:
     ctx.ensure_object(dict)
     ctx.obj["json"] = bool(json_output)
     ctx.obj["project_dir"] = Path(project_dir) if project_dir else Path.cwd()
-
-
-@cli.command("step")
-@click.argument("session_id", type=str)
-@click.option("--events", is_flag=True, help="Emit workflow events to stderr.")
-@click.pass_context
-def step_cmd(ctx: click.Context, session_id: str, events: bool) -> None:
-    try:
-        from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
-        from aiwf.domain.persistence.session_store import SessionStore
-        from aiwf.domain.events.emitter import WorkflowEventEmitter
-
-        event_emitter = WorkflowEventEmitter()
-        if events:
-            from aiwf.domain.events.stderr_observer import StderrEventObserver
-            event_emitter.subscribe(StderrEventObserver())
-
-        sessions_root = _get_sessions_root(ctx)
-        session_store = SessionStore(sessions_root=sessions_root)
-        orchestrator = WorkflowOrchestrator(
-            session_store=session_store,
-            sessions_root=sessions_root,
-            event_emitter=event_emitter,
-        )
-
-        state = orchestrator.step(session_id)
-        _emit_progress(state)
-
-        phase = state.phase.name
-        status = state.status.name
-        iteration = getattr(state, "current_iteration", None)
-        stage = state.stage.value if state.stage else None
-
-        exit_code = 0
-        if state.status == WorkflowStatus.CANCELLED:
-            exit_code = 3
-
-        last_error = state.last_error
-
-        if _get_json_mode(ctx):
-            _json_emit(
-                StepOutput(
-                    exit_code=exit_code,
-                    session_id=session_id,
-                    phase=phase,
-                    status=status,
-                    iteration=iteration,
-                    noop_awaiting_artifact=False,
-                    awaiting_paths=[],
-                    last_error=last_error,
-                )
-            )
-            raise click.exceptions.Exit(exit_code)
-
-        header = f"phase={phase} status={status} iteration={iteration}"
-        if stage:
-            header += f" stage={stage}"
-        click.echo(header)
-
-        if last_error:
-            click.echo(f"error: {last_error}")
-
-        if exit_code == 3:
-            raise click.exceptions.Exit(3)
-
-    except click.exceptions.Exit:
-        raise
-    except Exception as e:
-        if _get_json_mode(ctx):
-            _json_emit(
-                StepOutput(
-                    exit_code=1,
-                    session_id=session_id,
-                    phase="",
-                    status="",
-                    iteration=None,
-                    noop_awaiting_artifact=False,
-                    awaiting_paths=[],
-                    error=str(e),
-                )
-            )
-            raise click.exceptions.Exit(1)
-        raise click.ClickException(str(e)) from e
 
 
 @cli.command("status")

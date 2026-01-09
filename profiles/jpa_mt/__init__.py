@@ -146,9 +146,14 @@ def register(cli_group: click.Group) -> type["WorkflowProfile"]:
                 providers=default_providers,
             )
 
+            # Transition from INIT to PLAN[PROMPT] so user lands ready to approve
+            state = orchestrator.init(session_id)
+
             result = InitOutput(
                 exit_code=0,
                 session_id=session_id,
+                phase=state.phase.value,
+                stage=state.stage.value if state.stage else None,
             )
             click.echo(result.model_dump_json(indent=2))
 

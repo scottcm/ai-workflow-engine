@@ -275,24 +275,6 @@ class WorkflowOrchestrator:
         return state
 
     # ========================================================================
-    # Legacy step() method - deprecated
-    # ========================================================================
-
-    def step(self, session_id: str) -> WorkflowState:
-        """DEPRECATED - Use init() instead.
-
-        The step command was removed in ADR-0012.
-        Use init() to start workflow from INIT phase.
-        """
-        # For backwards compatibility, treat step from INIT as init
-        state = self.session_store.load(session_id)
-        if state.phase == WorkflowPhase.INIT:
-            return self.init(session_id)
-
-        # Otherwise, step is no longer valid
-        raise InvalidCommand("step", state.phase, state.stage)
-
-    # ========================================================================
     # Internal Methods
     # ========================================================================
 
@@ -577,11 +559,6 @@ class WorkflowOrchestrator:
         context: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         standards_provider: str | None = None,
-        # Legacy parameters for backward compatibility
-        scope: str | None = None,
-        entity: str | None = None,
-        bounded_context: str | None = None,
-        table: str | None = None,
         dev: str | None = None,
         task_id: str | None = None,
     ) -> str:
@@ -600,15 +577,9 @@ class WorkflowOrchestrator:
         Args:
             profile: Profile identifier (e.g., "jpa-mt")
             providers: Role to provider mapping (e.g., {"planner": "manual"})
-            context: Profile-specific context dict (new API)
+            context: Profile-specific context dict
             metadata: Optional additional metadata
             standards_provider: Optional standards provider key override
-            scope: (Legacy) Workflow scope - use context instead
-            entity: (Legacy) Entity name - use context instead
-            bounded_context: (Legacy) Bounded context name - use context instead
-            table: (Legacy) Database table name - use context instead
-            dev: (Legacy) Developer identifier - use context instead
-            task_id: (Legacy) Task/ticket identifier - use context instead
 
         Returns:
             The generated session_id for the new workflow session.
@@ -617,26 +588,17 @@ class WorkflowOrchestrator:
         session_dir = self.sessions_root / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
 
-        # Build context from either new context param or legacy params
-        if context is not None:
-            effective_context = dict(context)
-        else:
-            effective_context = {}
-            if scope is not None:
-                effective_context["scope"] = scope
-            if entity is not None:
-                effective_context["entity"] = entity
-            if table is not None:
-                effective_context["table"] = table
-            if bounded_context is not None:
-                effective_context["bounded_context"] = bounded_context
-            if dev is not None:
-                effective_context["dev"] = dev
-            if task_id is not None:
-                effective_context["task_id"] = task_id
+        effective_context = dict(context) if context else {}
+
+        # Merge dev and task_id into metadata if provided
+        effective_metadata = dict(metadata) if metadata else {}
+        if dev:
+            effective_metadata["developer"] = dev
+        if task_id:
+            effective_metadata["task_id"] = task_id
 
         # Normalize paths in metadata
-        metadata = normalize_metadata_paths(metadata)
+        metadata = normalize_metadata_paths(effective_metadata)
 
         # Merge schema_file from metadata into context if present
         if metadata and "schema_file" in metadata:
