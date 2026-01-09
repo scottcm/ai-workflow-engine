@@ -1,6 +1,6 @@
 # ADR-0013: Claude Code AI Provider
 
-**Status:** Draft
+**Status:** Accepted
 **Date:** January 2, 2025
 **Deciders:** Scott
 

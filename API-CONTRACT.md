@@ -25,7 +25,6 @@ This document defines the CLI interface contract between the AI Workflow Engine 
 | Command | Purpose | Status |
 |---------|---------|--------|
 | `aiwf init` | Create new session | ✅ Implemented |
-| `aiwf step` | Advance workflow one phase | ✅ Implemented |
 | `aiwf approve` | Hash artifacts, call providers | ✅ Implemented |
 | `aiwf status` | Get session details | ✅ Implemented |
 | `aiwf list` | List sessions | ✅ Implemented |
@@ -48,7 +47,7 @@ All commands support `--json` flag for machine-readable output. Every JSON respo
 **Error Types:**
 
 - `error`: Command-level exception (invalid arguments, missing files, configuration errors). Present when `exit_code != 0`.
-- `last_error`: Workflow state error from a previous operation, preserved in session.json. Present in `step` and `status` outputs when the workflow encountered a recoverable error.
+- `last_error`: Workflow state error from a previous operation, preserved in session.json. Present in `status` outputs when the workflow encountered a recoverable error.
 
 Both can appear in the same response. `error` indicates the current command failed; `last_error` indicates a prior workflow operation failed.
 
@@ -112,93 +111,7 @@ a1b2c3d4e5f6...
 
 ---
 
-### 2. `aiwf step`
-
-Advance the workflow by one phase. The engine determines the next action based on current state.
-
-**Syntax:**
-```bash
-aiwf step <session_id> [options]
-```
-
-**Required Arguments:**
-- `<session_id>` - Session identifier from `init`
-
-**Global Options:**
-- `--json` - Emit machine-readable JSON output
-
-**Behavior:**
-
-The engine loads current state and performs one unit of work:
-- If prompt is missing: generates and writes prompt file
-- If response exists: processes response and advances phase
-- If awaiting approval: returns current state (no advancement)
-
-**Output (Plain):**
-```
-phase=PLANNING status=IN_PROGRESS iteration=1 noop_awaiting_artifact=true
-.aiwf/sessions/abc123/iteration-1/planning-prompt.md
-.aiwf/sessions/abc123/iteration-1/planning-response.md
-```
-
-**Output (JSON) - Awaiting Artifact:**
-```json
-{
-  "schema_version": 1,
-  "command": "step",
-  "exit_code": 2,
-  "session_id": "abc123",
-  "phase": "PLANNING",
-  "status": "IN_PROGRESS",
-  "iteration": 1,
-  "noop_awaiting_artifact": true,
-  "awaiting_paths": [
-    ".aiwf/sessions/abc123/iteration-1/planning-prompt.md",
-    ".aiwf/sessions/abc123/iteration-1/planning-response.md"
-  ]
-}
-```
-
-**Output (JSON) - With Workflow Error:**
-```json
-{
-  "schema_version": 1,
-  "command": "step",
-  "exit_code": 0,
-  "session_id": "abc123",
-  "phase": "GENERATING",
-  "status": "IN_PROGRESS",
-  "iteration": 1,
-  "noop_awaiting_artifact": false,
-  "awaiting_paths": [],
-  "last_error": "Failed to process generation response"
-}
-```
-
-**Output (JSON) - Command Error:**
-```json
-{
-  "schema_version": 1,
-  "command": "step",
-  "exit_code": 1,
-  "error": "Session 'abc123' not found",
-  "session_id": "abc123",
-  "phase": "",
-  "status": "",
-  "noop_awaiting_artifact": false,
-  "awaiting_paths": []
-}
-```
-
-**Exit Codes:**
-- `0` - Success (phase advanced or already complete)
-- `1` - Error
-- `2` - Blocked awaiting artifact (prompt exists, response missing)
-- `3` - Cancelled
-
----
-
-### 3. `aiwf approve`
+### 2. `aiwf approve`
 
 Approve current phase outputs, compute hashes, and optionally call AI providers.
 
@@ -267,7 +180,7 @@ aiwf approve <session_id> [options]
 
 ---
 
-### 4. `aiwf status`
+### 3. `aiwf status`
 
 Get detailed status for a session.
 
@@ -341,7 +254,7 @@ session_path=.aiwf/sessions/abc123
 
 ## Discovery Commands
 
-### 5. `aiwf list`
+### 4. `aiwf list`
 
 List all workflow sessions.
 
@@ -404,7 +317,7 @@ a1b2c3d4e5f6789012345678abcdef01  jpa-mt   Order    COMPLETE    SUCCESS      202
 
 ---
 
-### 6. `aiwf profiles`
+### 5. `aiwf profiles`
 
 List available workflow profiles.
 
@@ -482,7 +395,7 @@ Phases: planning, generation, review, revision
 
 ---
 
-### 7. `aiwf providers`
+### 6. `aiwf providers`
 
 List available AI providers.
 
@@ -674,14 +587,12 @@ Example error response:
 ```json
 {
   "schema_version": 1,
-  "command": "step",
+  "command": "status",
   "exit_code": 1,
   "error": "Session 'abc123' not found",
   "session_id": "abc123",
   "phase": "",
-  "status": "",
-  "noop_awaiting_artifact": false,
-  "awaiting_paths": []
+  "status": ""
 }
 ```
 
@@ -709,7 +620,7 @@ const init = await execAiwf([
 
 if (init.exit_code === 0) {
   const sessionId = init.session_id;
-  // Continue with step/approve cycle
+  // Continue with approve cycle
 }
 ```
 
@@ -718,29 +629,19 @@ if (init.exit_code === 0) {
 ```typescript
 async function runWorkflow(sessionId: string) {
   while (true) {
-    // Advance workflow
-    const step = await execAiwf(['step', sessionId]);
-    
-    if (step.exit_code === 2) {
-      // Awaiting artifact - show user the prompt file
-      await showFile(step.awaiting_paths[0]);
-      // Wait for user to provide response
-      await waitForFile(step.awaiting_paths[1]);
-      continue;
-    }
-    
-    if (step.phase === 'COMPLETE') {
+    // Check current status
+    const status = await execAiwf(['status', sessionId]);
+
+    if (status.phase === 'COMPLETE') {
       break;
     }
-    
-    // Check if approval needed
-    const status = await execAiwf(['status', sessionId]);
-    if (needsApproval(status)) {
+
+    if (status.pending_approval) {
       // Show artifacts for review
       await showArtifacts(sessionId, status);
       // Wait for user confirmation
       await waitForUserApproval();
-      // Approve
+      // Approve to advance workflow
       await execAiwf(['approve', sessionId]);
     }
   }

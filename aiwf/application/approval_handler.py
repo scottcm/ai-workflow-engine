@@ -2,7 +2,12 @@
 
 ADR-0012: Chain of Responsibility handlers removed. TransitionTable handles state transitions.
 This module retains run_provider() for AI provider invocation.
+
+DEPRECATED: This module is deprecated and will be removed after orchestrator modularization
+(Phase 3 of the refactor). Use ProviderExecutionService instead when available.
 """
+
+import warnings
 
 from aiwf.domain.providers.capabilities import ProviderCapabilities  # noqa: F401 - re-export for compatibility
 from aiwf.domain.providers.provider_factory import AIProviderFactory
@@ -14,6 +19,10 @@ def run_provider(
     system_prompt: str | None = None,
 ) -> str | None:
     """Invoke an AI provider to generate a response.
+
+    .. deprecated::
+        This function is deprecated and will be removed after orchestrator
+        modularization (Phase 3). Use ProviderExecutionService instead.
 
     Args:
         provider_key: Registered provider key (e.g., "manual", "claude")
@@ -27,6 +36,12 @@ def run_provider(
         ProviderError: If provider fails (network, auth, timeout, etc.)
         KeyError: If provider_key is not registered
     """
+    warnings.warn(
+        "run_provider is deprecated and will be removed after orchestrator "
+        "modularization Phase 3. Use ProviderExecutionService instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     provider = AIProviderFactory.create(provider_key)
     metadata = provider.get_metadata()
     connection_timeout = metadata.get("default_connection_timeout")

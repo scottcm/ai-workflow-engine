@@ -1,6 +1,6 @@
 # ADR-0014: Gemini CLI AI Provider
 
-**Status:** Draft
+**Status:** Accepted
 **Date:** January 2, 2025
 **Deciders:** Scott
 
