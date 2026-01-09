@@ -43,6 +43,7 @@ from aiwf.application.approval import (
     _RegenerationNotImplemented,
 )
 from aiwf.application.providers import ProviderExecutionService
+from aiwf.application.prompts import PromptService
 
 if TYPE_CHECKING:
     from aiwf.domain.events.emitter import WorkflowEventEmitter
@@ -104,6 +105,9 @@ class WorkflowOrchestrator:
 
     # Provider execution service for AI provider calls
     _provider_service: ProviderExecutionService = field(default_factory=ProviderExecutionService, repr=False)
+
+    # Prompt generation service
+    _prompt_service: PromptService = field(default_factory=PromptService, repr=False)
 
     def __post_init__(self) -> None:
         if self.event_emitter is None:
@@ -403,8 +407,6 @@ class WorkflowOrchestrator:
 
         Called when entering a PROMPT stage.
         """
-        from aiwf.application.prompt_assembler import PromptAssembler
-
         # Phase-specific setup before creating the prompt
         if state.phase == WorkflowPhase.GENERATE:
             # Gate: plan must be approved before entering GENERATE
@@ -413,51 +415,23 @@ class WorkflowOrchestrator:
             # Copy planning-response.md → plan.md (session-level artifact)
             self._copy_plan_to_session(state, session_dir)
 
-        # Get profile instance
-        profile = ProfileFactory.create(state.profile)
-
-        # Get filenames from class constant (DRY)
-        prompt_filename, response_filename = self._PHASE_FILES[state.phase]
-
-        # Build context with engine-owned values (profiles shouldn't reconstruct these)
+        # Build context for prompt generation
         context = self._build_provider_context(state)
-        context["prompt_filename"] = prompt_filename
-        context["response_filename"] = response_filename
 
-        # Get phase-specific prompt from profile
-        phase_prompt_methods = {
-            WorkflowPhase.PLAN: profile.generate_planning_prompt,
-            WorkflowPhase.GENERATE: profile.generate_generation_prompt,
-            WorkflowPhase.REVIEW: profile.generate_review_prompt,
-            WorkflowPhase.REVISE: profile.generate_revision_prompt,
-        }
-
-        if state.phase not in phase_prompt_methods:
-            raise ValueError(f"No prompt generation for phase: {state.phase}")
-
-        profile_prompt = phase_prompt_methods[state.phase](context)
+        # Generate prompt via service
+        result = self._prompt_service.generate_prompt(
+            state, session_dir, self._PHASE_FILES, context
+        )
 
         # Create iteration directory if needed
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
         iteration_dir.mkdir(parents=True, exist_ok=True)
 
-        # Construct iteration-relative response path for output instructions
-        # PromptAssembler will prepend session_dir to build full path
-        response_relpath = f"iteration-{state.current_iteration}/{response_filename}"
-
-        # Assemble prompt: substitute engine variables, append output instructions
-        assembler = PromptAssembler(session_dir, state)
-        assembled = assembler.assemble(
-            profile_prompt,
-            fs_ability="local-write",
-            response_relpath=response_relpath,
-        )
-
         # Write prompt file
-        prompt_path = iteration_dir / prompt_filename
-        prompt_path.write_text(assembled["user_prompt"], encoding="utf-8")
+        prompt_path = iteration_dir / result.prompt_filename
+        prompt_path.write_text(result.user_prompt, encoding="utf-8")
 
-        self._add_message(state, f"Created {prompt_filename}")
+        self._add_message(state, f"Created {result.prompt_filename}")
 
     def _action_call_ai(self, state: WorkflowState, session_dir: Path) -> None:
         """Call AI provider to generate response.
@@ -1348,8 +1322,6 @@ class WorkflowOrchestrator:
             session_dir: Session directory
             prompt_content: Regenerated prompt (string or PromptSections)
         """
-        from aiwf.application.prompt_assembler import PromptAssembler
-
         # Get filenames from class constant (DRY)
         prompt_filename, response_filename = self._PHASE_FILES.get(
             state.phase, ("prompt.md", "response.md")
@@ -1359,20 +1331,12 @@ class WorkflowOrchestrator:
         iteration_dir.mkdir(parents=True, exist_ok=True)
 
         # Construct iteration-relative response path for output instructions
-        # PromptAssembler will prepend session_dir to build full path
         response_relpath = f"iteration-{state.current_iteration}/{response_filename}"
 
-        # Assemble prompt if it's PromptSections, otherwise use directly
-        if isinstance(prompt_content, PromptSections):
-            assembler = PromptAssembler(session_dir, state)
-            assembled = assembler.assemble(
-                prompt_content,
-                fs_ability="local-write",
-                response_relpath=response_relpath,
-            )
-            final_content = assembled["user_prompt"]
-        else:
-            final_content = prompt_content
+        # Assemble prompt via service
+        final_content = self._prompt_service.assemble_prompt(
+            prompt_content, state, session_dir, response_relpath
+        )
 
         # Write prompt file
         prompt_path = iteration_dir / prompt_filename
