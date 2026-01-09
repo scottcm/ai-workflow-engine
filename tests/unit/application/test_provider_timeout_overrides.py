@@ -1,19 +1,15 @@
 """Tests for provider timeout override semantics.
 
 These tests verify that timeout parameters are correctly passed and that
-override behavior works as expected.
-
-Note: test_run_provider.py:142-170 tests that metadata defaults are passed.
-These tests focus on override scenarios not covered there.
+override behavior works as expected via ProviderExecutionService.
 """
 
-from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 
-from aiwf.application.approval_handler import run_provider
+from aiwf.application.providers import ProviderExecutionService
+from aiwf.domain.models.ai_provider_result import AIProviderResult
 from aiwf.domain.providers.ai_provider import AIProvider
 from aiwf.domain.providers.provider_factory import AIProviderFactory
 
@@ -48,12 +44,12 @@ class TimeoutTrackingProvider(AIProvider):
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
         **kwargs,
-    ) -> str | None:
+    ) -> AIProviderResult | None:
         TimeoutTrackingProvider.last_call_timeouts = {
             "connection_timeout": connection_timeout,
             "response_timeout": response_timeout,
         }
-        return "response"
+        return AIProviderResult(response="response")
 
 
 class NoneTimeoutProvider(AIProvider):
@@ -85,12 +81,12 @@ class NoneTimeoutProvider(AIProvider):
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
         **kwargs,
-    ) -> str | None:
+    ) -> AIProviderResult | None:
         NoneTimeoutProvider.last_call_timeouts = {
             "connection_timeout": connection_timeout,
             "response_timeout": response_timeout,
         }
-        return "response"
+        return AIProviderResult(response="response")
 
 
 class ZeroTimeoutProvider(AIProvider):
@@ -122,12 +118,12 @@ class ZeroTimeoutProvider(AIProvider):
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
         **kwargs,
-    ) -> str | None:
+    ) -> AIProviderResult | None:
         ZeroTimeoutProvider.last_call_timeouts = {
             "connection_timeout": connection_timeout,
             "response_timeout": response_timeout,
         }
-        return "response"
+        return AIProviderResult(response="response")
 
 
 @pytest.fixture
@@ -149,29 +145,35 @@ def register_timeout_providers():
     AIProviderFactory._registry.update(original_registry)
 
 
+@pytest.fixture
+def provider_service():
+    """Create a ProviderExecutionService instance."""
+    return ProviderExecutionService()
+
+
 class TestTimeoutDefaults:
     """Tests for timeout default behavior from provider metadata."""
 
-    def test_metadata_defaults_passed_to_generate(self, register_timeout_providers):
-        """run_provider passes metadata default timeouts to generate()."""
-        run_provider("timeout-tracker", "test prompt")
+    def test_metadata_defaults_passed_to_generate(self, register_timeout_providers, provider_service):
+        """ProviderExecutionService passes metadata default timeouts to generate()."""
+        provider_service.execute_simple("timeout-tracker", "test prompt")
 
         assert TimeoutTrackingProvider.last_call_timeouts["connection_timeout"] == 15
         assert TimeoutTrackingProvider.last_call_timeouts["response_timeout"] == 120
 
-    def test_none_timeout_defaults_passed_as_none(self, register_timeout_providers):
+    def test_none_timeout_defaults_passed_as_none(self, register_timeout_providers, provider_service):
         """Provider with None timeout defaults passes None to generate()."""
-        run_provider("none-timeout", "test prompt")
+        provider_service.execute_simple("none-timeout", "test prompt")
 
         assert NoneTimeoutProvider.last_call_timeouts["connection_timeout"] is None
         assert NoneTimeoutProvider.last_call_timeouts["response_timeout"] is None
 
-    def test_zero_timeout_defaults_passed_as_zero(self, register_timeout_providers):
+    def test_zero_timeout_defaults_passed_as_zero(self, register_timeout_providers, provider_service):
         """Provider with zero timeout defaults passes 0 to generate().
 
         Per ADR-0007, 0 means "no timeout" - the operation can take unlimited time.
         """
-        run_provider("zero-timeout", "test prompt")
+        provider_service.execute_simple("zero-timeout", "test prompt")
 
         assert ZeroTimeoutProvider.last_call_timeouts["connection_timeout"] == 0
         assert ZeroTimeoutProvider.last_call_timeouts["response_timeout"] == 0
@@ -180,10 +182,10 @@ class TestTimeoutDefaults:
 class TestTimeoutSemantics:
     """Tests for timeout semantic meanings per ADR-0007."""
 
-    def test_positive_timeout_is_enforced(self, register_timeout_providers):
+    def test_positive_timeout_is_enforced(self, register_timeout_providers, provider_service):
         """Positive timeout value should be passed through for enforcement."""
         # This test verifies the value is passed - actual enforcement is provider's job
-        run_provider("timeout-tracker", "test prompt")
+        provider_service.execute_simple("timeout-tracker", "test prompt")
 
         conn = TimeoutTrackingProvider.last_call_timeouts["connection_timeout"]
         resp = TimeoutTrackingProvider.last_call_timeouts["response_timeout"]
@@ -191,24 +193,24 @@ class TestTimeoutSemantics:
         assert conn > 0, "Connection timeout should be positive"
         assert resp > 0, "Response timeout should be positive"
 
-    def test_none_means_no_timeout_or_use_default(self, register_timeout_providers):
+    def test_none_means_no_timeout_or_use_default(self, register_timeout_providers, provider_service):
         """None timeout means no timeout or use provider's internal default.
 
         Per ADR-0007: None = use default. When metadata specifies None,
         it means the provider has no default timeout.
         """
-        run_provider("none-timeout", "test prompt")
+        provider_service.execute_simple("none-timeout", "test prompt")
 
         # None should be passed through
         assert NoneTimeoutProvider.last_call_timeouts["connection_timeout"] is None
         assert NoneTimeoutProvider.last_call_timeouts["response_timeout"] is None
 
-    def test_zero_means_no_timeout(self, register_timeout_providers):
+    def test_zero_means_no_timeout(self, register_timeout_providers, provider_service):
         """Zero timeout means no timeout - operation can take unlimited time.
 
         Per ADR-0007: 0 = no timeout.
         """
-        run_provider("zero-timeout", "test prompt")
+        provider_service.execute_simple("zero-timeout", "test prompt")
 
         # 0 should be passed through (not converted to None)
         assert ZeroTimeoutProvider.last_call_timeouts["connection_timeout"] == 0

@@ -42,6 +42,7 @@ from aiwf.application.approval import (
     GateContext,
     _RegenerationNotImplemented,
 )
+from aiwf.application.providers import ProviderExecutionService
 
 if TYPE_CHECKING:
     from aiwf.domain.events.emitter import WorkflowEventEmitter
@@ -100,6 +101,9 @@ class WorkflowOrchestrator:
 
     # Approval gate service for handling approval gates
     _approval_gate_service: ApprovalGateService = field(default_factory=ApprovalGateService, repr=False)
+
+    # Provider execution service for AI provider calls
+    _provider_service: ProviderExecutionService = field(default_factory=ProviderExecutionService, repr=False)
 
     def __post_init__(self) -> None:
         if self.event_emitter is None:
@@ -489,40 +493,42 @@ class WorkflowOrchestrator:
             raise ValueError(f"Prompt file not found: {prompt_path}")
         prompt_content = prompt_path.read_text(encoding="utf-8")
 
-        # Create provider and call
-        provider = AIProviderFactory.create(provider_key)
+        # Build context for provider
         context = self._build_provider_context(state)
         context["prompt_filename"] = prompt_filename
         context["response_filename"] = response_filename
 
+        # Execute via provider service
         try:
-            response = provider.generate(prompt_content, context=context)
+            result = self._provider_service.execute(
+                provider_key, prompt_content, context=context
+            )
         except ProviderError as e:
             state.last_error = str(e)
             state.status = WorkflowStatus.ERROR
             raise
 
-        if response is None:
-            # Manual provider - user provides response externally
+        if result.awaiting_response:
+            # Provider didn't generate response - user provides externally
             self._add_message(
                 state,
-                f"Awaiting {response_filename} (manual provider)"
+                f"Awaiting {response_filename}"
             )
         else:
-            # AIProviderResult - handle result object
+            # Handle result from automated provider
             # Check if provider already wrote the response file (local-write providers)
             response_path_str = str(response_path)
-            provider_wrote_response = response_path_str in response.files
+            provider_wrote_response = response_path_str in result.files
 
             if provider_wrote_response:
                 # Provider wrote the file directly - don't overwrite with console output
                 self._add_message(state, f"Created {response_filename}")
-            elif response.response:
+            elif result.response:
                 # Provider returned content - write it
-                response_path.write_text(response.response, encoding="utf-8")
+                response_path.write_text(result.response, encoding="utf-8")
                 self._add_message(state, f"Created {response_filename}")
             # Handle files dict for code generation
-            for file_path, content in response.files.items():
+            for file_path, content in result.files.items():
                 if content is not None:
                     full_path = iteration_dir / "code" / file_path
                     full_path.parent.mkdir(parents=True, exist_ok=True)
