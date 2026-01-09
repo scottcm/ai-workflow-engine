@@ -12,7 +12,9 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from aiwf.application.approval_config import ApprovalConfig
 from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
+from aiwf.domain.models.ai_provider_result import AIProviderResult
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import (
     WorkflowPhase,
@@ -20,9 +22,20 @@ from aiwf.domain.models.workflow_state import (
     WorkflowStatus,
 )
 from aiwf.domain.models.write_plan import WriteOp, WritePlan
+from aiwf.domain.persistence.session_store import SessionStore
 from aiwf.domain.providers.provider_factory import AIProviderFactory
 
 from tests.integration.providers.fake_ai_provider import FakeAIProvider
+
+
+@pytest.fixture
+def manual_orchestrator(sessions_root: Path, session_store: SessionStore) -> WorkflowOrchestrator:
+    """Orchestrator with manual approvers for step-by-step testing."""
+    return WorkflowOrchestrator(
+        session_store=session_store,
+        sessions_root=sessions_root,
+        approval_config=ApprovalConfig(default_approver="manual"),
+    )
 
 
 @pytest.fixture
@@ -50,11 +63,11 @@ def register_fake_provider(
 
 @pytest.fixture
 def session_with_fake_provider(
-    orchestrator: WorkflowOrchestrator,
+    manual_orchestrator: WorkflowOrchestrator,
     register_fake_provider: FakeAIProvider,
 ) -> str:
     """Create a session configured to use the fake provider."""
-    session_id = orchestrator.initialize_run(
+    session_id = manual_orchestrator.initialize_run(
         profile="test-profile",
         providers={
             "planner": "fake",
@@ -74,10 +87,11 @@ class TestFakeProviderBasics:
         self,
         fake_provider_pass: FakeAIProvider,
     ) -> None:
-        """Fake provider returns non-None response."""
-        response = fake_provider_pass.generate("test prompt", {})
-        assert response is not None
-        assert isinstance(response, str)
+        """Fake provider returns non-None AIProviderResult with response content."""
+        result = fake_provider_pass.generate("test prompt", {})
+        assert result is not None
+        assert isinstance(result, AIProviderResult)
+        assert result.response is not None
 
     def test_fake_provider_tracks_call_history(
         self,
@@ -97,7 +111,7 @@ class TestFakeProviderWorkflow:
 
     def test_approve_from_prompt_creates_response_file(
         self,
-        orchestrator: WorkflowOrchestrator,
+        manual_orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         sessions_root: Path,
         register_fake_provider: FakeAIProvider,
@@ -105,8 +119,8 @@ class TestFakeProviderWorkflow:
         """Approving PROMPT stage with fake provider creates response file."""
         session_id = session_with_fake_provider
 
-        orchestrator.init(session_id)
-        state = orchestrator.approve(session_id)  # PLAN[PROMPT] -> PLAN[RESPONSE]
+        manual_orchestrator.init(session_id)
+        state = manual_orchestrator.approve(session_id)  # PLAN[PROMPT] -> PLAN[RESPONSE]
 
         response_path = (
             sessions_root
@@ -119,7 +133,7 @@ class TestFakeProviderWorkflow:
 
     def test_fake_provider_receives_prompt_content(
         self,
-        orchestrator: WorkflowOrchestrator,
+        manual_orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         register_fake_provider: FakeAIProvider,
     ) -> None:
@@ -127,8 +141,8 @@ class TestFakeProviderWorkflow:
         session_id = session_with_fake_provider
         provider = register_fake_provider
 
-        orchestrator.init(session_id)
-        orchestrator.approve(session_id)  # Calls provider
+        manual_orchestrator.init(session_id)
+        manual_orchestrator.approve(session_id)  # Calls provider
 
         assert len(provider.call_history) == 1
         prompt = provider.call_history[0][0]
@@ -140,7 +154,7 @@ class TestFakeProviderFullWorkflow:
 
     def test_full_workflow_automated_pass(
         self,
-        orchestrator: WorkflowOrchestrator,
+        manual_orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         sessions_root: Path,
         mock_profile: MagicMock,
@@ -155,41 +169,41 @@ class TestFakeProviderFullWorkflow:
         )
 
         # INIT -> PLAN[PROMPT]
-        orchestrator.init(session_id)
+        manual_orchestrator.init(session_id)
 
         # PLAN[PROMPT] -> PLAN[RESPONSE] (provider creates file)
-        state = orchestrator.approve(session_id)
+        state = manual_orchestrator.approve(session_id)
         assert state.phase == WorkflowPhase.PLAN
         assert state.stage == WorkflowStage.RESPONSE
 
         # PLAN[RESPONSE] -> GENERATE[PROMPT]
-        state = orchestrator.approve(session_id)
+        state = manual_orchestrator.approve(session_id)
         assert state.phase == WorkflowPhase.GENERATE
         assert state.stage == WorkflowStage.PROMPT
 
         # GENERATE[PROMPT] -> GENERATE[RESPONSE] (provider creates file)
-        state = orchestrator.approve(session_id)
+        state = manual_orchestrator.approve(session_id)
         assert state.phase == WorkflowPhase.GENERATE
         assert state.stage == WorkflowStage.RESPONSE
 
         # GENERATE[RESPONSE] -> REVIEW[PROMPT]
-        state = orchestrator.approve(session_id)
+        state = manual_orchestrator.approve(session_id)
         assert state.phase == WorkflowPhase.REVIEW
         assert state.stage == WorkflowStage.PROMPT
 
         # REVIEW[PROMPT] -> REVIEW[RESPONSE] (provider creates file)
-        state = orchestrator.approve(session_id)
+        state = manual_orchestrator.approve(session_id)
         assert state.phase == WorkflowPhase.REVIEW
         assert state.stage == WorkflowStage.RESPONSE
 
         # REVIEW[RESPONSE] -> COMPLETE (CHECK_VERDICT with PASS)
-        state = orchestrator.approve(session_id)
+        state = manual_orchestrator.approve(session_id)
         assert state.phase == WorkflowPhase.COMPLETE
         assert state.status == WorkflowStatus.SUCCESS
 
     def test_full_workflow_with_revision(
         self,
-        orchestrator: WorkflowOrchestrator,
+        manual_orchestrator: WorkflowOrchestrator,
         sessions_root: Path,
         register_integration_providers,
         fake_provider_fail: FakeAIProvider,
@@ -199,7 +213,7 @@ class TestFakeProviderFullWorkflow:
         # Register FAIL provider
         AIProviderFactory.register("fake-fail", lambda: fake_provider_fail)
 
-        session_id = orchestrator.initialize_run(
+        session_id = manual_orchestrator.initialize_run(
             profile="test-profile",
             providers={
                 "planner": "fake-fail",
@@ -211,12 +225,12 @@ class TestFakeProviderFullWorkflow:
             )
 
         # Run through to first review
-        orchestrator.init(session_id)
-        orchestrator.approve(session_id)  # PLAN[PROMPT] -> PLAN[RESPONSE]
-        orchestrator.approve(session_id)  # PLAN[RESPONSE] -> GENERATE[PROMPT]
-        orchestrator.approve(session_id)  # GENERATE[PROMPT] -> GENERATE[RESPONSE]
-        orchestrator.approve(session_id)  # GENERATE[RESPONSE] -> REVIEW[PROMPT]
-        orchestrator.approve(session_id)  # REVIEW[PROMPT] -> REVIEW[RESPONSE]
+        manual_orchestrator.init(session_id)
+        manual_orchestrator.approve(session_id)  # PLAN[PROMPT] -> PLAN[RESPONSE]
+        manual_orchestrator.approve(session_id)  # PLAN[RESPONSE] -> GENERATE[PROMPT]
+        manual_orchestrator.approve(session_id)  # GENERATE[PROMPT] -> GENERATE[RESPONSE]
+        manual_orchestrator.approve(session_id)  # GENERATE[RESPONSE] -> REVIEW[PROMPT]
+        manual_orchestrator.approve(session_id)  # REVIEW[PROMPT] -> REVIEW[RESPONSE]
 
         # Configure FAIL verdict
         mock_profile.process_review_response.return_value = ProcessingResult(
@@ -225,14 +239,14 @@ class TestFakeProviderFullWorkflow:
         )
 
         # REVIEW[RESPONSE] -> REVISE[PROMPT] (FAIL verdict)
-        state = orchestrator.approve(session_id)
+        state = manual_orchestrator.approve(session_id)
         assert state.phase == WorkflowPhase.REVISE
         assert state.stage == WorkflowStage.PROMPT
         assert state.current_iteration == 2
 
         # Continue revision cycle
-        orchestrator.approve(session_id)  # REVISE[PROMPT] -> REVISE[RESPONSE]
-        state = orchestrator.session_store.load(session_id)
+        manual_orchestrator.approve(session_id)  # REVISE[PROMPT] -> REVISE[RESPONSE]
+        state = manual_orchestrator.session_store.load(session_id)
         assert state.phase == WorkflowPhase.REVISE
         assert state.stage == WorkflowStage.RESPONSE
 
@@ -242,7 +256,7 @@ class TestFakeProviderReject:
 
     def test_reject_regenerates_response(
         self,
-        orchestrator: WorkflowOrchestrator,
+        manual_orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         sessions_root: Path,
         register_fake_provider: FakeAIProvider,
@@ -251,14 +265,14 @@ class TestFakeProviderReject:
         session_id = session_with_fake_provider
         provider = register_fake_provider
 
-        orchestrator.init(session_id)
-        orchestrator.approve(session_id)  # PLAN[PROMPT] -> PLAN[RESPONSE]
+        manual_orchestrator.init(session_id)
+        manual_orchestrator.approve(session_id)  # PLAN[PROMPT] -> PLAN[RESPONSE]
 
         # Provider called once
         assert len(provider.call_history) == 1
 
         # Reject triggers regeneration
-        state = orchestrator.reject(session_id, feedback="Add more detail")
+        state = manual_orchestrator.reject(session_id, feedback="Add more detail")
 
         # Provider called again
         assert len(provider.call_history) == 2
@@ -269,19 +283,19 @@ class TestFakeProviderReject:
 
     def test_reject_stores_feedback(
         self,
-        orchestrator: WorkflowOrchestrator,
+        manual_orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         register_fake_provider: FakeAIProvider,
     ) -> None:
         """reject stores feedback for provider context."""
         session_id = session_with_fake_provider
 
-        orchestrator.init(session_id)
-        orchestrator.approve(session_id)
-        orchestrator.reject(session_id, feedback="Be more specific")
+        manual_orchestrator.init(session_id)
+        manual_orchestrator.approve(session_id)
+        manual_orchestrator.reject(session_id, feedback="Be more specific")
 
         # Verify feedback is stored
-        state = orchestrator.session_store.load(session_id)
+        state = manual_orchestrator.session_store.load(session_id)
         assert state.approval_feedback == "Be more specific"
 
 
@@ -290,7 +304,7 @@ class TestFakeProviderCustomResponses:
 
     def test_custom_phase_responses(
         self,
-        orchestrator: WorkflowOrchestrator,
+        manual_orchestrator: WorkflowOrchestrator,
         sessions_root: Path,
         register_integration_providers,
     ) -> None:
@@ -302,7 +316,7 @@ class TestFakeProviderCustomResponses:
         )
         AIProviderFactory.register("custom", lambda: custom_provider)
 
-        session_id = orchestrator.initialize_run(
+        session_id = manual_orchestrator.initialize_run(
             profile="test-profile",
             providers={
                 "planner": "custom",
@@ -313,8 +327,8 @@ class TestFakeProviderCustomResponses:
             context={"entity": "TestEntity"},
         )
 
-        orchestrator.init(session_id)
-        orchestrator.approve(session_id)
+        manual_orchestrator.init(session_id)
+        manual_orchestrator.approve(session_id)
 
         response_path = (
             sessions_root
@@ -328,7 +342,7 @@ class TestFakeProviderCustomResponses:
 
     def test_custom_generator_function(
         self,
-        orchestrator: WorkflowOrchestrator,
+        manual_orchestrator: WorkflowOrchestrator,
         sessions_root: Path,
         register_integration_providers,
     ) -> None:
@@ -340,7 +354,7 @@ class TestFakeProviderCustomResponses:
         custom_provider = FakeAIProvider(generator=my_generator)
         AIProviderFactory.register("generator-fn", lambda: custom_provider)
 
-        session_id = orchestrator.initialize_run(
+        session_id = manual_orchestrator.initialize_run(
             profile="test-profile",
             providers={
                 "planner": "generator-fn",
@@ -351,8 +365,8 @@ class TestFakeProviderCustomResponses:
             context={"entity": "MyEntity"},
         )
 
-        orchestrator.init(session_id)
-        orchestrator.approve(session_id)
+        manual_orchestrator.init(session_id)
+        manual_orchestrator.approve(session_id)
 
         response_path = (
             sessions_root
@@ -370,7 +384,7 @@ class TestFakeProviderArtifacts:
 
     def test_generation_creates_artifacts(
         self,
-        orchestrator: WorkflowOrchestrator,
+        manual_orchestrator: WorkflowOrchestrator,
         session_with_fake_provider: str,
         sessions_root: Path,
         mock_profile: MagicMock,
@@ -379,13 +393,13 @@ class TestFakeProviderArtifacts:
         session_id = session_with_fake_provider
 
         # Run through to GENERATE[RESPONSE]
-        orchestrator.init(session_id)
-        orchestrator.approve(session_id)  # PLAN[PROMPT] -> PLAN[RESPONSE]
-        orchestrator.approve(session_id)  # PLAN[RESPONSE] -> GENERATE[PROMPT]
-        orchestrator.approve(session_id)  # GENERATE[PROMPT] -> GENERATE[RESPONSE]
+        manual_orchestrator.init(session_id)
+        manual_orchestrator.approve(session_id)  # PLAN[PROMPT] -> PLAN[RESPONSE]
+        manual_orchestrator.approve(session_id)  # PLAN[RESPONSE] -> GENERATE[PROMPT]
+        manual_orchestrator.approve(session_id)  # GENERATE[PROMPT] -> GENERATE[RESPONSE]
 
         # Approve generation response (triggers code extraction)
-        state = orchestrator.approve(session_id)
+        state = manual_orchestrator.approve(session_id)
 
         # Should have artifacts
         assert len(state.artifacts) > 0
