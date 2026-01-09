@@ -37,14 +37,15 @@ from aiwf.domain.validation.path_validator import normalize_metadata_paths
 from aiwf.domain.models.prompt_sections import PromptSections
 from aiwf.domain.models.ai_provider_result import AIProviderResult
 from aiwf.application.actions import ActionDispatcher, ActionContext
+from aiwf.application.approval import (
+    ApprovalGateService,
+    GateContext,
+    _RegenerationNotImplemented,
+)
 
 if TYPE_CHECKING:
     from aiwf.domain.events.emitter import WorkflowEventEmitter
     from aiwf.domain.events.event_types import WorkflowEventType
-
-
-class _RegenerationNotImplemented(Exception):
-    """Internal sentinel: profile declared can_regenerate_prompts but didn't implement."""
 
 
 class InvalidCommand(Exception):
@@ -96,6 +97,9 @@ class WorkflowOrchestrator:
 
     # Action dispatcher for executing workflow actions
     _action_dispatcher: ActionDispatcher = field(default_factory=ActionDispatcher, repr=False)
+
+    # Approval gate service for handling approval gates
+    _approval_gate_service: ApprovalGateService = field(default_factory=ApprovalGateService, repr=False)
 
     def __post_init__(self) -> None:
         if self.event_emitter is None:
@@ -336,6 +340,37 @@ class WorkflowOrchestrator:
             build_provider_context=self._build_provider_context,
             copy_plan_to_session=self._copy_plan_to_session,
             run_gate_after_action=self._run_gate_after_action,
+            orchestrator=self,
+        )
+
+    def _build_gate_context(self, session_dir: Path) -> GateContext:
+        """Build GateContext for approval gate service.
+
+        Args:
+            session_dir: Session directory path
+
+        Returns:
+            GateContext with helpers and configuration
+        """
+        return GateContext(
+            phase_files=self._PHASE_FILES,
+            approval_config=self.approval_config,
+            add_message=self._add_message,
+            build_base_context=self._build_base_context,
+            build_provider_context=self._build_provider_context,
+            get_approver=self._get_approver,
+            save_state=self.session_store.save,
+            action_retry=self._action_retry,
+            execute_action=self._execute_action,
+            handle_pre_transition_approval=self._handle_pre_transition_approval,
+            write_regenerated_prompt=self._write_regenerated_prompt,
+            # Gate method callbacks (allow test patching)
+            run_approval_gate=self._run_approval_gate,
+            handle_approval_rejection=self._handle_approval_rejection,
+            handle_prompt_rejection=self._handle_prompt_rejection,
+            handle_response_rejection=self._handle_response_rejection,
+            clear_approval_state=self._clear_approval_state,
+            auto_continue=self._auto_continue,
             orchestrator=self,
         )
 
@@ -1009,47 +1044,14 @@ class WorkflowOrchestrator:
         """Run approval gate after content creation and handle result.
 
         Called automatically after CREATE_PROMPT and CALL_AI actions.
-        Handles all three decision types:
-        - APPROVED: Auto-continue to next stage
-        - REJECTED: Trigger retry/rejection handling
-        - PENDING: Set flag and pause workflow
+        Delegates to ApprovalGateService for the actual gate logic.
 
         Args:
             state: Current workflow state (modified in place)
             session_dir: Session directory path
         """
-        if state.stage is None:
-            return  # No gate for stageless states
-
-        try:
-            result = self._run_approval_gate(state, session_dir)
-            result = validate_approval_result(result)  # Catch legacy None
-        except (ProviderError, TimeoutError, TypeError) as e:
-            state.last_error = f"Approval gate error: {e}"
-            self._add_message(state, f"Approval failed: {e}. Run 'approve' to retry.")
-            self.session_store.save(state)
-            return
-
-        if result.decision == ApprovalDecision.PENDING:
-            # Manual approval needed - pause workflow
-            state.pending_approval = True
-            if result.feedback:
-                self._add_message(state, result.feedback)
-            self.session_store.save(state)
-            return
-
-        if result.decision == ApprovalDecision.REJECTED:
-            # Existing rejection handling (retry, suggested_content, etc.)
-            rejection_result = self._handle_approval_rejection(state, session_dir, result)
-            if rejection_result is not None:
-                # Workflow paused for user intervention
-                return
-            # Retry succeeded - fall through to auto-continue
-
-        # APPROVED (or retry succeeded) - auto-continue
-        self._clear_approval_state(state)
-        self._handle_pre_transition_approval(state, session_dir)
-        self._auto_continue(state, session_dir)
+        context = self._build_gate_context(session_dir)
+        self._approval_gate_service.run_after_action(state, session_dir, context)
 
     def _auto_continue(
         self,
