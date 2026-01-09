@@ -115,6 +115,7 @@ Extend base class if the entity meets ALL of these conditions:
 1. **Follow the approved plan exactly** - Do not deviate from the design decisions
 2. **Cite rule IDs** when applying standards (e.g., "Per JPA-ENT-001...")
 3. **Complete implementations only** - No TODO comments, no placeholder code
+4. **ONLY generate files listed in your scope** - If the plan references base classes, utilities, or other dependencies (e.g., `BaseEntity`), assume they already exist in the project. Do NOT create them.
 
 ### Technical Constraints
 

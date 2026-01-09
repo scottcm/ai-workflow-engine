@@ -67,7 +67,9 @@ def register(cli_group: click.Group) -> type["WorkflowProfile"]:
     @click.option("--generator", help="Provider for generation phase")
     @click.option("--reviewer", help="Provider for review phase")
     @click.option("--revisor", help="Provider for revision phase")
+    @click.pass_context
     def init(
+        ctx: click.Context,
         scope: str,
         entity: str,
         table: str,
@@ -120,12 +122,13 @@ def register(cli_group: click.Group) -> type["WorkflowProfile"]:
 
         try:
             from aiwf.domain.persistence.session_store import SessionStore
-            from aiwf.interface.cli.cli import DEFAULT_SESSIONS_ROOT
+            from aiwf.interface.cli.cli import _get_sessions_root
 
-            session_store = SessionStore(sessions_root=DEFAULT_SESSIONS_ROOT)
+            sessions_root = _get_sessions_root(ctx)
+            session_store = SessionStore(sessions_root=sessions_root)
             orchestrator = WorkflowOrchestrator(
                 session_store=session_store,
-                sessions_root=DEFAULT_SESSIONS_ROOT,
+                sessions_root=sessions_root,
             )
             # Default providers if not specified
             default_providers = {

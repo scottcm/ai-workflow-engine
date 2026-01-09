@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.workflow_state import WorkflowStatus
+from aiwf.domain.models.write_plan import WritePlan, WriteOp
 from aiwf.domain.profiles.workflow_profile import PromptResult, WorkflowProfile
 
 from .config import JpaMtConfig
@@ -1040,19 +1041,53 @@ class JpaMtProfile(WorkflowProfile):
     def process_generation_response(
         self, content: str, session_dir: Path, iteration: int
     ) -> ProcessingResult:
-        """Process generation response."""
-        # For now, accept any non-empty response
-        # TODO: Parse code blocks, validate expected files exist
+        """Process generation response and extract code blocks.
+
+        Extracts Java code blocks from markdown format:
+        ```java
+        // Filename.java
+        package ...;
+        ...
+        ```
+        """
         if not content or not content.strip():
             return ProcessingResult(
                 status=WorkflowStatus.ERROR,
                 error_message="Empty generation response",
             )
 
-        return ProcessingResult(
-            status=WorkflowStatus.IN_PROGRESS,
-            messages=["Generation response received"],
+        # Extract code blocks using regex
+        # Pattern: ```java\n// Filename.java\n...content...```
+        code_block_pattern = re.compile(
+            r'```java\s*\n'           # Opening fence
+            r'//\s*(\S+\.java)\s*\n'  # Filename comment
+            r'(.*?)'                   # Content (non-greedy)
+            r'\n```',                  # Closing fence
+            re.DOTALL
         )
+
+        writes: list[WriteOp] = []
+        for match in code_block_pattern.finditer(content):
+            filename = match.group(1)
+            code_content = match.group(2).strip()
+
+            if code_content:
+                writes.append(WriteOp(path=filename, content=code_content))
+                logger.debug(f"Extracted code file: {filename} ({len(code_content)} chars)")
+
+        if writes:
+            return ProcessingResult(
+                status=WorkflowStatus.IN_PROGRESS,
+                messages=[f"Extracted {len(writes)} code file(s)"],
+                write_plan=WritePlan(writes=writes),
+            )
+        else:
+            # No code blocks found - might be an error or empty response
+            logger.warning("No Java code blocks found in generation response")
+            return ProcessingResult(
+                status=WorkflowStatus.IN_PROGRESS,
+                messages=["Generation response received (no code blocks found)"],
+            )
 
     def process_review_response(self, content: str) -> ProcessingResult:
         """Process review response and extract verdict per ADR-0004."""

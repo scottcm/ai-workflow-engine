@@ -12,7 +12,7 @@
     "packages": {
       "base_package": "com.skillsharbor.backend.controlplane",
       "entity_package": "{{base_package}}.domain.{{bounded_context}}",
-      "repository_package": "{{base_package}}.repository.{{bounded_context}}",
+      "repository_package": "{{base_package}}.domain.{{bounded_context}}",
       "service_package": "{{base_package}}.service.{{bounded_context}}",
       "controller_package": "{{base_package}}.api.{{bounded_context}}",
       "dto_package": "{{base_package}}.dto.{{bounded_context}}",
