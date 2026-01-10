@@ -1,8 +1,8 @@
 # AI Workflow Engine - API Contract
 
-**Version:** 1.0.0  
-**Status:** Stable  
-**Last Updated:** December 24, 2024
+**Version:** 2.0.0
+**Status:** Stable
+**Last Updated:** January 2025
 
 ---
 
@@ -14,7 +14,7 @@ This document defines the CLI interface contract between the AI Workflow Engine 
 - Engine is the authoritative source of workflow state
 - All state persistence is engine-managed
 - Extension is a UI layer that consumes engine output
-- Profiles determine workflow capabilities and phases
+- Profiles determine workflow capabilities and context requirements
 - Prompts are file-based (not stdin) due to multi-file complexity
 - Explicit approval gates control workflow progression
 
@@ -24,12 +24,25 @@ This document defines the CLI interface contract between the AI Workflow Engine 
 
 | Command | Purpose | Status |
 |---------|---------|--------|
-| `aiwf init` | Create new session | ✅ Implemented |
-| `aiwf approve` | Hash artifacts, call providers | ✅ Implemented |
-| `aiwf status` | Get session details | ✅ Implemented |
-| `aiwf list` | List sessions | ✅ Implemented |
-| `aiwf profiles` | List available profiles | ✅ Implemented |
-| `aiwf providers` | List available AI providers | ✅ Implemented |
+| `aiwf init <profile>` | Create new session | Implemented |
+| `aiwf approve <session>` | Approve current stage, advance workflow | Implemented |
+| `aiwf reject <session>` | Reject current stage with feedback | Implemented |
+| `aiwf status <session>` | Get session details | Implemented |
+| `aiwf list` | List sessions | Implemented |
+| `aiwf validate` | Validate provider configuration | Implemented |
+| `aiwf profiles` | List available profiles | Implemented |
+| `aiwf providers` | List available AI providers | Implemented |
+
+---
+
+## Global Options
+
+All commands support these global options:
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Emit machine-readable JSON on stdout |
+| `--project-dir <path>` | Project root directory (default: current directory) |
 
 ---
 
@@ -49,40 +62,55 @@ All commands support `--json` flag for machine-readable output. Every JSON respo
 - `error`: Command-level exception (invalid arguments, missing files, configuration errors). Present when `exit_code != 0`.
 - `last_error`: Workflow state error from a previous operation, preserved in session.json. Present in `status` outputs when the workflow encountered a recoverable error.
 
-Both can appear in the same response. `error` indicates the current command failed; `last_error` indicates a prior workflow operation failed.
-
 **Note:** Fields with `null` values are omitted from JSON output. Consumers should check for field presence rather than null equality.
 
 ---
 
-## Implemented Commands
+## Commands
 
-### 1. `aiwf <profile> init`
+### 1. `aiwf init`
 
-Initialize a new workflow session. The `init` command is profile-specific—each profile defines its own required context parameters.
+Initialize a new workflow session. Context is passed via `-c key=value` pairs.
 
-**Syntax (jpa-mt profile):**
+**Syntax:**
 ```bash
-aiwf jpa-mt init --scope <scope> --entity <entity> --table <table> --bounded-context <context> --schema-file <path> [options]
+aiwf init <profile> [options]
 ```
 
-**Required Arguments (jpa-mt):**
-- `--scope <scope>` - Generation scope (`domain` or `vertical`)
-- `--entity <entity>` - Entity name in PascalCase (e.g., `Product`)
-- `--table <table>` - Database table name (e.g., `app.products`)
-- `--bounded-context <context>` - Domain context (e.g., `catalog`)
-- `--schema-file <path>` - Path to DDL schema file
+**Arguments:**
+- `<profile>` - Workflow profile to use (e.g., `jpa-mt`)
 
-**Optional Arguments (jpa-mt):**
-- `--dev <n>` - Developer identifier
-- `--task-id <id>` - External task/ticket reference
+**Options:**
+- `-c, --context <key=value>` - Context pairs (multiple allowed)
+- `--planner <provider>` - Provider for planning phase (default: manual)
+- `--generator <provider>` - Provider for generation phase (default: manual)
+- `--reviewer <provider>` - Provider for review phase (default: manual)
+- `--revisor <provider>` - Provider for revision phase (default: manual)
+- `--dev <name>` - Developer identifier
+- `--task-id <id>` - Task/ticket reference
 
-**Global Options:**
-- `--json` - Emit machine-readable JSON output
+**Example (jpa-mt profile):**
+```bash
+aiwf init jpa-mt \
+  -c entity=Product \
+  -c table=app.products \
+  -c bounded-context=catalog \
+  -c schema-file=schema.sql
+```
+
+**Context Requirements by Profile:**
+
+Use `aiwf <profile> info` to see required context for a specific profile:
+```bash
+aiwf jpa-mt info
+# Shows: entity (required), table (required), bounded_context (required), scope [default: domain], schema_file (required), design
+```
 
 **Output (Plain):**
 ```
-a1b2c3d4e5f6...
+session_id=a1b2c3d4e5f6...
+phase=plan
+stage=prompt
 ```
 
 **Output (JSON) - Success:**
@@ -91,57 +119,45 @@ a1b2c3d4e5f6...
   "schema_version": 1,
   "command": "init",
   "exit_code": 0,
-  "session_id": "a1b2c3d4e5f6..."
-}
-```
-
-**Output (JSON) - Error:**
-```json
-{
-  "schema_version": 1,
-  "command": "init",
-  "exit_code": 1,
-  "error": "jpa-mt profile requires --schema-file argument"
+  "session_id": "a1b2c3d4e5f6...",
+  "phase": "plan",
+  "stage": "prompt"
 }
 ```
 
 **Exit Codes:**
 - `0` - Success
-- `1` - Error (invalid arguments, configuration error, etc.)
+- `1` - Error (invalid arguments, missing context, profile not found)
 
 ---
 
 ### 2. `aiwf approve`
 
-Approve current phase outputs, compute hashes, and optionally call AI providers.
+Approve current stage outputs and advance the workflow. Behavior depends on current phase and stage.
 
 **Syntax:**
 ```bash
 aiwf approve <session_id> [options]
 ```
 
-**Required Arguments:**
-- `<session_id>` - Session identifier
+**Options:**
+- `--fs-ability <mode>` - Override provider filesystem capability (`local-write`, `local-read`, `none`)
+- `--hash-prompts` - Hash prompt files
+- `--no-hash-prompts` - Skip prompt hashing
+- `--events` - Emit workflow events to stderr
 
-**Optional Arguments:**
-- `--hash-prompts` - Hash prompt files (overrides config)
-- `--no-hash-prompts` - Skip prompt hashing (overrides config)
+**Behavior by Phase+Stage:**
 
-**Global Options:**
-- `--json` - Emit machine-readable JSON output
-
-**Behavior by Phase:**
-
-| Current Phase | Approval Action |
-|---------------|-----------------|
-| PLANNING | Hash prompt (if enabled), call provider, write response |
-| PLANNED | Hash `plan.md`, set `plan_approved=True` |
-| GENERATING | Hash prompt (if enabled), call provider, write response |
-| GENERATED | Hash all `code/*` files, set artifact `sha256` values |
-| REVIEWING | Hash prompt (if enabled), call provider, write response |
-| REVIEWED | Hash `review-response.md`, set `review_approved=True` |
-| REVISING | Hash prompt (if enabled), call provider, write response |
-| REVISED | Hash all `code/*` files, set artifact `sha256` values |
+| Phase | Stage | Approval Action |
+|-------|-------|-----------------|
+| PLAN | PROMPT | Call provider, create response file, transition to PLAN[RESPONSE] |
+| PLAN | RESPONSE | Hash plan, set plan_approved, transition to GENERATE[PROMPT] |
+| GENERATE | PROMPT | Call provider, create response file, transition to GENERATE[RESPONSE] |
+| GENERATE | RESPONSE | Hash artifacts, transition to REVIEW[PROMPT] |
+| REVIEW | PROMPT | Call provider, create response file, transition to REVIEW[RESPONSE] |
+| REVIEW | RESPONSE | Hash review, transition to COMPLETE or REVISE[PROMPT] |
+| REVISE | PROMPT | Call provider, create response file, transition to REVISE[RESPONSE] |
+| REVISE | RESPONSE | Hash artifacts, transition to REVIEW[PROMPT] |
 
 **Output (JSON) - Success:**
 ```json
@@ -150,27 +166,12 @@ aiwf approve <session_id> [options]
   "command": "approve",
   "exit_code": 0,
   "session_id": "abc123",
-  "phase": "PLANNED",
+  "phase": "GENERATE",
   "status": "IN_PROGRESS",
   "approved": true,
   "hashes": {
     "plan.md": "a1b2c3d4e5f6..."
   }
-}
-```
-
-**Output (JSON) - Error:**
-```json
-{
-  "schema_version": 1,
-  "command": "approve",
-  "exit_code": 1,
-  "error": "Cannot approve: missing planning response",
-  "session_id": "abc123",
-  "phase": "PLANNED",
-  "status": "ERROR",
-  "approved": false,
-  "hashes": {}
 }
 ```
 
@@ -180,24 +181,50 @@ aiwf approve <session_id> [options]
 
 ---
 
-### 3. `aiwf status`
+### 3. `aiwf reject`
+
+Reject current content with feedback. Only valid from RESPONSE stages.
+
+**Syntax:**
+```bash
+aiwf reject <session_id> --feedback <message>
+```
+
+**Options:**
+- `-f, --feedback <text>` - Feedback explaining rejection (required)
+
+**Output (JSON) - Success:**
+```json
+{
+  "schema_version": 1,
+  "command": "reject",
+  "exit_code": 0,
+  "session_id": "abc123",
+  "phase": "PLAN",
+  "stage": "response",
+  "status": "IN_PROGRESS",
+  "feedback": "Plan does not address multi-tenant requirements"
+}
+```
+
+**Exit Codes:**
+- `0` - Success
+- `1` - Error (invalid state, not in RESPONSE stage)
+
+---
+
+### 4. `aiwf status`
 
 Get detailed status for a session.
 
 **Syntax:**
 ```bash
-aiwf status <session_id> [options]
+aiwf status <session_id>
 ```
-
-**Required Arguments:**
-- `<session_id>` - Session identifier
-
-**Global Options:**
-- `--json` - Emit machine-readable JSON output
 
 **Output (Plain):**
 ```
-phase=GENERATING
+phase=GENERATE
 status=IN_PROGRESS
 iteration=1
 session_path=.aiwf/sessions/abc123
@@ -210,51 +237,63 @@ session_path=.aiwf/sessions/abc123
   "command": "status",
   "exit_code": 0,
   "session_id": "abc123",
-  "phase": "GENERATING",
+  "phase": "GENERATE",
   "status": "IN_PROGRESS",
   "iteration": 1,
-  "session_path": ".aiwf/sessions/abc123"
-}
-```
-
-**Output (JSON) - With Workflow Error:**
-```json
-{
-  "schema_version": 1,
-  "command": "status",
-  "exit_code": 0,
-  "session_id": "abc123",
-  "phase": "GENERATING",
-  "status": "IN_PROGRESS",
-  "iteration": 1,
-  "session_path": ".aiwf/sessions/abc123",
-  "last_error": "Failed to process generation response"
-}
-```
-
-**Output (JSON) - Command Error:**
-```json
-{
-  "schema_version": 1,
-  "command": "status",
-  "exit_code": 1,
-  "error": "Session 'abc123' not found",
-  "session_id": "abc123",
-  "phase": "",
-  "status": "",
   "session_path": ".aiwf/sessions/abc123"
 }
 ```
 
 **Exit Codes:**
 - `0` - Success
-- `1` - Error (session not found, corrupted state)
+- `1` - Error (session not found)
 
 ---
 
-## Discovery Commands
+### 5. `aiwf validate`
 
-### 4. `aiwf list`
+Validate provider configuration and availability.
+
+**Syntax:**
+```bash
+aiwf validate <type> [provider_key] [--profile <name>]
+```
+
+**Arguments:**
+- `<type>` - Provider type: `ai`, `standards`, or `all`
+- `[provider_key]` - Optional specific provider to validate
+
+**Options:**
+- `--profile <name>` - Profile for standards provider config
+
+**Examples:**
+```bash
+aiwf validate ai claude-code    # Check if Claude CLI is available
+aiwf validate ai                # Validate all AI providers
+aiwf validate all               # Validate everything
+```
+
+**Output (JSON):**
+```json
+{
+  "schema_version": 1,
+  "command": "validate",
+  "exit_code": 0,
+  "results": [
+    {"provider_type": "ai", "provider_key": "manual", "passed": true},
+    {"provider_type": "ai", "provider_key": "claude-code", "passed": true}
+  ],
+  "all_passed": true
+}
+```
+
+**Exit Codes:**
+- `0` - All validations passed
+- `1` - One or more validations failed
+
+---
+
+### 6. `aiwf list`
 
 List all workflow sessions.
 
@@ -263,256 +302,97 @@ List all workflow sessions.
 aiwf list [options]
 ```
 
-**Optional Arguments:**
-- `--status <status>` - Filter by status (`in_progress`, `complete`, `error`, `cancelled`, `all`). Default: `all`
-- `--profile <profile>` - Filter by profile name
-- `--limit <n>` - Maximum sessions to return. Default: 50
-
-**Global Options:**
-- `--json` - Emit machine-readable JSON output
-
-**Output (Plain):**
-```
-SESSION_ID                        PROFILE  ENTITY   PHASE       STATUS       UPDATED
-6e73d8cd7da8461189718154b3e99960  jpa-mt   Product  GENERATING  IN_PROGRESS  2024-12-24T10:35:00Z
-a1b2c3d4e5f6789012345678abcdef01  jpa-mt   Order    COMPLETE    SUCCESS      2024-12-24T09:15:00Z
-```
-
-**Output (JSON) - Success:**
-```json
-{
-  "schema_version": 1,
-  "command": "list",
-  "exit_code": 0,
-  "sessions": [
-    {
-      "session_id": "6e73d8cd7da8461189718154b3e99960",
-      "profile": "jpa-mt",
-      "scope": "domain",
-      "entity": "Product",
-      "phase": "GENERATING",
-      "status": "IN_PROGRESS",
-      "iteration": 1,
-      "created_at": "2024-12-24T10:30:00Z",
-      "updated_at": "2024-12-24T10:35:00Z"
-    }
-  ],
-  "total": 1
-}
-```
-
-**Output (JSON) - No Sessions:**
-```json
-{
-  "schema_version": 1,
-  "command": "list",
-  "exit_code": 0,
-  "sessions": [],
-  "total": 0
-}
-```
+**Options:**
+- `--status <status>` - Filter: `in_progress`, `complete`, `error`, `cancelled`, `all` (default: all)
+- `--profile <name>` - Filter by profile
+- `--limit <n>` - Maximum sessions (default: 50)
 
 **Exit Codes:**
 - `0` - Success (even if no sessions found)
 
 ---
 
-### 5. `aiwf profiles`
+### 7. `aiwf profiles`
 
-List available workflow profiles.
+List available workflow profiles or show profile details.
 
 **Syntax:**
 ```bash
 aiwf profiles [profile_name]
 ```
 
-**Positional Arguments:**
-- `[profile_name]` - Optional. Show details for specific profile.
-
-**Global Options:**
-- `--json` - Emit machine-readable JSON output
-
-**Output (Plain) - List All:**
-```
-PROFILE  DESCRIPTION                              SCOPES
-jpa-mt   Multi-tenant JPA domain layer generation domain, vertical
-```
-
-**Output (Plain) - Single Profile:**
-```
-Profile: jpa-mt
-Description: Multi-tenant JPA domain layer generation
-Target Stack: Java 21, Spring Data JPA, PostgreSQL
-Scopes: domain, vertical
-Phases: planning, generation, review, revision
-```
-
-**Output (JSON) - List All:**
-```json
-{
-  "schema_version": 1,
-  "command": "profiles",
-  "exit_code": 0,
-  "profiles": [
-    {
-      "name": "jpa-mt",
-      "description": "Multi-tenant JPA domain layer generation",
-      "scopes": ["domain", "vertical"]
-    }
-  ]
-}
-```
-
-**Output (JSON) - Single Profile:**
-```json
-{
-  "schema_version": 1,
-  "command": "profiles",
-  "exit_code": 0,
-  "profile": {
-    "name": "jpa-mt",
-    "description": "Multi-tenant JPA domain layer generation",
-    "target_stack": "Java 21, Spring Data JPA, PostgreSQL",
-    "scopes": ["domain", "vertical"],
-    "phases": ["planning", "generation", "review", "revision"]
-  }
-}
-```
-
-**Output (JSON) - Profile Not Found:**
-```json
-{
-  "schema_version": 1,
-  "command": "profiles",
-  "exit_code": 1,
-  "error": "Profile 'unknown' not found. Available: jpa-mt"
-}
-```
-
-**Exit Codes:**
-- `0` - Success
-- `1` - Error (profile not found)
-
 ---
 
-### 6. `aiwf providers`
+### 8. `aiwf providers`
 
-List available AI providers.
+List available AI providers or show provider details.
 
 **Syntax:**
 ```bash
 aiwf providers [provider_name]
 ```
 
-**Positional Arguments:**
-- `[provider_name]` - Optional. Show details for specific provider.
-
-**Global Options:**
-- `--json` - Emit machine-readable JSON output
-
-**Output (Plain) - List All:**
-```
-PROVIDER  DESCRIPTION                                      CONFIG
-manual    Human-in-the-loop (prompts written to disk)      none
-```
-
-**Output (Plain) - Single Provider:**
-```
-Provider: manual
-Description: Human-in-the-loop (prompts written to disk)
-Requires Config: no
-```
-
-**Output (JSON) - List All:**
-```json
-{
-  "schema_version": 1,
-  "command": "providers",
-  "exit_code": 0,
-  "providers": [
-    {
-      "name": "manual",
-      "description": "Human-in-the-loop (prompts written to disk)",
-      "requires_config": false
-    }
-  ]
-}
-```
-
-**Output (JSON) - Single Provider:**
-```json
-{
-  "schema_version": 1,
-  "command": "providers",
-  "exit_code": 0,
-  "provider": {
-    "name": "manual",
-    "description": "Human-in-the-loop (prompts written to disk)",
-    "requires_config": false,
-    "config_keys": []
-  }
-}
-```
-
-**Output (JSON) - Provider Not Found:**
-```json
-{
-  "schema_version": 1,
-  "command": "providers",
-  "exit_code": 1,
-  "error": "Provider 'unknown' not found. Available: manual"
-}
-```
-
-**Exit Codes:**
-- `0` - Success
-- `1` - Error (provider not found)
-
 ---
 
 ## Workflow Model
 
+### Phase + Stage Architecture (ADR-0012)
+
+The workflow uses a phase+stage model. Each phase has two stages:
+- **PROMPT**: Prompt created, editable, awaiting approval
+- **RESPONSE**: AI response received, editable, awaiting approval
+
 ### Phases
 
+| Phase | Description |
+|-------|-------------|
+| INIT | Session created, ready to start |
+| PLAN | Creating implementation plan |
+| GENERATE | Generating code artifacts |
+| REVIEW | Reviewing generated code |
+| REVISE | Revising based on review feedback |
+| COMPLETE | Workflow finished successfully |
+| ERROR | Unrecoverable error |
+| CANCELLED | User cancelled |
+
+### Workflow Diagram
+
 ```
-INITIALIZED
-     │
-     ▼
-PLANNING ──────► PLANNED
-     ▲              │
-     │              ▼ (requires plan_approved)
-     │         GENERATING ──────► GENERATED
-     │                                │
-     │                                ▼ (requires artifact hashes)
-     │                           REVIEWING ──────► REVIEWED
-     │                                                 │
-     │              ┌──────────────────────────────────┤
-     │              │                                  │
-     │              ▼ (FAIL)                           ▼ (PASS)
-     │         REVISING ──────► REVISED           COMPLETE
-     │                              │
-     │                              ▼ (requires artifact hashes)
-     └──────────────────────────── REVIEWING
+INIT
+  │
+  ▼
+PLAN[PROMPT] ──approve──► PLAN[RESPONSE] ──approve──►
+                                                      │
+  ┌───────────────────────────────────────────────────┘
+  │
+  ▼
+GENERATE[PROMPT] ──approve──► GENERATE[RESPONSE] ──approve──►
+                                                              │
+  ┌───────────────────────────────────────────────────────────┘
+  │
+  ▼
+REVIEW[PROMPT] ──approve──► REVIEW[RESPONSE]
+                                   │
+                    ┌──────────────┴──────────────┐
+                    │                             │
+                    ▼ (PASS)                      ▼ (FAIL)
+                 COMPLETE                   REVISE[PROMPT]
+                                                  │
+                                                  ▼
+                                           REVISE[RESPONSE]
+                                                  │
+                                                  └──► REVIEW[PROMPT]
 ```
-
-### Approval Gates
-
-Every output must be editable before it becomes input to the next step. Approval gates enforce this:
-
-| Phase | Gate | What Gets Approved |
-|-------|------|-------------------|
-| PLANNED | `plan_approved` | `plan.md` |
-| GENERATED | artifact hashes | `iteration-N/code/*` |
-| REVIEWED | `review_approved` | `iteration-N/review-response.md` |
-| REVISED | artifact hashes | `iteration-N/code/*` |
 
 ### Statuses
 
-- `IN_PROGRESS` - Workflow is active
-- `SUCCESS` - Workflow completed successfully
-- `FAILED` - Review failed (triggers revision)
-- `ERROR` - Unrecoverable error
-- `CANCELLED` - User cancelled workflow
+| Status | Description |
+|--------|-------------|
+| `IN_PROGRESS` | Workflow is active |
+| `SUCCESS` | Completed successfully |
+| `FAILED` | Review failed (triggers revision) |
+| `ERROR` | Technical failure |
+| `CANCELLED` | User stopped |
 
 ---
 
@@ -521,8 +401,8 @@ Every output must be editable before it becomes input to the next step. Approval
 ```
 .aiwf/sessions/<session-id>/
 ├── session.json                 # Workflow state
-├── standards-bundle.md          # Immutable standards (created at init)
-├── plan.md                      # Approved plan (created in PLANNED)
+├── standards-bundle.md          # Standards snapshot (created at init)
+├── plan.md                      # Approved plan (copied after PLAN[RESPONSE] approval)
 │
 ├── iteration-1/
 │   ├── planning-prompt.md
@@ -544,12 +424,6 @@ Every output must be editable before it becomes input to the next step. Approval
         └── [revised files]
 ```
 
-**Key points:**
-- `plan.md` at session root (not in subdirectory)
-- All prompts and responses flat in iteration directory (no subdirectories)
-- Only `code/` subdirectory exists within iterations
-- Planning files are in `iteration-1/` (not session root)
-
 ---
 
 ## Configuration
@@ -564,41 +438,18 @@ Every output must be editable before it becomes input to the next step. Approval
 ### Structure
 
 ```yaml
-profile: jpa-mt
-
 providers:
   planner: manual
   generator: manual
   reviewer: manual
-  reviser: manual
+  revisor: manual
 
 hash_prompts: false
-
-dev: null
 ```
 
 ---
 
-## Error Handling
-
-All commands return consistent error format in JSON mode. The specific fields vary by command, but all include `schema_version`, `command`, `exit_code`, and `error` (when applicable).
-
-Example error response:
-```json
-{
-  "schema_version": 1,
-  "command": "status",
-  "exit_code": 1,
-  "error": "Session 'abc123' not found",
-  "session_id": "abc123",
-  "phase": "",
-  "status": ""
-}
-```
-
----
-
-## Integration Guidelines for VS Code Extension
+## Integration Guidelines
 
 ### Command Execution
 
@@ -608,14 +459,13 @@ async function execAiwf(args: string[]): Promise<AiwfResult> {
   return JSON.parse(result.stdout);
 }
 
-// Initialize session (jpa-mt profile)
+// Initialize session
 const init = await execAiwf([
-  'jpa-mt', 'init',
-  '--scope', 'domain',
-  '--entity', 'Product',
-  '--table', 'app.products',
-  '--bounded-context', 'catalog',
-  '--schema-file', './schema.sql'
+  'init', 'jpa-mt',
+  '-c', 'entity=Product',
+  '-c', 'table=app.products',
+  '-c', 'bounded-context=catalog',
+  '-c', 'schema-file=./schema.sql'
 ]);
 
 if (init.exit_code === 0) {
@@ -624,86 +474,28 @@ if (init.exit_code === 0) {
 }
 ```
 
-### Interactive Workflow Loop
-
-```typescript
-async function runWorkflow(sessionId: string) {
-  while (true) {
-    // Check current status
-    const status = await execAiwf(['status', sessionId]);
-
-    if (status.phase === 'COMPLETE') {
-      break;
-    }
-
-    if (status.pending_approval) {
-      // Show artifacts for review
-      await showArtifacts(sessionId, status);
-      // Wait for user confirmation
-      await waitForUserApproval();
-      // Approve to advance workflow
-      await execAiwf(['approve', sessionId]);
-    }
-  }
-}
-```
-
-### Exit Code Handling
-
-```typescript
-switch (result.exit_code) {
-  case 0:
-    // Success - check phase for next action
-    break;
-  case 1:
-    // Error - display error message
-    showError(result.error);
-    break;
-  case 2:
-    // Blocked - show awaiting paths to user
-    showAwaitingArtifact(result.awaiting_paths);
-    break;
-  case 3:
-    // Cancelled - workflow terminated
-    showCancelled();
-    break;
-}
-```
-
 ### Handling Null Fields
 
-Fields with null values are omitted from JSON output. Check for field presence:
+Fields with null values are omitted from JSON output:
 
 ```typescript
-// Correct - handles omitted fields
 const iteration = result.iteration ?? 1;
 const lastError = result.last_error;  // undefined if not present
-
-// Incorrect - assumes explicit null
-if (result.error === null) { ... }  // Won't work, field is omitted
 ```
 
 ---
 
 ## Versioning
 
-**Contract Version:** 1.0.0
+**Contract Version:** 2.0.0
 
 **Compatibility Promise:**
 - Breaking changes increment major version
 - New optional arguments are minor version changes
 - Bug fixes are patch version changes
 
-**Version Check:**
-```bash
-aiwf --version
-# Output: aiwf 1.0.0 (contract 1.0.0)
-```
-
 ---
 
 ## Support
 
 - GitHub Issues: https://github.com/scottcm/ai-workflow-engine/issues
-- Discussions: https://github.com/scottcm/ai-workflow-engine/discussions
-- Extension Issues: https://github.com/scottcm/aiwf-vscode-extension/issues

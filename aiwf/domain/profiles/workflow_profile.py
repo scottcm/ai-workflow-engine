@@ -46,6 +46,71 @@ class WorkflowProfile(ABC):
         """
         pass  # Default: no validation
 
+    def validate_context(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Validate and normalize context for this profile.
+
+        Called by engine's init command before creating a session.
+        Uses context_schema from get_metadata() for validation.
+
+        Default implementation validates against context_schema:
+        - Checks required fields are present
+        - Validates choices if specified
+        - Checks file paths exist if specified
+        - Applies default values
+
+        Profiles can override for custom validation logic.
+
+        Args:
+            context: Context dict from CLI (key=value pairs)
+
+        Returns:
+            Validated and normalized context dict
+
+        Raises:
+            ValueError: If required context is missing or invalid
+        """
+        schema = self.get_metadata().get("context_schema", {})
+        validated = {}
+        errors = []
+
+        for key, spec in schema.items():
+            value = context.get(key)
+
+            # Check required
+            if spec.get("required", False) and value is None:
+                errors.append(f"Missing required context: {key}")
+                continue
+
+            # Apply default
+            if value is None and "default" in spec:
+                value = spec["default"]
+
+            if value is None:
+                continue
+
+            # Validate choices
+            if "choices" in spec and value not in spec["choices"]:
+                errors.append(f"Invalid value for {key}: {value}. Must be one of: {spec['choices']}")
+                continue
+
+            # Validate path exists
+            if spec.get("type") == "path" and spec.get("exists", False):
+                if not Path(value).exists():
+                    errors.append(f"File not found for {key}: {value}")
+                    continue
+
+            validated[key] = value
+
+        # Copy through any extra context not in schema
+        for key, value in context.items():
+            if key not in validated and key not in schema:
+                validated[key] = value
+
+        if errors:
+            raise ValueError("; ".join(errors))
+
+        return validated
+
     def get_default_standards_provider_key(self) -> str:
         """Return the default standards provider key for this profile.
 

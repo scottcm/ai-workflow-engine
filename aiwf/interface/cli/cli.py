@@ -82,6 +82,128 @@ def cli(ctx: click.Context, json_output: bool, project_dir: str | None) -> None:
     ctx.obj["project_dir"] = Path(project_dir) if project_dir else Path.cwd()
 
 
+@cli.command("init")
+@click.argument("profile_name", type=str)
+@click.option("-c", "--context", "context_pairs", multiple=True, help="Context key=value pairs (e.g., -c entity=Product)")
+@click.option("--planner", help="Provider for planning phase")
+@click.option("--generator", help="Provider for generation phase")
+@click.option("--reviewer", help="Provider for review phase")
+@click.option("--revisor", help="Provider for revision phase")
+@click.option("--dev", help="Developer identifier")
+@click.option("--task-id", help="Task/ticket identifier")
+@click.pass_context
+def init_cmd(
+    ctx: click.Context,
+    profile_name: str,
+    context_pairs: tuple[str, ...],
+    planner: str | None,
+    generator: str | None,
+    reviewer: str | None,
+    revisor: str | None,
+    dev: str | None,
+    task_id: str | None,
+) -> None:
+    """Initialize a new workflow session.
+
+    PROFILE_NAME is the workflow profile to use (e.g., jpa-mt).
+
+    Context is passed via -c key=value pairs. Required keys depend on the profile.
+
+    Example:
+        aiwf init jpa-mt -c entity=Product -c table=app.products -c bounded-context=catalog -c schema-file=schema.sql
+    """
+    try:
+        from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
+        from aiwf.domain.persistence.session_store import SessionStore
+        from aiwf.domain.profiles.profile_factory import ProfileFactory
+
+        # Import profiles to ensure registration
+        import profiles.jpa_mt  # noqa: F401
+
+        # Parse context pairs
+        context: dict[str, str] = {}
+        for pair in context_pairs:
+            if "=" not in pair:
+                raise ValueError(f"Invalid context format: {pair}. Use key=value")
+            key, value = pair.split("=", 1)
+            # Normalize key: replace - with _
+            key = key.replace("-", "_")
+            context[key] = value
+
+        # Check profile exists
+        if not ProfileFactory.is_registered(profile_name):
+            available = ", ".join(ProfileFactory.list_profiles())
+            raise ValueError(f"Profile '{profile_name}' not found. Available: {available}")
+
+        # Create profile instance and validate context
+        profile_instance = ProfileFactory.create(profile_name)
+        validated_context = profile_instance.validate_context(context)
+
+        # Build metadata
+        metadata = {}
+        if dev:
+            metadata["developer"] = dev
+        if task_id:
+            metadata["task_id"] = task_id
+
+        # Build provider overrides
+        providers = {
+            "planner": planner or "manual",
+            "generator": generator or "manual",
+            "reviewer": reviewer or "manual",
+            "revisor": revisor or "manual",
+        }
+
+        sessions_root = _get_sessions_root(ctx)
+        session_store = SessionStore(sessions_root=sessions_root)
+        orchestrator = WorkflowOrchestrator(
+            session_store=session_store,
+            sessions_root=sessions_root,
+        )
+
+        session_id = orchestrator.initialize_run(
+            profile=profile_name,
+            context=validated_context,
+            metadata=metadata if metadata else None,
+            providers=providers,
+        )
+
+        # Transition from INIT to PLAN[PROMPT]
+        state = orchestrator.init(session_id)
+
+        if _get_json_mode(ctx):
+            _json_emit(
+                InitOutput(
+                    exit_code=0,
+                    session_id=session_id,
+                    phase=state.phase.value,
+                    stage=state.stage.value if state.stage else None,
+                )
+            )
+            raise click.exceptions.Exit(0)
+
+        # Plain text output
+        click.echo(f"session_id={session_id}")
+        click.echo(f"phase={state.phase.value}")
+        if state.stage:
+            click.echo(f"stage={state.stage.value}")
+
+    except click.exceptions.Exit:
+        raise
+    except Exception as e:
+        error_msg = _format_error(e)
+        if _get_json_mode(ctx):
+            _json_emit(
+                InitOutput(
+                    exit_code=1,
+                    session_id="",
+                    error=error_msg,
+                )
+            )
+            raise click.exceptions.Exit(1)
+        raise click.ClickException(error_msg) from e
+
+
 @cli.command("status")
 @click.argument("session_id", type=str)
 @click.pass_context
