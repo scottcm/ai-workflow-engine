@@ -316,7 +316,7 @@ def _wrap_process_error(self, returncode: int, stderr: str) -> ProviderError:
         )
     elif returncode == 127:  # Command not found
         return ProviderError(
-            "Gemini CLI not found. Install with: npm i -g @anthropic/gemini-cli"
+            "Gemini CLI not found. Install with: https://github.com/google-gemini/gemini-cli"
         )
     else:
         return ProviderError(f"Gemini CLI failed (exit {returncode}): {stderr}")
@@ -346,7 +346,7 @@ $ gemini -o stream-json "What is 2+2?"
 
 | Dependency | Type | Description |
 |------------|------|-------------|
-| Gemini CLI | Runtime | Must be installed (`npm i -g @anthropic/gemini-cli` or via installer) |
+| Gemini CLI | Runtime | Must be installed (`https://github.com/google-gemini/gemini-cli` or via installer) |
 | ADR-0007 | Architecture | Provider plugin infrastructure |
 | ADR-0013 | Reference | Similar implementation pattern |
 
