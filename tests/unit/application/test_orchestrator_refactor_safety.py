@@ -578,11 +578,12 @@ class TestStateMutationTiming:
 # =============================================================================
 
 class TestApprovalFileCollection:
-    """Tests for _build_approval_files behavior."""
+    """Tests for ApprovalGateService.build_approval_files behavior."""
 
     def test_prompt_stage_only_prompt_file(self, tmp_path: Path) -> None:
         """PROMPT stage returns only the prompt file."""
         orchestrator = _make_orchestrator(tmp_path)
+        service = orchestrator._approval_gate_service
 
         state = _make_state(
             phase=WorkflowPhase.PLAN,
@@ -594,7 +595,8 @@ class TestApprovalFileCollection:
         iteration_dir.mkdir(parents=True)
         (iteration_dir / "planning-prompt.md").write_text("Prompt content")
 
-        files = orchestrator._build_approval_files(state, session_dir)
+        # build_approval_files doesn't use context, pass mock
+        files = service.build_approval_files(state, session_dir, MagicMock())
 
         assert len(files) == 1
         assert any("planning-prompt.md" in k for k in files.keys())
@@ -602,6 +604,7 @@ class TestApprovalFileCollection:
     def test_response_stage_includes_code_files(self, tmp_path: Path) -> None:
         """RESPONSE stage for GENERATE includes code files."""
         orchestrator = _make_orchestrator(tmp_path)
+        service = orchestrator._approval_gate_service
 
         state = _make_state(
             phase=WorkflowPhase.GENERATE,
@@ -620,7 +623,7 @@ class TestApprovalFileCollection:
         # Also need plan.md for GENERATE phase
         (session_dir / "plan.md").write_text("# Plan")
 
-        files = orchestrator._build_approval_files(state, session_dir)
+        files = service.build_approval_files(state, session_dir, MagicMock())
 
         assert any("generation-response.md" in k for k in files.keys())
         assert any("Entity.java" in k for k in files.keys())
@@ -628,6 +631,7 @@ class TestApprovalFileCollection:
     def test_generate_review_phases_include_plan(self, tmp_path: Path) -> None:
         """GENERATE and REVIEW phases include plan.md."""
         orchestrator = _make_orchestrator(tmp_path)
+        service = orchestrator._approval_gate_service
 
         state = _make_state(
             phase=WorkflowPhase.REVIEW,
@@ -640,7 +644,7 @@ class TestApprovalFileCollection:
         (iteration_dir / "review-prompt.md").write_text("Review prompt")
         (session_dir / "plan.md").write_text("# The Plan")
 
-        files = orchestrator._build_approval_files(state, session_dir)
+        files = service.build_approval_files(state, session_dir, MagicMock())
 
         assert any("plan.md" in k for k in files.keys())
         plan_content = [v for k, v in files.items() if "plan.md" in k][0]
@@ -649,6 +653,7 @@ class TestApprovalFileCollection:
     def test_missing_files_return_none_values(self, tmp_path: Path) -> None:
         """Missing files return None values, not KeyError."""
         orchestrator = _make_orchestrator(tmp_path)
+        service = orchestrator._approval_gate_service
 
         state = _make_state(
             phase=WorkflowPhase.PLAN,
@@ -660,7 +665,7 @@ class TestApprovalFileCollection:
         iteration_dir.mkdir(parents=True)
         # Don't create the prompt file
 
-        files = orchestrator._build_approval_files(state, session_dir)
+        files = service.build_approval_files(state, session_dir, MagicMock())
 
         # Should have an entry with None value
         assert len(files) == 1

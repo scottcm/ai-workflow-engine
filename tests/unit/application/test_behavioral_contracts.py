@@ -314,6 +314,8 @@ class TestContextBuilderPattern:
 
     def test_approval_context_extends_base_context(self, tmp_path: Path) -> None:
         """Approval context should include base context plus approval-specific keys."""
+        from aiwf.application.approval import GateContext
+
         store = Mock(spec=SessionStore)
         state = _make_state(
             session_id="session-123",
@@ -334,9 +336,24 @@ class TestContextBuilderPattern:
             sessions_root=tmp_path,
             approval_config=config,
         )
+        service = orchestrator._approval_gate_service
+
+        # Build a GateContext with the necessary callbacks
+        gate_context = GateContext(
+            approval_config=config,
+            add_message=Mock(),
+            build_base_context=orchestrator._build_base_context,
+            build_provider_context=Mock(),
+            get_approver=Mock(),
+            save_state=Mock(),
+            action_retry=Mock(),
+            execute_action=Mock(),
+            handle_pre_transition_approval=Mock(),
+            write_regenerated_prompt=Mock(),
+        )
 
         session_dir = tmp_path / "session-123"
-        approval_ctx = orchestrator._build_approval_context(state, session_dir)
+        approval_ctx = service.build_approval_context(state, session_dir, gate_context)
 
         # Should have base context keys
         assert approval_ctx["session_id"] == "session-123"

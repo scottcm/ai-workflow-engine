@@ -383,12 +383,9 @@ class ApprovalGateService:
         if state.phase not in SessionFileGateway.PHASE_FILES:
             return
 
-        prompt_filename = SessionFileGateway.PHASE_FILES[state.phase][0]
-        iteration_dir = session_dir / f"iteration-{state.current_iteration}"
-        prompt_path = iteration_dir / prompt_filename
-
-        if prompt_path.exists():
-            prompt_path.write_text(suggested_content, encoding="utf-8")
+        gateway = SessionFileGateway(session_dir)
+        if gateway.prompt_exists(state.current_iteration, state.phase):
+            gateway.write_prompt(state.current_iteration, state.phase, suggested_content)
 
     def _clear_approval_state(self, state: WorkflowState) -> None:
         """Clear approval tracking fields after successful approval."""
