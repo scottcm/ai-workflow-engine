@@ -51,7 +51,7 @@ class GateContext:
     # Approval configuration
     approval_config: ApprovalConfig
 
-    # Callbacks to orchestrator methods
+    # Callbacks to orchestrator methods (essential - orchestrator owns these)
     add_message: Callable[[WorkflowState, str], None]
     build_base_context: Callable[[WorkflowState], dict[str, Any]]
     build_provider_context: Callable[[WorkflowState], dict[str, Any]]
@@ -61,17 +61,6 @@ class GateContext:
     execute_action: Callable[[WorkflowState, Any, str], None]
     handle_pre_transition_approval: Callable[[WorkflowState, Path], None]
     write_regenerated_prompt: Callable[[WorkflowState, Path, Any], None]
-
-    # Gate method callbacks (allow test patching on orchestrator)
-    run_approval_gate: Callable[[WorkflowState, Path], ApprovalResult]
-    handle_approval_rejection: Callable[[WorkflowState, Path, ApprovalResult], "WorkflowState | None"]
-    handle_prompt_rejection: Callable[[WorkflowState, Path, ApprovalResult], "WorkflowState | None"]
-    handle_response_rejection: Callable[[WorkflowState, Path, ApprovalResult], "WorkflowState | None"]
-    clear_approval_state: Callable[[WorkflowState], None]
-    auto_continue: Callable[[WorkflowState, Path], None]
-
-    # Reference to orchestrator for complex operations
-    orchestrator: "WorkflowOrchestrator"
 
 
 class ApprovalGateService:
@@ -193,14 +182,13 @@ class ApprovalGateService:
         """Run approval gate after content creation and handle result.
 
         Called automatically after CREATE_PROMPT and CALL_AI actions.
-        Uses context callbacks to allow test patching on orchestrator methods.
+        Service owns gate logic; uses context for orchestrator dependencies.
         """
         if state.stage is None:
             return  # No gate for stageless states
 
         try:
-            # Use context callback for test compatibility
-            result = context.run_approval_gate(state, session_dir)
+            result = self.run_approval_gate(state, session_dir, context)
             result = validate_approval_result(result)
         except (ProviderError, TimeoutError, TypeError) as e:
             state.last_error = f"Approval gate error: {e}"
@@ -216,16 +204,15 @@ class ApprovalGateService:
             return
 
         if result.decision == ApprovalDecision.REJECTED:
-            # Use context callback for test compatibility
-            rejection_result = context.handle_approval_rejection(state, session_dir, result)
+            rejection_result = self.handle_approval_rejection(state, session_dir, result, context)
             if rejection_result is not None:
                 return  # Workflow paused for user intervention
             # Retry succeeded - fall through to auto-continue
 
         # APPROVED (or retry succeeded) - auto-continue
-        context.clear_approval_state(state)
+        self._clear_approval_state(state)
         context.handle_pre_transition_approval(state, session_dir)
-        context.auto_continue(state, session_dir)
+        self._auto_continue(state, session_dir, context)
 
     def handle_approval_rejection(
         self,

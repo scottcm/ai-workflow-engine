@@ -99,7 +99,7 @@ class TestRetryLoop:
                 return ApprovalResult(decision=ApprovalDecision.REJECTED, feedback="try again")
             return ApprovalResult(decision=ApprovalDecision.APPROVED)
 
-        with patch.object(orchestrator, "_run_approval_gate", mock_gate):
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate", mock_gate):
             with patch.object(orchestrator, "_action_retry"):
                 result = orchestrator._handle_response_rejection(
                     state, session_dir,
@@ -136,7 +136,7 @@ class TestRetryLoop:
                 return ApprovalResult(decision=ApprovalDecision.REJECTED, feedback="try again")
             return ApprovalResult(decision=ApprovalDecision.APPROVED)
 
-        with patch.object(orchestrator, "_run_approval_gate", mock_gate):
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate", mock_gate):
             with patch.object(orchestrator, "_action_retry"):
                 result = orchestrator._handle_response_rejection(
                     state, session_dir,
@@ -169,7 +169,7 @@ class TestRetryLoop:
             gate_called = True
             return ApprovalResult(decision=ApprovalDecision.REJECTED, feedback="no retry")
 
-        with patch.object(orchestrator, "_run_approval_gate", mock_gate):
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate", mock_gate):
             with patch.object(orchestrator, "_action_retry") as mock_retry:
                 result = orchestrator._handle_response_rejection(
                     state, session_dir,
@@ -203,7 +203,7 @@ class TestRetryLoop:
         def mock_gate(*args, **kwargs):
             return ApprovalResult(decision=ApprovalDecision.PENDING)
 
-        with patch.object(orchestrator, "_run_approval_gate", mock_gate):
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate", mock_gate):
             with patch.object(orchestrator, "_action_retry"):
                 result = orchestrator._handle_response_rejection(
                     state, session_dir,
@@ -369,7 +369,7 @@ class TestPromptRejectionRegeneration:
 
         with patch.object(ProfileFactory, "create", return_value=mock_profile):
             with patch.object(orchestrator, "_write_regenerated_prompt"):
-                with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+                with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
                     mock_gate.return_value = ApprovalResult(decision=ApprovalDecision.APPROVED)
                     with patch.object(orchestrator, "_build_provider_context", return_value={}):
                         result = orchestrator._handle_prompt_rejection(
@@ -408,7 +408,7 @@ class TestPromptRejectionRegeneration:
 
         with patch.object(ProfileFactory, "create", return_value=mock_profile):
             with patch.object(orchestrator, "_write_regenerated_prompt"):
-                with patch.object(orchestrator, "_run_approval_gate", mock_gate):
+                with patch.object(orchestrator._approval_gate_service, "run_approval_gate", mock_gate):
                     with patch.object(orchestrator, "_build_provider_context", return_value={}):
                         orchestrator._handle_prompt_rejection(
                             state, session_dir,
@@ -484,7 +484,7 @@ class TestPromptRejectionRegeneration:
 
         with patch.object(ProfileFactory, "create", return_value=mock_profile):
             with patch.object(orchestrator, "_write_regenerated_prompt"):
-                with patch.object(orchestrator, "_run_approval_gate", mock_gate):
+                with patch.object(orchestrator._approval_gate_service, "run_approval_gate", mock_gate):
                     with patch.object(orchestrator, "_build_provider_context", return_value={}):
                         result = orchestrator._handle_prompt_rejection(
                             state, session_dir,

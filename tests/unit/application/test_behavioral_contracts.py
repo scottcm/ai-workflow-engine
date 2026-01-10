@@ -80,7 +80,8 @@ class TestGateOrdering:
         # Track method call order
         call_order = []
 
-        original_run_gate = orchestrator._run_approval_gate
+        # Service now owns gate logic - patch service method
+        original_run_gate = orchestrator._approval_gate_service.run_approval_gate
         # _approve_plan_response is now in ArtifactService
         original_approve_plan = orchestrator._artifact_service._approve_plan_response
 
@@ -92,7 +93,7 @@ class TestGateOrdering:
             call_order.append("hash_response")
             return original_approve_plan(*args, **kwargs)
 
-        with patch.object(orchestrator, "_run_approval_gate", tracked_run_gate):
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate", tracked_run_gate):
             with patch.object(orchestrator._artifact_service, "_approve_plan_response", tracked_approve_plan):
                 with patch.object(orchestrator, "_execute_action"):
                     orchestrator._run_gate_after_action(state, session_dir)
@@ -131,8 +132,8 @@ class TestGateOrdering:
             approval_config=config,
         )
 
-        # Mock approval gate to reject
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        # Mock approval gate to reject - service now owns gate logic
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             mock_gate.return_value = ApprovalResult(
                 decision=ApprovalDecision.REJECTED,
                 feedback="Content not acceptable",
@@ -269,7 +270,7 @@ class TestMaxRetriesExhaustion:
         )
 
         # Mock approval gate to always reject
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             # Mock AI provider to prevent actual calls
             with patch.object(orchestrator, "_action_retry"):
                 mock_gate.return_value = ApprovalResult(
@@ -413,7 +414,7 @@ class TestSuggestedContentHandling:
             approval_config=config,
         )
 
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             mock_gate.return_value = ApprovalResult(
                 decision=ApprovalDecision.REJECTED,
                 feedback="Needs improvement",
@@ -483,7 +484,7 @@ class TestPromptRegenerationCapability:
         mock_profile = Mock()
         mock_profile.get_metadata.return_value = {"can_regenerate_prompts": False}
 
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             with patch.object(ProfileFactory, "create", return_value=mock_profile):
                 mock_gate.return_value = ApprovalResult(
                     decision=ApprovalDecision.REJECTED,
@@ -541,7 +542,7 @@ class TestPromptRegenerationCapability:
                 )
             return ApprovalResult(decision=ApprovalDecision.APPROVED)
 
-        with patch.object(orchestrator, "_run_approval_gate", side_effect=mock_approval_gate):
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate", side_effect=mock_approval_gate):
             with patch.object(ProfileFactory, "create", return_value=mock_profile):
                 with patch.object(orchestrator, "_execute_action"):
                     orchestrator._run_gate_after_action(state, session_dir)
@@ -586,7 +587,7 @@ class TestApprovalErrorHandling:
         )
 
         # Mock approval gate to raise ProviderError
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             mock_gate.side_effect = ProviderError("Connection failed")
 
             orchestrator._run_gate_after_action(state, session_dir)
@@ -625,7 +626,7 @@ class TestApprovalErrorHandling:
         )
 
         # Mock approval gate to raise TimeoutError
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             mock_gate.side_effect = TimeoutError("Provider timed out after 60s")
 
             orchestrator._run_gate_after_action(state, session_dir)
@@ -668,7 +669,7 @@ class TestApprovalErrorHandling:
 
         # Mock approval gate to return malformed/ambiguous response
         # This simulates what AIApprovalProvider does with unparseable AI output
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             # Malformed response defaults to REJECTED per Response Parsing contract
             mock_gate.return_value = ApprovalResult(
                 decision=ApprovalDecision.REJECTED,
@@ -808,7 +809,7 @@ class TestGateErrorRetry:
         )
 
         # First call: gate fails with error
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             mock_gate.side_effect = ProviderError("Connection failed")
             orchestrator._run_gate_after_action(state, session_dir)
 
@@ -821,7 +822,7 @@ class TestGateErrorRetry:
         # Set pending state to allow approve (error recovery path)
         state.last_error = "Connection failed"  # Error present triggers retry
 
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             with patch.object(orchestrator, "_execute_action"):
                 mock_gate.return_value = ApprovalResult(decision=ApprovalDecision.APPROVED)
                 result = orchestrator.approve("test-session")

@@ -346,14 +346,6 @@ class WorkflowOrchestrator:
             execute_action=self._execute_action,
             handle_pre_transition_approval=self._handle_pre_transition_approval,
             write_regenerated_prompt=self._write_regenerated_prompt,
-            # Gate method callbacks (allow test patching)
-            run_approval_gate=self._run_approval_gate,
-            handle_approval_rejection=self._handle_approval_rejection,
-            handle_prompt_rejection=self._handle_prompt_rejection,
-            handle_response_rejection=self._handle_response_rejection,
-            clear_approval_state=self._clear_approval_state,
-            auto_continue=self._auto_continue,
-            orchestrator=self,
         )
 
     def _execute_action(
@@ -915,6 +907,8 @@ class WorkflowOrchestrator:
     ) -> ApprovalResult:
         """Run approval gate for current phase/stage.
 
+        Delegates to ApprovalGateService.
+
         Args:
             state: Current workflow state
             session_dir: Session directory path
@@ -922,24 +916,8 @@ class WorkflowOrchestrator:
         Returns:
             ApprovalResult (never None - PENDING replaces None for manual approval)
         """
-        if state.stage is None:
-            return ApprovalResult(decision=ApprovalDecision.APPROVED)
-
-        approver = self._get_approver(state.phase, state.stage)
-
-        # Build files and context
-        files = self._build_approval_files(state, session_dir)
-        context = self._build_approval_context(state, session_dir)
-
-        # Run approval
-        result = approver.evaluate(
-            phase=state.phase,
-            stage=state.stage,
-            files=files,
-            context=context,
-        )
-
-        return result
+        context = self._build_gate_context(session_dir)
+        return self._approval_gate_service.run_approval_gate(state, session_dir, context)
 
     def _handle_approval_rejection(
         self,
@@ -949,25 +927,15 @@ class WorkflowOrchestrator:
     ) -> WorkflowState | None:
         """Handle approval rejection by dispatching to stage-specific handler.
 
+        Delegates to ApprovalGateService.
+
         Returns None if retry succeeded (caller should proceed with transition).
         Returns state if workflow should pause.
-
-        Args:
-            state: Current workflow state
-            session_dir: Session directory
-            result: The rejection result
-
-        Returns:
-            Updated workflow state, or None if retry succeeded
         """
-        # Store rejection info in state
-        state.approval_feedback = result.feedback
-        state.retry_count += 1
-
-        if state.stage == WorkflowStage.PROMPT:
-            return self._handle_prompt_rejection(state, session_dir, result)
-        else:
-            return self._handle_response_rejection(state, session_dir, result)
+        context = self._build_gate_context(session_dir)
+        return self._approval_gate_service.handle_approval_rejection(
+            state, session_dir, result, context
+        )
 
     def _handle_prompt_rejection(
         self,
@@ -977,81 +945,14 @@ class WorkflowOrchestrator:
     ) -> WorkflowState | None:
         """Handle rejection during PROMPT stage.
 
-        Attempts suggested_content application or profile regeneration.
-        Falls back to pausing for user review/edit.
+        Delegates to ApprovalGateService.
 
         Returns None if retry succeeded, state if paused.
         """
-        stage_config = self.approval_config.get_stage_config(
-            state.phase.value, state.stage.value if state.stage else "prompt"
+        context = self._build_gate_context(session_dir)
+        return self._approval_gate_service.handle_prompt_rejection(
+            state, session_dir, result, context
         )
-
-        # Try suggested_content if available and allowed
-        if result.suggested_content and stage_config.allow_rewrite:
-            self._apply_suggested_content_to_prompt(state, session_dir, result.suggested_content)
-            state.pending_approval = True  # User should review and approve
-            self._add_message(state, "Suggested content applied to prompt file")
-            self.session_store.save(state)
-            return state
-
-        # Try profile regeneration if supported
-        profile = ProfileFactory.create(state.profile)
-        if profile.get_metadata().get("can_regenerate_prompts", False):
-            try:
-                regeneration_result = self._try_prompt_regeneration(state, session_dir, result)
-                # None means success (proceed with transition) or NotImplementedError (fall through)
-                # state means paused (pending or rejected after retry)
-                return regeneration_result
-            except _RegenerationNotImplemented:
-                pass  # Fall through to user pause
-
-        # Pause for user to review/edit and re-approve
-        state.pending_approval = True
-        self._add_message(state, f"Prompt rejected: {result.feedback or 'no feedback'}")
-        self.session_store.save(state)
-        return state
-
-    def _try_prompt_regeneration(
-        self,
-        state: WorkflowState,
-        session_dir: Path,
-        result: ApprovalResult,
-    ) -> WorkflowState | None:
-        """Attempt to regenerate prompt using profile capability.
-
-        Returns:
-            None if regeneration approved (caller proceeds with transition)
-            state if paused (pending or rejected)
-            None if NotImplementedError (caller falls through to user pause)
-        """
-        profile = ProfileFactory.create(state.profile)
-        try:
-            context = self._build_provider_context(state)
-            new_prompt = profile.regenerate_prompt(
-                state.phase,
-                result.feedback or "",
-                context,
-            )
-
-            self._write_regenerated_prompt(state, session_dir, new_prompt)
-            self._add_message(state, "Prompt regenerated based on feedback")
-
-            new_result = self._run_approval_gate(state, session_dir)
-
-            if new_result.decision == ApprovalDecision.PENDING:
-                state.pending_approval = True
-                self.session_store.save(state)
-                return state
-
-            if new_result.decision == ApprovalDecision.APPROVED:
-                return None  # Proceed with transition
-
-            # Still rejected - recurse
-            return self._handle_approval_rejection(state, session_dir, new_result)
-
-        except NotImplementedError:
-            # Profile declared capability but didn't implement
-            raise _RegenerationNotImplemented()
 
     def _handle_response_rejection(
         self,
@@ -1061,54 +962,14 @@ class WorkflowOrchestrator:
     ) -> WorkflowState | None:
         """Handle rejection during RESPONSE stage with retry loop.
 
-        Auto-retries up to max_retries using AI regeneration.
+        Delegates to ApprovalGateService.
+
         Returns None if retry succeeded, state if paused.
         """
-        stage_config = self.approval_config.get_stage_config(
-            state.phase.value, state.stage.value if state.stage else "prompt"
+        context = self._build_gate_context(session_dir)
+        return self._approval_gate_service.handle_response_rejection(
+            state, session_dir, result, context
         )
-
-        # Store suggested_content if available
-        if result.suggested_content and stage_config.allow_rewrite:
-            state.suggested_content = result.suggested_content
-            self._add_message(state, "Suggested content available (not auto-applied yet)")
-
-        # Retry loop - only for stages with max_retries > 0
-        while state.retry_count <= stage_config.max_retries and stage_config.max_retries > 0:
-            self._add_message(
-                state,
-                f"Retry {state.retry_count}/{stage_config.max_retries}: regenerating with feedback"
-            )
-
-            self._action_retry(state, session_dir)
-            new_result = self._run_approval_gate(state, session_dir)
-
-            if new_result.decision == ApprovalDecision.PENDING:
-                state.pending_approval = True
-                self.session_store.save(state)
-                return state
-
-            if new_result.decision == ApprovalDecision.APPROVED:
-                return None  # Proceed with transition
-
-            # Still rejected - update and continue loop
-            state.approval_feedback = new_result.feedback
-            state.retry_count += 1
-
-        # Max retries exceeded - pause for human intervention
-        if state.retry_count > stage_config.max_retries and stage_config.max_retries > 0:
-            state.last_error = (
-                f"Approval rejected after {state.retry_count} attempts. "
-                "Review feedback and retry manually or cancel."
-            )
-            self._add_message(
-                state, "Approval failed: max retries exceeded. Review feedback and retry or cancel."
-            )
-
-        # Pause workflow for human intervention
-        state.pending_approval = True
-        self.session_store.save(state)
-        return state
 
     def _clear_approval_state(self, state: WorkflowState) -> None:
         """Clear approval tracking fields after successful approval."""

@@ -420,7 +420,7 @@ class TestPromptRejectionHandling:
         mock_profile.get_metadata.return_value = {"can_regenerate_prompts": False}
 
         # Mock the approval gate to return rejection
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             with patch.object(ProfileFactory, "create", return_value=mock_profile):
                 mock_gate.return_value = ApprovalResult(
                     decision=ApprovalDecision.REJECTED,
@@ -471,7 +471,7 @@ class TestPromptRejectionHandling:
         )
 
         # Mock the approval gate to return rejection with suggested content
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             mock_gate.return_value = ApprovalResult(
                 decision=ApprovalDecision.REJECTED,
                 feedback="Prompt needs more detail",
@@ -516,7 +516,7 @@ class TestPromptRejectionHandling:
         mock_profile.get_metadata.return_value = {"can_regenerate_prompts": False}
 
         # Mock the approval gate to return rejection with suggested content
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             with patch.object(ProfileFactory, "create", return_value=mock_profile):
                 mock_gate.return_value = ApprovalResult(
                     decision=ApprovalDecision.REJECTED,
@@ -558,8 +558,9 @@ class TestGateAfterAction:
         )
 
         # Mock approval gate to return APPROVED
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
-            with patch.object(orchestrator, "_auto_continue") as mock_auto:
+        # Service now owns gate logic - patch service methods
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
+            with patch.object(orchestrator._approval_gate_service, "_auto_continue") as mock_auto:
                 mock_gate.return_value = ApprovalResult(
                     decision=ApprovalDecision.APPROVED
                 )
@@ -590,7 +591,7 @@ class TestGateAfterAction:
         )
 
         # Mock approval gate to return PENDING
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             with patch.object(orchestrator, "_auto_continue") as mock_auto:
                 mock_gate.return_value = ApprovalResult(
                     decision=ApprovalDecision.PENDING,
@@ -630,7 +631,7 @@ class TestGateAfterAction:
         mock_profile.get_metadata.return_value = {"can_regenerate_prompts": False}
 
         # Mock approval gate to return REJECTED
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             with patch.object(ProfileFactory, "create", return_value=mock_profile):
                 mock_gate.return_value = ApprovalResult(
                     decision=ApprovalDecision.REJECTED,
@@ -661,7 +662,7 @@ class TestGateAfterAction:
         )
 
         # Mock approval gate to raise error
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             mock_gate.side_effect = ProviderError("Connection failed")
 
             orchestrator._run_gate_after_action(state, session_dir)
@@ -686,7 +687,7 @@ class TestGateAfterAction:
             sessions_root=tmp_path,
         )
 
-        with patch.object(orchestrator, "_run_approval_gate") as mock_gate:
+        with patch.object(orchestrator._approval_gate_service, "run_approval_gate") as mock_gate:
             orchestrator._run_gate_after_action(state, session_dir)
 
         # Gate should not be called for stageless states
