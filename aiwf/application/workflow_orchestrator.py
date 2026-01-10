@@ -336,7 +336,6 @@ class WorkflowOrchestrator:
             GateContext with helpers and configuration
         """
         return GateContext(
-            phase_files=SessionFileGateway.PHASE_FILES,
             approval_config=self.approval_config,
             add_message=self._add_message,
             build_base_context=self._build_base_context,

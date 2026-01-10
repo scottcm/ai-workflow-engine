@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from aiwf.application.approval_config import ApprovalConfig
+from aiwf.application.storage import SessionFileGateway
 from aiwf.application.transitions import TransitionTable
 from aiwf.domain.errors import ProviderError
 from aiwf.domain.models.approval_result import (
@@ -46,9 +47,6 @@ class GateContext:
 
     Gate methods are callbacks to orchestrator so existing test patches work.
     """
-
-    # Phase-to-filename mapping
-    phase_files: dict[WorkflowPhase, tuple[str, str]]
 
     # Approval configuration
     approval_config: ApprovalConfig
@@ -395,10 +393,10 @@ class ApprovalGateService:
         context: GateContext,
     ) -> None:
         """Apply suggested content to the prompt file."""
-        if state.phase not in context.phase_files:
+        if state.phase not in SessionFileGateway.PHASE_FILES:
             return
 
-        prompt_filename = context.phase_files[state.phase][0]
+        prompt_filename = SessionFileGateway.PHASE_FILES[state.phase][0]
         iteration_dir = session_dir / f"iteration-{state.current_iteration}"
         prompt_path = iteration_dir / prompt_filename
 
