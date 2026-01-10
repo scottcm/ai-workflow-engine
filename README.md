@@ -551,7 +551,7 @@ This project showcases enterprise-grade software engineering practices appropria
 ```
 ┌─────────────────────────────────────────────┐
 │  Interface Layer (CLI)                      │
-│  - Click-based commands                     ���
+│  - Click-based commands                     │
 │  - JSON and plain text output               │
 ├─────────────────────────────────────────────┤
 │  Application Layer (Orchestration)          │
@@ -1510,32 +1510,13 @@ docker-compose down
 
 ## Known Limitations
 
-### Not Yet Implemented (Planned for 1.0.0)
-
-These features are planned but not critical to core functionality:
-
-- `aiwf list` - List sessions with filtering
-- `aiwf profiles` - List available profiles  
-- `aiwf providers` - List available AI providers
-
 ### Intentional Design Choices
 
 These are features we've chosen not to implement (at least initially):
 
-- **Manual provider by design** - Copy/paste workflow provides budget-friendly access to any AI while maintaining full control over prompts and responses
 - **Single profile initially** - Extension point exists; additional profiles are encouraged as community contributions
 - **No multi-user coordination** - Designed for single developer workflows
 - **No AI code sandboxing** - Security is downstream integration responsibility
-
-### Future Enhancements (Post-1.0)
-
-Features under consideration for future releases:
-
-- Automated AI provider integrations (Claude CLI, Gemini CLI)
-- Additional profiles (React/TypeScript, Python/FastAPI, etc.)
-- Plugin discovery and registration system
-- Advanced validation and linting
-- Performance optimizations
 
 **Note:** The manual provider is not a limitation—it's a feature that enables:
 - Use of free AI subscriptions (ChatGPT.com, Claude.ai, Gemini)
@@ -1549,37 +1530,24 @@ Features under consideration for future releases:
 
 ## Project Status
 
-**Current Release: v0.9.0** 🎉
+**Current Version: v2.0.0**
 
-Fully functional AI workflow orchestration with manual mode. All core features complete:
+Complete rewrite with improved separation of concerns and extensibility. All core features implemented:
+
 - ✅ Multi-phase workflows (planning → generation → review → revision)
-- ✅ Approval system with deferred hashing for artifact validation
+- ✅ Automated AI providers (Claude Code via SDK, Gemini CLI via subprocess)
+- ✅ Configurable approval gates (manual, skip, or AI-powered)
 - ✅ JPA multi-tenant profile with comprehensive standards
-- ✅ CLI interface (`init`, `step`, `approve`, `status`)
+- ✅ CLI interface (`init`, `step`, `approve`, `status`, `list`)
 - ✅ Session persistence and resumability
 - ✅ Iteration tracking with complete audit trail
 - ✅ Path validation and security boundaries
 
-### What's Next: v1.0.0
-
-**Enhanced CLI:**
-- `aiwf list` - List all workflow sessions
-- `aiwf profiles` - Show available profiles
-- `aiwf providers` - Show available AI providers
-- Improved error messages and user feedback
-
-**Extensibility & Integration:**
-- Event system for IDE extension support (Observer pattern)
-- Refactored approval handling for easier extensibility (Chain of Responsibility)
-- Extension/plugin API documentation
-- VS Code extension protocol specification
-
-### Future Enhancements (v2.0.0+)
+### Future Enhancements
 
 - **Additional Profiles**: React components, Python/FastAPI, Go microservices
-- **Automated AI Providers**: Direct integration with Claude CLI, Gemini CLI
+- **IDE Integration**: VS Code extension for workflow visualization
 - **CI/CD Integration**: Webhook support for automated workflows
-- **Advanced Features**: Sub-workflows, parallel generation, custom validation hooks
 
 ---
 
