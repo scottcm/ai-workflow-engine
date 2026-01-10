@@ -93,7 +93,7 @@ Major release introducing automated AI providers and approval gates. The engine 
 
 ### Testing
 
-- 817 unit and integration tests passing
+- 847 unit and integration tests passing
 - 12-scenario integration test matrix for approval flows
 - Behavioral contract tests for all approval gate behaviors
 - Error path tests for provider exceptions and timeouts

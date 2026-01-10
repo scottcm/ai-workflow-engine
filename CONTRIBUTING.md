@@ -21,7 +21,7 @@ When submitting a pull request:
 - Keep changes focused and scoped; avoid unrelated modifications.
 
 ### 3. Style & Quality
-- Use Python 3.11+.
+- Use Python 3.13+.
 - Follow Pydantic conventions for models.
 - Use type annotations throughout.
 - Write clear, intention-revealing code.

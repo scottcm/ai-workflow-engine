@@ -1,6 +1,6 @@
 # ADR-0016: V2 Workflow Config and Provider Naming
 
-**Status:** Draft  
+**Status:** Accepted
 **Date:** January 4, 2026  
 **Deciders:** Scott  
 **Context:** Configuration and provider terminology are being revamped in v2 (breaking change).

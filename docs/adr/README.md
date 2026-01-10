@@ -9,7 +9,7 @@ This directory contains Architecture Decision Records (ADRs) for the AI Workflow
 ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design for:
 - **Phase+Stage model**: PLAN, GENERATE, REVIEW, REVISE phases, each with PROMPT and RESPONSE stages
 - **TransitionTable**: Declarative state machine for workflow transitions
-- **Commands**: `init`, `step`, `approve`, `reject`, `retry`, `status`, `cancel`
+- **Commands**: `init`, `approve`, `reject`, `status`, `list`, `validate`, `profiles`, `providers`
 
 ---
 
@@ -33,6 +33,7 @@ ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design
 | [0014](0014-gemini-cli-provider.md) | Accepted | Gemini CLI AI Provider | Subprocess-based provider |
 | [0015](0015-approval-provider-implementation.md) | **Accepted** | Approval Provider Implementation | Approval gates system |
 | [0016](0016-v2-workflow-config-and-provider-naming.md) | **Accepted** | V2 Workflow Config and Provider Naming | Provider naming convention |
+| [0017](0017-plugin-dependency-injection.md) | Proposed | Plugin Dependency Injection | Future - Service registry pattern |
 
 ---
 
