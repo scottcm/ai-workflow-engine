@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from aiwf.domain.models.prompt_sections import PromptSections
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowState
 from aiwf.domain.profiles.profile_factory import ProfileFactory
 
@@ -106,7 +105,7 @@ class PromptService:
 
     def assemble_prompt(
         self,
-        prompt_content: str | PromptSections,
+        prompt_content: str,
         state: WorkflowState,
         session_dir: Path,
         response_relpath: str,
@@ -117,7 +116,7 @@ class PromptService:
         the content but it needs assembly.
 
         Args:
-            prompt_content: Raw prompt (string or PromptSections)
+            prompt_content: Raw prompt string
             state: Current workflow state
             session_dir: Session directory path
             response_relpath: Relative path for response file
@@ -125,16 +124,5 @@ class PromptService:
         Returns:
             Assembled prompt string
         """
-        from aiwf.application.prompt_assembler import PromptAssembler
-
-        if isinstance(prompt_content, PromptSections):
-            assembler = PromptAssembler(session_dir, state)
-            assembled = assembler.assemble(
-                prompt_content,
-                fs_ability="local-write",
-                response_relpath=response_relpath,
-            )
-            return assembled["user_prompt"]
-        else:
-            # Already a string - return as-is
-            return prompt_content
+        # Profile always returns strings for regenerated prompts
+        return prompt_content
