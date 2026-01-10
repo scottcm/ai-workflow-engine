@@ -277,3 +277,16 @@ UserTesting/
 
 # Legacy test data location
 LIVE
+
+# Working documents (session files, reviews, analysis)
+memory.md
+docs/jpa-test-analysis.md
+knowledge.md
+ASSESSMENT_AND_REFACTOR_REVIEW_PROMPT.md
+CURRENT_ASSESSMENT.md
+docs/reviews/
+docs/templates/
+jpa-mt-nice-to-have-work.md
+jpa-mt-redesign.md
+workflow-process-analysis.md
+docs/jpa-mt-*.md
