@@ -126,7 +126,7 @@ Creating a new profile means implementing the `WorkflowProfile` interface and re
 1. Engine writes prompt to `.md` file (e.g., `planning-prompt.md`)
 2. **You** copy prompt content to your AI of choice (ChatGPT, Claude, Gemini, etc.)
 3. **You** copy AI response and save it to response file (e.g., `planning-response.md`)
-4. Engine processes response file when you run `aiwf step`
+4. Engine processes response file when you run `aiwf approve`
 
 This approach:
 - Works with **free AI web interfaces** (ChatGPT.com, Claude.ai, Gemini)
@@ -334,7 +334,7 @@ The workflow engine separates two independent concerns:
 | **Providers** | Who produces responses? | `manual`, `claude`, `gemini`, etc. |
 
 **Execution Mode (Control Flow):**
-- `INTERACTIVE`: User must issue `step` and `approve` commands to advance the workflow
+- `INTERACTIVE`: User must issue `approve` commands to advance the workflow
 - `AUTOMATED`: Engine advances automatically without user commands
 
 **Providers (Data Flow):**
@@ -359,38 +359,33 @@ The workflow engine separates two independent concerns:
 
 ### Putting It Together
 
-**Actual workflow sequence** (showing when `step` and `approve` are used):
+**Actual workflow sequence** (using Phase+Stage model):
 
-1. **Initialize:** `aiwf init` → creates session
-2. **Planning prompt:** `aiwf step` → creates `planning-prompt.md`
-3. **[USER ACTION]** Copy prompt to AI, save response to `planning-response.md`
-4. **Process planning:** `aiwf step` → validates response, transitions to PLANNED
-5. **Approve plan:** `aiwf approve` → copies response to `plan.md`, hashes it, sets `plan_approved=True`
-6. **Generation prompt:** `aiwf step` → creates `iteration-1/`, writes `generation-prompt.md`
-7. **[USER ACTION]** Copy prompt to AI, save response to `generation-response.md`
-8. **Extract code:** `aiwf step` → profile extracts code using `<<<FILE:>>>` markers, writes to `iteration-1/code/` (with `sha256=None`)
-9. **Approve code:** `aiwf approve` → hashes all code files, updates `artifact.sha256` values
-10. **Review prompt:** `aiwf step` → creates `review-prompt.md`
-11. **[USER ACTION]** Copy prompt to AI, save response to `review-response.md`
-12. **Process review:** `aiwf step` → validates response, transitions to REVIEWED
-13. **Approve review:** `aiwf approve` → hashes review, sets `review_approved=True`, processes verdict
-14. **If PASS:** workflow completes
-15. **If FAIL:** `aiwf step` → creates `iteration-2/`, writes `revision-prompt.md`
-16. **[USER ACTION]** Copy prompt to AI, save response to `revision-response.md`
-17. **Extract revised code:** `aiwf step` → extracts code to `iteration-2/code/` (with `sha256=None`)
-18. **Approve revised code:** `aiwf approve` → hashes all code files
-19. **Back to review:** Cycle repeats from step 10 until PASS
+1. **Initialize:** `aiwf init jpa-mt -c ...` → creates session at PLAN[PROMPT], creates `planning-prompt.md`
+2. **[USER ACTION]** Edit prompt if needed, copy to AI, save response to `planning-response.md`
+3. **Approve prompt:** `aiwf approve` → calls provider (or waits for manual), advances to PLAN[RESPONSE]
+4. **Approve plan:** `aiwf approve` → copies response to `plan.md`, hashes it, advances to GENERATE[PROMPT]
+5. **[USER ACTION]** Edit generation prompt if needed, copy to AI, save response
+6. **Approve prompt:** `aiwf approve` → advances to GENERATE[RESPONSE]
+7. **Approve code:** `aiwf approve` → extracts code, hashes artifacts, advances to REVIEW[PROMPT]
+8. **[USER ACTION]** Copy review prompt to AI, save response
+9. **Approve prompt:** `aiwf approve` → advances to REVIEW[RESPONSE]
+10. **Approve review:** `aiwf approve` → processes verdict
+    - **If PASS:** workflow completes
+    - **If FAIL:** advances to REVISE[PROMPT], creates `iteration-2/`
+11. **Revision cycle:** Continue approve/reject until PASS
 
 **Pattern you'll see:**
-- `aiwf step` → Advances workflow (generates prompts, processes responses)
-- **[USER ACTION]** → Copy/paste with AI
-- `aiwf approve` → Locks outputs (computes hashes, sets approval flags)
+- `aiwf init` → Creates session and first prompt
+- `aiwf approve` → Advances workflow (calls provider, extracts code, computes hashes)
+- `aiwf reject` → Rejects content with feedback, triggers regeneration
+- **[USER ACTION]** → Edit files, copy/paste with AI (for manual provider)
 
-**Key insight:** 
-- **`step`** does deterministic work (generate prompts, process responses, write files)
-- **`approve`** creates the audit trail (hash what you've reviewed/edited)
+**Key insight:**
+- **`approve`** does ALL the work (call provider, write files, compute hashes, advance state)
 - **Hashing happens on approval** - this lets you edit files before they're locked
-- **New iterations** are created when review fails (increment happens on REVIEWED → REVISING transition)
+- **New iterations** are created when review fails
+- **`reject`** triggers provider to regenerate with your feedback
 
 **Like all AI-assisted development, output quality depends heavily on prompt quality.** The jpa-mt profile has been refined through real-world usage at Skills Harbor to produce reliable results, but the "garbage in, garbage out" principle still applies.
 
@@ -432,63 +427,55 @@ This example uses the **manual provider** (default), which means you'll copy pro
 
 ```bash
 # 1. Initialize a session (jpa-mt profile)
-poetry run aiwf jpa-mt init \
-  --scope domain \
-  --entity Product \
-  --table app.products \
-  --bounded-context product \
-  --schema-file docs/db/01-schema.sql
+poetry run aiwf init jpa-mt \
+  -c entity=Product \
+  -c table=app.products \
+  -c bounded-context=catalog \
+  -c schema-file=docs/db/01-schema.sql
 
-# Output: <session-id> (e.g., 6e73d8cd7da8461189718154b3e99960)
-
-# 2. Generate planning prompt
-poetry run aiwf step <session-id>
+# Output shows session_id, phase=PLAN, stage=prompt
 # Creates: .aiwf/sessions/<session-id>/iteration-1/planning-prompt.md
 
-# 3. MANUAL STEP: Provide planning response
+# 2. MANUAL STEP: Provide planning response
 # - Open: planning-prompt.md
 # - Copy content to your AI (ChatGPT, Claude, etc.)
 # - Copy AI response
 # - Save to: planning-response.md (same directory)
 
-# 4. Process planning response
-poetry run aiwf step <session-id>
-# Validates response, transitions to PLANNED phase
+# 3. Approve prompt (calls provider or waits for manual response)
+poetry run aiwf approve <session-id>
+# For manual provider: advances to PLAN[RESPONSE] stage
 
-# 5. Review and approve plan
+# 4. Review and approve plan
 # - Read: iteration-1/planning-response.md (edit if needed)
 poetry run aiwf approve <session-id>
-# Hashes plan, transitions to GENERATING
+# Hashes plan, advances to GENERATE[PROMPT]
 
-# 6. Continue generation cycle
-poetry run aiwf step <session-id>
-# Creates: generation-prompt.md
-
-# 7. MANUAL STEP: Provide code generation response
+# 5. MANUAL STEP: Provide code generation response
 # - Copy generation-prompt.md to AI
 # - AI generates code with <<<FILE: filename>>> markers
 # - Save response to: generation-response.md
 
-# 8. Extract generated code
-poetry run aiwf step <session-id>
+# 6. Approve generation prompt, then response
+poetry run aiwf approve <session-id>  # GENERATE[PROMPT] → GENERATE[RESPONSE]
+poetry run aiwf approve <session-id>  # GENERATE[RESPONSE] → REVIEW[PROMPT]
 # Extracts code to: iteration-1/code/*.java
 
-# 9. Approve generated code
-# - Review: iteration-1/code/*.java (edit if needed)
+# 7. Continue review → revision cycle as needed
 poetry run aiwf approve <session-id>
-# Hashes artifacts, ready for review
-
-# 10. Continue review → revision cycle as needed
-poetry run aiwf step <session-id>
 # ... until workflow reaches COMPLETE
 
 # Check status anytime
 poetry run aiwf status <session-id>
+
+# Reject content with feedback
+poetry run aiwf reject <session-id> --feedback "Missing tenant isolation"
 ```
 
 **Understanding the workflow:**
-- `aiwf step` - Advances workflow (generates prompts, processes responses)
-- `aiwf approve` - Locks phase outputs (hashes files, sets approval flags)
+- `aiwf init <profile>` - Creates session and first prompt
+- `aiwf approve` - Advances workflow (calls provider, hashes artifacts)
+- `aiwf reject` - Rejects current content with feedback
 - **Manual steps** - You copy prompts to AI, paste responses back
 - **Editable outputs** - Edit any file before approval to customize results
 
@@ -623,109 +610,93 @@ This separation enables:
 ### Global Options
 
 - `--json` - Emit machine-readable JSON output (available on all commands)
+- `--project-dir` - Project root directory (default: current directory)
 
 ### Commands
 
-#### `aiwf <profile> init`
+#### `aiwf init <profile>`
 
-Initialize a new workflow session. The `init` command is profile-specific—each profile defines its own required context parameters.
-
-**For jpa-mt profile:**
+Initialize a new workflow session. Context is passed via `-c key=value` pairs.
 
 ```bash
-aiwf jpa-mt init --scope <scope> --entity <entity> --table <table> --bounded-context <context> [options]
+aiwf init <profile> [options]
 ```
 
-**Required (jpa-mt):**
-- `--scope` - Generation scope (`domain` or `vertical`)
-- `--entity` - Entity name in PascalCase (e.g., `Product`)
-- `--table` - Database table name (e.g., `app.products`)
-- `--bounded-context` - Domain context (e.g., `catalog`)
-- `--schema-file` - Path to DDL schema file
+**Arguments:**
+- `<profile>` - Workflow profile to use (e.g., `jpa-mt`)
 
-**Optional (jpa-mt):**
+**Options:**
+- `-c, --context <key=value>` - Context pairs (multiple allowed)
+- `--planner <provider>` - Provider for planning phase (default: manual)
+- `--generator <provider>` - Provider for generation phase (default: manual)
+- `--reviewer <provider>` - Provider for review phase (default: manual)
+- `--revisor <provider>` - Provider for revision phase (default: manual)
 - `--dev` - Developer identifier
 - `--task-id` - External task/ticket reference
 
-**Output:**
-```
-<session-id>
-```
-
-**Example:**
-```bash
-aiwf jpa-mt init \
-  --scope domain \
-  --entity Product \
-  --table app.products \
-  --bounded-context product \
-  --schema-file docs/db/01-schema.sql
-```
-
----
-
-#### `aiwf step`
-
-Advance the workflow by one deterministic step.
+**Context requirements vary by profile.** Use `aiwf <profile> info` to see required context:
 
 ```bash
-aiwf step <session-id>
+aiwf jpa-mt info
+# Shows: entity (required), table (required), bounded_context (required),
+#        scope [default: domain], schema_file (required)
 ```
 
-**Behavior:**
-- Generates prompts when entering ING phases (PLANNING, GENERATING, REVIEWING, REVISING)
-- Processes responses when files exist
-- Reports blocking conditions (awaiting response files)
-- Advances phase when conditions met
-
-**Exit Codes:**
-- `0` - Success (advanced or already complete)
-- `1` - Error
-- `2` - Blocked (awaiting artifact)
-- `3` - Cancelled
+**Example (jpa-mt):**
+```bash
+aiwf init jpa-mt \
+  -c entity=Product \
+  -c table=app.products \
+  -c bounded-context=catalog \
+  -c schema-file=docs/db/01-schema.sql
+```
 
 **Output:**
 ```
-phase=PLANNING status=IN_PROGRESS iteration=1 noop_awaiting_artifact=true
-.aiwf/sessions/<session-id>/iteration-1/planning-prompt.md
-.aiwf/sessions/<session-id>/iteration-1/planning-response.md
+session_id=abc123...
+phase=PLAN
+stage=prompt
 ```
 
 ---
 
 #### `aiwf approve`
 
-Approve current phase outputs, compute hashes, and optionally invoke providers.
+Approve current stage outputs and advance the workflow.
 
 ```bash
 aiwf approve <session-id> [--hash-prompts | --no-hash-prompts]
 ```
 
-**Phase-Specific Behavior:**
+**Phase+Stage Behavior:**
 
-| Phase | Approval Action |
-|-------|----------------|
-| PLANNING | Hash prompt (optional), call provider, write response |
-| PLANNED | Hash `plan.md`, set `plan_approved=True` |
-| GENERATING | Hash prompt (optional), call provider, write response |
-| GENERATED | Hash all `code/*` files, set artifact `sha256` values |
-| REVIEWING | Hash prompt (optional), call provider, write response |
-| REVIEWED | Hash `review-response.md`, set `review_approved=True` |
-| REVISING | Hash prompt (optional), call provider, write response |
-| REVISED | Hash all `code/*` files, set artifact `sha256` values |
+| Phase | Stage | Approval Action |
+|-------|-------|-----------------|
+| PLAN | PROMPT | Call provider, create response file, advance to PLAN[RESPONSE] |
+| PLAN | RESPONSE | Hash plan, set plan_approved, advance to GENERATE[PROMPT] |
+| GENERATE | PROMPT | Call provider, create response file, advance to GENERATE[RESPONSE] |
+| GENERATE | RESPONSE | Hash artifacts, advance to REVIEW[PROMPT] |
+| REVIEW | PROMPT | Call provider, create response file, advance to REVIEW[RESPONSE] |
+| REVIEW | RESPONSE | Hash review, advance to COMPLETE or REVISE[PROMPT] |
+| REVISE | PROMPT | Call provider, create response file, advance to REVISE[RESPONSE] |
+| REVISE | RESPONSE | Hash artifacts, advance to REVIEW[PROMPT] |
 
 **Options:**
 - `--hash-prompts` - Force prompt hashing (overrides config)
 - `--no-hash-prompts` - Skip prompt hashing (overrides config)
 
-**Example:**
-```bash
-# Approve with default hashing behavior (from config)
-aiwf approve <session-id>
+---
 
-# Force prompt hashing for this approval
-aiwf approve <session-id> --hash-prompts
+#### `aiwf reject`
+
+Reject current content with feedback. Only valid when approval is pending.
+
+```bash
+aiwf reject <session-id> --feedback <message>
 ```
+
+**Options:**
+- `-f, --feedback <text>` - Feedback explaining rejection (required)
 
 ---
 
@@ -772,229 +743,108 @@ aiwf status <session-id> --json
 #### Step 1: Initialize Session
 
 ```bash
-aiwf jpa-mt init \
-  --scope domain \
-  --entity Product \
-  --table app.products \
-  --bounded-context product \
-  --schema-file docs/db/01-schema.sql
+aiwf init jpa-mt \
+  -c entity=Product \
+  -c table=app.products \
+  -c bounded-context=catalog \
+  -c schema-file=docs/db/01-schema.sql
 ```
 
-**Output:** `6e73d8cd7da8461189718154b3e99960`
+**Output:**
+```
+session_id=6e73d8cd7da8461189718154b3e99960
+phase=PLAN
+stage=prompt
+```
 
 **What Happened:**
 - Created session directory: `.aiwf/sessions/6e73d8cd.../`
 - Generated standards bundle from jpa-mt profile
-- Transitioned to PLANNING phase
-- Created `session.json` with initial state
+- Created `planning-prompt.md` in `iteration-1/`
+- Transitioned to PLAN[PROMPT] stage
 
 ---
 
-#### Step 2: Generate Planning Prompt
-
-```bash
-aiwf step 6e73d8cd7da8461189718154b3e99960
-```
-
-**Output:**
-```
-phase=PLANNING status=IN_PROGRESS iteration=1 noop_awaiting_artifact=true
-.aiwf/sessions/6e73d8cd.../iteration-1/planning-prompt.md
-.aiwf/sessions/6e73d8cd.../iteration-1/planning-response.md
-```
-
-**What Happened:**
-- Generated `planning-prompt.md` with:
-  - AI persona and role
-  - Standards bundle (JPA, database patterns, etc.)
-  - Entity requirements
-  - Schema DDL
-  - Planning guidelines
-
-**Next Action:** Copy planning-prompt.md to your AI provider (ChatGPT, Claude, etc.)
-
----
-
-#### Step 3: Provide Planning Response
+#### Step 2: Provide Planning Response (Manual Provider)
 
 **Manual Step:**
-1. Copy content of `planning-prompt.md`
-2. Paste into AI provider (ChatGPT, Claude, Gemini, etc.)
+1. Open `iteration-1/planning-prompt.md`
+2. Copy content to your AI (ChatGPT, Claude, etc.)
 3. Copy AI response
-4. Save to `planning-response.md`
-
-**File:** `.aiwf/sessions/6e73d8cd.../iteration-1/planning-response.md`
+4. Save to `iteration-1/planning-response.md`
 
 ---
 
-#### Step 4: Process Planning Response
+#### Step 3: Approve Planning Prompt
 
-```bash
-aiwf step 6e73d8cd7da8461189718154b3e99960
-```
-
-**Output:**
-```
-phase=PLANNED status=IN_PROGRESS iteration=1 noop_awaiting_artifact=false
-```
-
-**What Happened:**
-- Validated planning-response.md exists and is non-empty
-- Transitioned to PLANNED phase
-- Workflow now awaits plan approval
-
----
-
-#### Step 5: Review and Approve Plan
-
-**Manual Review:**
-```bash
-# Read the planning response
-cat .aiwf/sessions/6e73d8cd.../iteration-1/planning-response.md
-
-# Edit if needed (make any corrections before approval)
-```
-
-**Approve:**
 ```bash
 aiwf approve 6e73d8cd7da8461189718154b3e99960
 ```
 
 **What Happened:**
-- Copied `planning-response.md` → `plan.md` (session root)
-- Computed SHA-256 hash of plan.md
+- For manual provider: Advances to PLAN[RESPONSE] (waits for response file)
+- For automated provider: Calls AI, writes response, advances
+
+---
+
+#### Step 4: Approve Plan
+
+```bash
+aiwf approve 6e73d8cd7da8461189718154b3e99960
+```
+
+**What Happened:**
+- Copied `planning-response.md` → `plan.md`
+- Computed hash of plan
 - Set `plan_approved=True`
-- Workflow ready to advance to GENERATING
+- Advanced to GENERATE[PROMPT], created `generation-prompt.md`
 
 ---
 
-#### Step 6: Enter Generation Phase
+#### Step 5: Continue Through Generation
 
 ```bash
-aiwf step 6e73d8cd7da8461189718154b3e99960
-```
+# Provide generation response (manual: copy/paste with AI)
+# Approve generation prompt
+aiwf approve 6e73d8cd...
 
-**Output:**
-```
-phase=GENERATING status=IN_PROGRESS iteration=1 noop_awaiting_artifact=true
-.aiwf/sessions/6e73d8cd.../iteration-1/generation-prompt.md
-.aiwf/sessions/6e73d8cd.../iteration-1/generation-response.md
+# Approve generation response (extracts code, computes hashes)
+aiwf approve 6e73d8cd...
 ```
 
 **What Happened:**
-- Created `iteration-1/` directory
-- Generated `generation-prompt.md` with:
-  - Approved plan
-  - Standards bundle
-  - Code generation guidelines
-  - Output format instructions (`<<<FILE: filename>>>`)
+- Extracted code from `<<<FILE:>>>` markers
+- Wrote files to `iteration-1/code/`
+- Computed artifact hashes
+- Advanced to REVIEW[PROMPT]
 
 ---
 
-#### Step 7: Provide Generation Response
-
-**Manual Step:**
-1. Copy `generation-prompt.md` → AI provider
-2. AI generates code with `<<<FILE: Product.java>>>` markers
-3. Save response to `generation-response.md`
-
-**Expected Format:**
-```markdown
-Here's the implementation:
-
-<<<FILE: Product.java>>>
-package com.skillsharbor.catalog.domain;
-
-import jakarta.persistence.*;
-import java.math.BigDecimal;
-// ... (complete entity code)
->>>
-
-<<<FILE: ProductRepository.java>>>
-package com.skillsharbor.catalog.domain;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-// ... (complete repository code)
->>>
-```
-
----
-
-#### Step 8: Extract Generated Code
+#### Step 6: Review and Complete
 
 ```bash
-aiwf step 6e73d8cd7da8461189718154b3e99960
-```
+# Approve review prompt
+aiwf approve 6e73d8cd...
 
-**Output:**
-```
-phase=GENERATED status=IN_PROGRESS iteration=1 noop_awaiting_artifact=false
-```
-
-**What Happened:**
-- Parsed `generation-response.md`
-- Extracted code blocks using `<<<FILE:>>>` markers
-- Wrote files to `iteration-1/code/`:
-  - `Product.java`
-  - `ProductRepository.java`
-- Created artifact metadata (with `sha256=None`)
-- Transitioned to GENERATED phase
-
----
-
-#### Step 9: Approve Generated Code
-
-**Manual Review:**
-```bash
-# Review generated files
-ls -la .aiwf/sessions/6e73d8cd.../iteration-1/code/
-cat .aiwf/sessions/6e73d8cd.../iteration-1/code/Product.java
-
-# Edit if needed (fix any issues before approval)
-```
-
-**Approve:**
-```bash
-aiwf approve 6e73d8cd7da8461189718154b3e99960
-```
-
-**What Happened:**
-- Computed SHA-256 for each file in `iteration-1/code/`
-- Updated artifact metadata with hashes
-- Workflow ready for review
-
----
-
-#### Step 10: Review Phase
-
-```bash
-# Generate review prompt
-aiwf step 6e73d8cd7da8461189718154b3e99960
-
-# Provide review response (same copy/paste workflow)
-# ... save to review-response.md
-
-# Process review
-aiwf step 6e73d8cd7da8461189718154b3e99960
-```
-
-**What Happened:**
-- Generated `review-prompt.md` with standards and code files
-- Parsed review response for `@@@REVIEW_META` block
-- Extracted verdict (PASS/FAIL)
-- Transitioned to REVIEWED phase
-
----
-
-#### Step 11: Final Approval
-
-```bash
-aiwf approve 6e73d8cd7da8461189718154b3e99960
+# Approve review response (processes verdict)
+aiwf approve 6e73d8cd...
 ```
 
 **What Happened:**
 - If verdict=PASS: Workflow transitions to COMPLETE
-- If verdict=FAIL: Workflow increments iteration and transitions to REVISING
+- If verdict=FAIL: Advances to REVISE[PROMPT], creates `iteration-2/`
+
+---
+
+#### Using Reject for Feedback
+
+At any point with pending approval, you can reject with feedback:
+
+```bash
+aiwf reject 6e73d8cd... --feedback "Missing tenant isolation in entity"
+```
+
+This triggers the provider to regenerate with your feedback incorporated
 
 ---
 
@@ -1118,7 +968,7 @@ Generates domain layer only:
 
 **Command:**
 ```bash
-aiwf jpa-mt init --scope domain --entity Product --table app.products --bounded-context product --schema-file schema.sql
+aiwf init jpa-mt -c entity=Product -c table=app.products -c bounded-context=product -c schema-file=schema.sql
 ```
 
 #### Vertical Scope
@@ -1132,7 +982,7 @@ Generates complete feature implementation:
 
 **Command:**
 ```bash
-aiwf jpa-mt init --scope vertical --entity Product --table app.products --bounded-context product --schema-file schema.sql
+aiwf init jpa-mt -c scope=vertical -c entity=Product -c table=app.products -c bounded-context=product -c schema-file=schema.sql
 ```
 
 ### Template System
@@ -1538,7 +1388,7 @@ Complete rewrite with improved separation of concerns and extensibility. All cor
 - ✅ Automated AI providers (Claude Code via SDK, Gemini CLI via subprocess)
 - ✅ Configurable approval gates (manual, skip, or AI-powered)
 - ✅ JPA multi-tenant profile with comprehensive standards
-- ✅ CLI interface (`init`, `step`, `approve`, `status`, `list`)
+- ✅ CLI interface (`init`, `approve`, `reject`, `status`, `list`)
 - ✅ Session persistence and resumability
 - ✅ Iteration tracking with complete audit trail
 - ✅ Path validation and security boundaries

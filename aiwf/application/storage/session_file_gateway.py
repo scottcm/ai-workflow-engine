@@ -266,9 +266,17 @@ class SessionFileGateway:
 
         Returns:
             Path to written file
+
+        Raises:
+            ValueError: If path escapes code directory (path traversal)
         """
         code_dir = self.ensure_code_dir(iteration)
-        file_path = code_dir / relative_path
+
+        # Security: Validate path doesn't escape code directory
+        file_path = (code_dir / relative_path).resolve()
+        if not file_path.is_relative_to(code_dir.resolve()):
+            raise ValueError(f"Path escapes code directory: {relative_path}")
+
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
         return file_path

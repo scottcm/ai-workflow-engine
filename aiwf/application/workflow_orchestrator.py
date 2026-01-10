@@ -456,6 +456,7 @@ class WorkflowOrchestrator:
         except ProviderError as e:
             state.last_error = str(e)
             state.status = WorkflowStatus.ERROR
+            self.session_store.save(state)  # Persist error state before raising
             raise
 
         if result.awaiting_response:
