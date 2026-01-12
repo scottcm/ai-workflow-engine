@@ -474,7 +474,6 @@ Schema includes tenant-scoped tables with RLS patterns matching jpa-mt profile t
 **Design Trade-offs:**
 - Convention-based component boundaries (not enforced by sandbox)
 - Trust-based audit (hash mismatches warn but don't block)
-- Manual iteration increments (no auto-loop on review rejection)
 
 See [GitHub Issues](https://github.com/scottcm/ai-workflow-engine/issues) for roadmap.
 
