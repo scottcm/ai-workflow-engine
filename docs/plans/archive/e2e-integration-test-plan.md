@@ -20,7 +20,7 @@ Verify the workflow engine correctly orchestrates the jpa-mt profile through all
 - INIT → PLAN → GENERATE → REVIEW → REVISE → REVIEW → COMPLETE (revision path)
 
 ### What Integration Tests Should Verify
-1. CLI commands work (`init`, `step`, `approve`, `reject`, `status`)
+1. CLI commands work (`init`, `approve`, `reject`, `status`)
 2. State transitions happen correctly (phase/stage changes)
 3. Files are created in correct locations (prompts, responses, artifacts)
 4. **Prompt file contents** - with mocked standards, verify:

@@ -41,7 +41,7 @@ Treat line counts as guidelines, not hard gates. The stronger success criteria a
 
 Quick wins to reduce noise before refactor:
 
-- [ ] Update `API-CONTRACT.md` - remove `step` command documentation (10 min)
+- [x] Update `API-CONTRACT.md` - remove `step` command documentation (10 min)
 - [ ] Mark `approval_handler.py` as deprecated (per D1):
   - Add deprecation warning to `run_provider()`
   - Tests continue to work; migration happens in Phase 3
