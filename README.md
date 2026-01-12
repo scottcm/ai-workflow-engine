@@ -1,393 +1,58 @@
 # AI Workflow Engine
 
-**Enterprise-grade workflow orchestrator for AI-assisted code generation**
+**Production workflow engine for AI-assisted code generation**
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> **Production Status:** v2.0.0 - Full workflow with automated AI providers and approval gates
+> Production workflow engine built for [Skills Harbor](https://skillsharbor.com)'s multi-tenant SaaS platform to orchestrate AI-assisted JPA entity generation. Open-sourced to demonstrate a practical architectural approach to human-AI collaboration in code generation workflows.
 
-A stateful, resumable workflow engine that orchestrates multi-phase AI-assisted code generation with explicit approval gates, artifact tracking, and iteration management. Built to demonstrate enterprise architecture patterns while solving real-world development challenges.
-
-**Key Features:**
-- 📋 Multi-phase workflow: Planning → Generation → Review → Revision
-- ✅ Explicit approval gates with deferred hashing  
-- 🔄 Iteration tracking with complete audit trail
-- 🎯 Profile-based extensibility (language/framework agnostic)
-- 🔐 Security-conscious path validation and isolation
-- 💾 File-materialized semantics (every output is editable)
-- 💰 **Budget-friendly:** Works with free AI web interfaces, not expensive APIs
-- 🎛️ **Full control:** Manual mode lets you edit prompts and review responses
+**Version:** v2.0.0 - Full workflow with automated AI providers and approval gates
 
 ---
 
-## Table of Contents
+## What This Is
 
-- [Background](#background)
-- [Quick Start](#quick-start)
-- [What This Project Demonstrates](#what-this-project-demonstrates)
-- [Architecture Overview](#architecture-overview)
-- [CLI Reference](#cli-reference)
-- [Workflow Tutorial](#workflow-tutorial)
-- [Configuration](#configuration)
-- [JPA Multi-Tenant Profile](#jpa-multi-tenant-profile)
-- [Extending the Engine](#extending-the-engine)
-- [Documentation](#documentation)
-- [Development Setup](#development-setup)
-- [Known Limitations](#known-limitations)
-- [Project Status](#project-status)
-- [License](#license)
+A stateful, resumable workflow orchestrator that manages multi-phase AI-assisted code generation:
 
----
-
-## Background
-
-This project originated from production needs at Skills Harbor, a startup building multi-tenant SaaS applications. Like many startups, Skills Harbor operates with limited budgets and needed a way to leverage AI for code generation without expensive API subscriptions.
-
-The solution: a workflow engine that works with consumer AI subscriptions (ChatGPT web interface, Claude.ai, Gemini) and CLI agents—not enterprise API keys. This "manual mode" approach provides budget-friendly access to cutting-edge AI while maintaining full control over prompts and responses.
-
-Skills Harbor is predominantly a Java shop, which drove the creation of the `jpa-mt` profile for JPA/Spring Data generation. However, the engine architecture is deliberately language-agnostic—profiles can be created for any technology stack.
-
-**Why This Approach?**
-- **Budget reality**: Works with free/low-cost AI subscriptions and manual workflows
-- **Real-world complexity**: Built to support actual multi-tenant SaaS patterns (JPA, RLS, Spring Data)
-- **Auditability**: Every prompt, response, and iteration preserved as editable files
-- **Extensibility**: New languages/frameworks added via profiles, not core modifications
-- **Developer control**: Edit prompts before submission, review responses before processing
-
-Built as an independent project with permission, this engine demonstrates enterprise architecture patterns while solving real development workflow challenges.
-
----
-
-## Key Concepts
-
-Understanding how the engine works requires understanding three distinct components:
-
-### 1. The Engine (AI & Language Agnostic)
-
-The **AI Workflow Engine** (aiwf) orchestrates the workflow of planning → generating → reviewing → revising code. It is completely agnostic to:
-- **Which AI** you use (ChatGPT, Claude, Gemini, etc.)
-- **What language/technology** you're generating (Java, Python, TypeScript, etc.)
-- **How AI is accessed** (web chat, CLI agent, API)
-
-The engine's job is workflow management:
-- Track workflow state (phases, iterations, approvals)
-- Generate prompts at the right time
-- Process responses when available
-- Manage artifacts and file I/O
-- Enforce approval gates
-- Persist session state
-
-**The engine never generates prompts or processes code directly**—that's the profile's job.
-
----
-
-### 2. Profiles (Language & Technology Specifics)
-
-**Profiles** are extensions that implement language/technology-specific generation logic. A profile knows:
-- How to structure prompts for a specific domain (e.g., JPA entity generation)
-- What standards apply (coding conventions, architectural patterns)
-- How to parse AI responses and extract code
-- What file structure to create
-
-**How they work** is largely up to the implementor, but the design pattern is:
-- **Input:** Workflow context (entity name, table, scope, etc.)
-- **Output:** Prompts (strings) or WritePlans (what files to create)
-- **Constraints:** Never perform file I/O, never mutate workflow state
-
-**Current profile:**
-- `jpa-mt` - Produces Java/JPA/Spring Data code for multi-tenant databases
-
-**The architecture supports any technology:**
-- React/TypeScript frontend components
-- Python/FastAPI backend services  
-- Go microservices
-- Ruby on Rails models
-- Any language or framework
-
-Creating a new profile means implementing the `WorkflowProfile` interface and registering it with the engine. The engine handles everything else.
-
----
-
-### 3. AI Providers (How AI is Accessed)
-
-**AI Providers** are extensions that handle the mechanics of getting prompts to AI and responses back. They abstract away:
-- API calls vs CLI agents vs web interfaces
-- Authentication and configuration
-- Response streaming and parsing
-
-**Available providers:**
-- `manual` - Human-in-the-loop mode (copy/paste between web interfaces)
-- `claude-code` - Automated via Claude Code CLI (uses Claude Agent SDK)
-- `gemini-cli` - Automated via Gemini CLI (subprocess with NDJSON streaming)
-
-**How `manual` provider works:**
-1. Engine writes prompt to `.md` file (e.g., `planning-prompt.md`)
-2. **You** copy prompt content to your AI of choice (ChatGPT, Claude, Gemini, etc.)
-3. **You** copy AI response and save it to response file (e.g., `planning-response.md`)
-4. Engine processes response file when you run `aiwf approve`
-
-This approach:
-- Works with **free AI web interfaces** (ChatGPT.com, Claude.ai, Gemini)
-- Gives you **full control** over prompt editing before submission
-- Provides complete **audit trail** (all prompts/responses saved as files)
-- **No API costs** - use whatever AI subscription you already have
-
-**How automated providers work:**
-- Engine writes prompt file, provider invokes CLI agent
-- CLI agent reads prompt, generates response, writes code files directly
-- Engine tracks written files and updates workflow state
-- Works with `claude-code` (Claude Desktop) or `gemini-cli` (Gemini CLI)
-
----
-
-### 4. Approval Providers (Automated Quality Gates)
-
-**Approval Providers** implement automated quality gates at each stage of the workflow. They evaluate prompts and responses, deciding whether to approve, reject, or request changes.
-
-**Available approval providers:**
-- `skip` - Auto-approve everything (fastest, no gates)
-- `manual` - User's `approve` command IS the decision
-- `claude-code` - Claude evaluates content and decides (requires criteria file)
-- `gemini-cli` - Gemini evaluates content and decides (requires criteria file)
-
-**How approval gates work:**
-1. Content is created (prompt or response)
-2. Approval provider evaluates content against criteria
-3. If approved: hash computed, workflow advances
-4. If rejected: feedback provided, content remains editable
-
-**Configuration example:**
-```yaml
-# In approval config
-default_approver: manual
-stages:
-  plan.response:
-    approver: claude-code
-    max_retries: 3
-  generate.response:
-    approver: skip  # Trust the generation
-  review.response:
-    approver: manual  # Human reviews the review
+```
+PLAN → GENERATE → REVIEW → REVISE → COMPLETE
 ```
 
-**Key features:**
-- Configurable per phase/stage
-- AI approvers can suggest changes
-- Retry logic with configurable limits
-- `IN_PROGRESS` status on max retries (workflow paused, not failed)
+Each phase has explicit approval gates, deferred hashing for user edits, and complete audit trails. The engine is language-agnostic; domain logic lives in pluggable **profiles**.
 
-See [ADR-0015](docs/adr/0015-approval-provider-implementation.md) for design details.
+**Production context:** Built to generate JPA/Spring Data entities for Skills Harbor's multi-tenant architecture, handling tenant isolation patterns, row-level security (RLS), and Spring Data repository generation.
 
 ---
 
-### 5. Standards Providers (How Coding Standards are Retrieved)
+## What This Demonstrates
 
-**Standards Providers** are profile-specific extensions that retrieve and bundle coding standards for a session. They answer the question: "What coding rules should AI follow?"
-
-**Why this matters:** During `aiwf init`, the engine calls the profile's standards provider to create a `standards-bundle.md` file. This bundle contains all the coding conventions, architectural patterns, and best practices that AI should follow when generating code. The bundle is **created once per session and never changes** - ensuring consistency across all phases.
-
-**The StandardsProvider interface:**
-```python
-class StandardsProvider(Protocol):
-    def create_bundle(self, context: dict[str, Any]) -> str:
-        """
-        Create standards bundle for the given context.
-        
-        Args:
-            context: Workflow context (scope, entity, bounded_context, etc.)
-            
-        Returns:
-            Complete standards bundle as a string (markdown)
-        """
-        ...
-```
-
-**How it works:**
-1. During `aiwf init`, engine asks profile for its standards provider
-2. Profile returns a `StandardsProvider` instance
-3. Engine calls `provider.create_bundle(context)` with workflow context
-4. Provider returns complete standards text
-5. Engine writes `standards-bundle.md` and computes its hash
-6. Bundle is included in every prompt throughout the session
-
-**Different retrieval strategies:**
-
-Profiles can implement standards retrieval however they need:
-
-**File-based (jpa-mt approach):**
-```python
-class JpaMtStandardsProvider:
-    def __init__(self, config):
-        self.standards_root = Path(config['standards']['root'])
-        self.scopes = config['scopes']
-        self.layer_standards = config['layer_standards']
-    
-    def create_bundle(self, context: dict[str, Any]) -> str:
-        scope = context.get('scope')
-        layers = self.scopes[scope]['layers']
-        
-        # Read files based on scope-specific layers
-        # e.g., domain scope → entity + repository standards
-        # vertical scope → entity + repository + service + controller
-        
-        files = self._select_files_for_layers(layers)
-        return self._concatenate_files(files)
-```
-
-**RAG-based (hypothetical):**
-```python
-class RagStandardsProvider:
-    def __init__(self, config):
-        self.vector_db = VectorDatabase(config['db_url'])
-    
-    def create_bundle(self, context: dict[str, Any]) -> str:
-        # Query vector database for relevant standards
-        entity = context.get('entity')
-        scope = context.get('scope')
-        
-        query = f"coding standards for {scope} scope {entity} entity"
-        results = self.vector_db.similarity_search(query, k=10)
-        
-        return self._format_standards(results)
-```
-
-**API-based (hypothetical):**
-```python
-class ApiStandardsProvider:
-    def __init__(self, config):
-        self.api_client = StandardsApiClient(config['api_key'])
-    
-    def create_bundle(self, context: dict[str, Any]) -> str:
-        # Fetch standards from central API
-        bounded_context = context.get('bounded_context')
-        scope = context.get('scope')
-        
-        response = self.api_client.get_standards(
-            context=bounded_context,
-            scope=scope
-        )
-        
-        return response.markdown_content
-```
-
-**Git-based (hypothetical):**
-```python
-class GitStandardsProvider:
-    def __init__(self, config):
-        self.repo = GitRepo(config['repo_url'])
-    
-    def create_bundle(self, context: dict[str, Any]) -> str:
-        # Clone/pull standards repository
-        # Select files based on context
-        # Return concatenated content
-        ...
-```
-
-**Key benefits:**
-- **Flexibility:** Profiles control how standards are retrieved
-- **Centralization:** Standards can come from any source (files, DB, API, git)
-- **Scope-awareness:** Different scopes get different standards (jpa-mt example)
-- **Immutability:** Bundle created once, never changes during session
-- **Auditability:** `standards-bundle.md` shows exactly what AI was told
-
-**The jpa-mt file-based approach:**
-
-The jpa-mt profile uses a layered, scope-aware file system:
-
-```yaml
-# profiles/jpa_mt/config.yml
-scopes:
-  domain:
-    layers: [entity, repository]
-  vertical:
-    layers: [entity, repository, service, controller]
-
-layer_standards:
-  _universal: [CORE_CONVENTIONS.md]
-  entity: [JPA_ENTITY.md, MULTI_TENANT.md]
-  repository: [JPA_REPOSITORY.md]
-  service: [SERVICE_LAYER.md]
-  controller: [REST_CONTROLLER.md]
-```
-
-For a **domain scope** session:
-- Loads: `_universal` + `entity` + `repository` standards
-- Result: ~3 files concatenated into bundle
-
-For a **vertical scope** session:
-- Loads: `_universal` + `entity` + `repository` + `service` + `controller` standards
-- Result: ~5 files concatenated into bundle
-
-This ensures AI only gets relevant standards for the code being generated.
+| Skill/Pattern | Evidence in Codebase |
+|---------------|---------------------|
+| **State Machine Design** | [TransitionTable](aiwf/application/transitions.py) - Declarative state machine, [ADR-0012](docs/adr/0012-workflow-phases-stages-approval-providers.md) |
+| **Strategy Pattern** | [WorkflowProfile](aiwf/domain/profiles/workflow_profile.py), [AIProvider](aiwf/domain/providers/ai_provider.py), [ApprovalProvider](aiwf/domain/providers/approval_provider.py) |
+| **Factory Pattern** | [ProfileFactory](aiwf/domain/profiles/profile_factory.py), [AIProviderFactory](aiwf/domain/providers/provider_factory.py) |
+| **Repository Pattern** | [SessionStore](aiwf/domain/persistence/session_store.py) - File-based state persistence |
+| **Clean Architecture** | Layered design: Interface (CLI) → Application (Orchestration) → Domain (Models, Profiles) → Infrastructure (Providers) |
+| **Approval Gates** | [ADR-0015](docs/adr/0015-approval-provider-implementation.md) - Quality gates with AI/manual/skip strategies |
+| **Test Coverage** | 854 unit tests, 84% coverage - [Unit](tests/unit/) + [Integration](tests/integration/) |
+| **Type Safety** | Full Pydantic models with mypy enforcement |
+| **Security** | [PathValidator](aiwf/domain/validation/path_validator.py) - Path traversal prevention, input validation |
+| **Extensibility** | Plugin architecture for profiles, AI providers, standards providers |
 
 ---
 
-### 5. Execution Mode vs Providers (Orthogonal Concerns)
+## Key Features
 
-The workflow engine separates two independent concerns:
-
-| Concern | Question Answered | Options |
-|---------|-------------------|---------|
-| **Execution Mode** | Who drives the workflow? | `INTERACTIVE` (user), `AUTOMATED` (engine) |
-| **Providers** | Who produces responses? | `manual`, `claude`, `gemini`, etc. |
-
-**Execution Mode (Control Flow):**
-- `INTERACTIVE`: User must issue `approve` commands to advance the workflow
-- `AUTOMATED`: Engine advances automatically without user commands
-
-**Providers (Data Flow):**
-- `manual`: No programmatic response; expects response file written externally (by user or AI agent)
-- `claude`/`gemini`/etc.: API call produces the response automatically
-
-**Key Insight:** These are orthogonal. You can mix and match:
-
-| Mode | Providers | Use Case |
-|------|-----------|----------|
-| INTERACTIVE + all manual | User copies prompts to AI chat, pastes responses, runs step/approve | Budget-friendly, full control |
-| INTERACTIVE + claude | User controls *when* to advance, Claude produces *what* | Human-paced with API automation |
-| AUTOMATED + all non-manual | Full automation end-to-end | CI/CD pipelines, batch processing |
-| INTERACTIVE + mixed | Some phases automated, others manual | Automate review, manual generation |
-
-**Why this matters:**
-- "Manual provider" ≠ "Interactive mode" (common confusion)
-- You can use AI APIs while still maintaining step-by-step control
-- You can run fully automated workflows that still require human response creation
-
----
-
-### Putting It Together
-
-**Actual workflow sequence** (using Phase+Stage model):
-
-1. **Initialize:** `aiwf init jpa-mt -c ...` → creates session at PLAN[PROMPT], creates `planning-prompt.md`
-2. **[USER ACTION]** Edit prompt if needed, copy to AI, save response to `planning-response.md`
-3. **Approve prompt:** `aiwf approve` → calls provider (or waits for manual), advances to PLAN[RESPONSE]
-4. **Approve plan:** `aiwf approve` → copies response to `plan.md`, hashes it, advances to GENERATE[PROMPT]
-5. **[USER ACTION]** Edit generation prompt if needed, copy to AI, save response
-6. **Approve prompt:** `aiwf approve` → advances to GENERATE[RESPONSE]
-7. **Approve code:** `aiwf approve` → extracts code, hashes artifacts, advances to REVIEW[PROMPT]
-8. **[USER ACTION]** Copy review prompt to AI, save response
-9. **Approve prompt:** `aiwf approve` → advances to REVIEW[RESPONSE]
-10. **Approve review:** `aiwf approve` → processes verdict
-    - **If PASS:** workflow completes
-    - **If FAIL:** advances to REVISE[PROMPT], creates `iteration-2/`
-11. **Revision cycle:** Continue approve/reject until PASS
-
-**Pattern you'll see:**
-- `aiwf init` → Creates session and first prompt
-- `aiwf approve` → Advances workflow (calls provider, extracts code, computes hashes)
-- `aiwf reject` → Rejects content with feedback, triggers regeneration
-- **[USER ACTION]** → Edit files, copy/paste with AI (for manual provider)
-
-**Key insight:**
-- **`approve`** does ALL the work (call provider, write files, compute hashes, advance state)
-- **Hashing happens on approval** - this lets you edit files before they're locked
-- **New iterations** are created when review fails
-- **`reject`** triggers provider to regenerate with your feedback
-
-**Like all AI-assisted development, output quality depends heavily on prompt quality.** The jpa-mt profile has been refined through real-world usage at Skills Harbor to produce reliable results, but the "garbage in, garbage out" principle still applies.
+- **Multi-phase workflow**: PLAN → GENERATE → REVIEW → REVISE with approval gates at each stage
+- **Deferred hashing**: Captures user edits before locking artifacts
+- **Iteration management**: Full audit trail across revisions with session isolation
+- **Mode flexibility**: Manual (copy/paste to AI), CLI agents (claude-code, gemini-cli), or API providers
+- **Profile extensibility**: Language/framework-agnostic core, domain logic in profiles
+- **Complete audit**: Every prompt, response, and artifact preserved as editable files
+- **Budget-friendly**: Works with free AI web interfaces or consumer subscriptions
+- **Security-conscious**: Path validation, project isolation, no arbitrary code execution
 
 ---
 
@@ -396,501 +61,187 @@ The workflow engine separates two independent concerns:
 ### Prerequisites
 
 - Python 3.13+
-- Poetry (dependency management)
+- Poetry 1.7+
+- An AI interface (ChatGPT web, Claude.ai, Gemini, or CLI agent)
 
 ### Installation
 
 ```bash
-# Clone the repository
+# Clone and install
 git clone https://github.com/scottcm/ai-workflow-engine.git
 cd ai-workflow-engine
-
-# Install dependencies
 poetry install
-
-# Verify installation
-poetry run aiwf --help
+poetry shell
 ```
 
-### Your First Workflow Session
-
-This example uses the **manual provider** (default), which means you'll copy prompts to your AI of choice and paste responses back. This works with:
-- Free web interfaces (ChatGPT.com, Claude.ai, Gemini)
-- CLI agents (Claude Desktop, Gemini CLI)
-- Any AI you have access to
-
-**Benefits of manual mode:**
-- No API costs (use free/low-cost AI subscriptions)
-- Edit prompts before submission (customize for your needs)
-- Use any AI provider (not locked to specific APIs)
-- Complete audit trail (all files preserved)
+### Run Your First Workflow
 
 ```bash
-# 1. Initialize a session (jpa-mt profile)
-poetry run aiwf init jpa-mt \
+# Initialize session for JPA entity generation
+aiwf init jpa-mt \
   -c entity=Product \
   -c table=app.products \
   -c bounded-context=catalog \
-  -c schema-file=docs/db/01-schema.sql
+  -c scope=domain \
+  -c schema-file=docker/postgres/db/init/01-schema.sql
 
-# Output shows session_id, phase=PLAN, stage=prompt
-# Creates: .aiwf/sessions/<session-id>/iteration-1/planning-prompt.md
+# Output shows session ID and creates planning-prompt.md
+# Session: abc123-def456
+# Phase: PLAN[PROMPT]
+# Next: Edit .aiwf/sessions/abc123-def456/iteration-1/planning-prompt.md if needed, then run 'aiwf approve abc123-def456'
 
-# 2. MANUAL STEP: Provide planning response
-# - Open: planning-prompt.md
-# - Copy content to your AI (ChatGPT, Claude, etc.)
-# - Copy AI response
-# - Save to: planning-response.md (same directory)
+# Copy prompt to AI, paste response into planning-response.md, then:
+aiwf approve abc123-def456
 
-# 3. Approve prompt (calls provider or waits for manual response)
-poetry run aiwf approve <session-id>
-# For manual provider: advances to PLAN[RESPONSE] stage
-
-# 4. Review and approve plan
-# - Read: iteration-1/planning-response.md (edit if needed)
-poetry run aiwf approve <session-id>
-# Hashes plan, advances to GENERATE[PROMPT]
-
-# 5. MANUAL STEP: Provide code generation response
-# - Copy generation-prompt.md to AI
-# - AI generates code with <<<FILE: filename>>> markers
-# - Save response to: generation-response.md
-
-# 6. Approve generation prompt, then response
-poetry run aiwf approve <session-id>  # GENERATE[PROMPT] → GENERATE[RESPONSE]
-poetry run aiwf approve <session-id>  # GENERATE[RESPONSE] → REVIEW[PROMPT]
-# Extracts code to: iteration-1/code/*.java
-
-# 7. Continue review → revision cycle as needed
-poetry run aiwf approve <session-id>
-# ... until workflow reaches COMPLETE
-
-# Check status anytime
-poetry run aiwf status <session-id>
-
-# Reject content with feedback
-poetry run aiwf reject <session-id> --feedback "Missing tenant isolation"
+# Continue through GENERATE, REVIEW, REVISE phases...
+# Check status anytime:
+aiwf status abc123-def456
 ```
 
-**Understanding the workflow:**
-- `aiwf init <profile>` - Creates session and first prompt
-- `aiwf approve` - Advances workflow (calls provider, hashes artifacts)
-- `aiwf reject` - Rejects current content with feedback
-- **Manual steps** - You copy prompts to AI, paste responses back
-- **Editable outputs** - Edit any file before approval to customize results
-
-**Why approval gates?**
-- Every output is editable before it becomes input to the next phase
-- Fix AI mistakes before they propagate
-- Customize generated code to your needs
-- Complete control over what gets locked in
+See [Workflow Tutorial](#workflow-tutorial) for detailed walkthrough.
 
 ---
 
-## What This Project Demonstrates
+## Architecture Highlights
 
-This project showcases enterprise-grade software engineering practices appropriate for production systems:
+### Phase + Stage Model
 
-### Architecture & Design Patterns
-
-**Implemented Patterns:**
-- **Strategy Pattern** (3 uses):
-  - `WorkflowProfile` - Different domain/framework implementations (JPA, React, etc.)
-  - `AIProvider` - Different AI backends (Claude CLI, Gemini CLI, manual mode)
-  - `StandardsProvider` - Different standards retrieval strategies (file-based, RAG, API, Git)
-- **Factory Pattern**: `ProfileFactory` and `AIProviderFactory` with registration system for dynamic plugin loading
-- **Repository Pattern**: `SessionStore` abstracts persistence layer (filesystem, future: database)
-- **State Pattern**: Procedural implementation via `WorkflowPhase` enum with phase-specific handlers
-
-**Supporting Patterns:**
-- **DTO Pattern**: Pydantic models for type-safe data transfer between layers
-- **Dependency Injection**: Constructor-based for testability
-
-**Why These Patterns?**
-- **Not applied dogmatically** - each solves a real extensibility or testability challenge
-- **Strategy Pattern consistency** - Used across profiles, providers, and standards shows architectural coherence
-- **Pragmatic State Pattern** - Enum-based approach simpler than separate state classes while achieving the same goals
-- **Factory + Strategy** - Together enable plugin architecture without modifying core engine
-
-### Engineering Practices
-
-- **Clean Architecture**: Layered design with explicit boundaries (Interface → Application → Domain → Infrastructure)
-- **SOLID Principles**: Single responsibility, dependency inversion, interface segregation
-- **Security by Design**: Path validation, traversal prevention, environment variable expansion
-- **Explicit State Management**: Pydantic models with validation, immutable workflow semantics
-- **Comprehensive Testing**: 100% passing test suite with unit and integration coverage
-- **Living Documentation**: Architecture Decision Records (ADRs) capturing rationale
-
-### Domain Modeling
-
-- **File-Materialized Workflows**: Every output is a file (enables editing, inspection, version control)
-- **Approval Gates**: Explicit user control before workflow advancement
-- **Deferred Hashing**: Capture user edits before locking artifact state
-- **Non-Enforcement**: Hash warnings, never blocks (respects developer autonomy)
-- **Iteration Semantics**: Clear rules for when iteration increments (only on revision)
-
----
-
-## Architecture Overview
-
-### Layered Architecture
+Workflow progresses through phases, each with two stages:
 
 ```
-┌─────────────────────────────────────────────┐
-│  Interface Layer (CLI)                      │
-│  - Click-based commands                     │
-│  - JSON and plain text output               │
-├─────────────────────────────────────────────┤
-│  Application Layer (Orchestration)          │
-│  - WorkflowOrchestrator                     │
-│  - ApprovalHandler                          │
-│  - StandardsMaterializer                    │
-├─────────────────────────────────────────────┤
-│  Domain Layer (Core Models & Contracts)     │
-│  - WorkflowState, Artifact, ProcessingResult│
-│  - WorkflowProfile (interface)              │
-│  - AIProvider (interface)                   │
-├─────────────────────────────────────────────┤
-│  Infrastructure Layer (Implementations)     │
-│  - SessionStore (persistence)               │
-│  - ProfileFactory, AIProviderFactory        │
-│  - PathValidator (security)                 │
-└─────────────────────────────────────────────┘
+PLAN[PROMPT] → approve → PLAN[RESPONSE] → approve →
+GENERATE[PROMPT] → approve → GENERATE[RESPONSE] → approve →
+REVIEW[PROMPT] → approve → REVIEW[RESPONSE] → approve →
+COMPLETE or REVISE[PROMPT] → ...
 ```
 
-### Workflow Phases
+**Approval gates** check "is this ready to proceed?" - not code review (that's the REVIEW phase). Gates check:
+- **PROMPT stages**: "Is this prompt clear and complete?"
+- **RESPONSE stages**: "Did the AI answer what was asked?"
 
-```
-INITIALIZED
-     │
-     ▼
-PLANNING ────────► PLANNED
-                     │
-                     ▼ (requires plan_approved)
-                GENERATING ──────► GENERATED
-                                      │
-                                      ▼ (requires artifact hashes)
-                                  REVIEWING ──────► REVIEWED
-                                                       │
-              ┌────────────────────────────────────────┤
-              │                                         │
-              ▼ (FAIL)                                  ▼ (PASS)
-         REVISING ──────► REVISED                   COMPLETE
-                              │
-                              ▼ (requires artifact hashes)
-                         REVIEWING
-```
+### Component Separation
 
-### Responsibility Boundaries
+| Component | Responsibility |
+|-----------|---------------|
+| **Engine** | Orchestration, state management, file I/O, approval gates |
+| **Profiles** | Domain-specific prompts, response parsing, WritePlans (what to write, not how) |
+| **AI Providers** | How AI is accessed (manual, CLI, API) |
+| **Approval Providers** | Quality gates (skip, manual, AI-powered) |
 
-**Profiles (Domain-Specific Logic):**
-- Generate prompt content (strings)
-- Parse AI responses
-- Extract code/artifacts
-- Return WritePlan (what to write)
-- **Never** read or write files
-- **Never** mutate workflow state
+**Convention-based boundaries**: Profiles return WritePlans instead of doing I/O. Providers may do I/O based on `fs_ability`. Not enforced by sandbox, relies on component contracts.
 
-**Engine (Orchestration):**
-- Execute WritePlan
-- Write all files (with `sha256=None`)
-- Compute hashes (during `approve()`)
-- Advance workflow state
-- Persist state to disk
+### Key Design Decisions
 
-This separation enables:
-- Profile testing without filesystem mocking
-- Easy profile addition (implement interface, register)
-- Clear audit trail (engine controls all I/O)
+1. **File-materialized semantics**: Every output is a file you can edit (transparency + auditability)
+2. **Deferred hashing**: Approval gates run BEFORE hashing, capturing user edits
+3. **Non-enforcement policy**: Hash mismatches warn but never block (trust-based, not adversarial)
+4. **Iteration directories**: Each revision cycle creates new iteration, preserving history
+5. **Approval gate timing**: Gates run immediately after content creation, not on `approve` command
+
+See [Architecture Decision Records](docs/adr/) for detailed rationale.
 
 ---
 
 ## CLI Reference
 
-### Global Options
-
-- `--json` - Emit machine-readable JSON output (available on all commands)
-- `--project-dir` - Project root directory (default: current directory)
-
-### Commands
-
-#### `aiwf init <profile>`
-
-Initialize a new workflow session. Context is passed via `-c key=value` pairs.
+### Core Commands
 
 ```bash
-aiwf init <profile> [options]
-```
+# Initialize workflow session
+aiwf init <profile> -c key=value [-c ...] [--project-dir PATH]
 
-**Arguments:**
-- `<profile>` - Workflow profile to use (e.g., `jpa-mt`)
+# Advance workflow (resolve pending approval)
+aiwf approve <session-id>
 
-**Options:**
-- `-c, --context <key=value>` - Context pairs (multiple allowed)
-- `--planner <provider>` - Provider for planning phase (default: manual)
-- `--generator <provider>` - Provider for generation phase (default: manual)
-- `--reviewer <provider>` - Provider for review phase (default: manual)
-- `--revisor <provider>` - Provider for revision phase (default: manual)
-- `--dev` - Developer identifier
-- `--task-id` - External task/ticket reference
+# Reject with feedback (halts workflow)
+aiwf reject <session-id> --feedback "explanation"
 
-**Context requirements vary by profile.** Use `aiwf <profile> info` to see required context:
-
-```bash
-aiwf jpa-mt info
-# Shows: entity (required), table (required), bounded_context (required),
-#        scope [default: domain], schema_file (required)
-```
-
-**Example (jpa-mt):**
-```bash
-aiwf init jpa-mt \
-  -c entity=Product \
-  -c table=app.products \
-  -c bounded-context=catalog \
-  -c schema-file=docs/db/01-schema.sql
-```
-
-**Output:**
-```
-session_id=abc123...
-phase=PLAN
-stage=prompt
-```
-
----
-
-#### `aiwf approve`
-
-Approve current stage outputs and advance the workflow.
-
-```bash
-aiwf approve <session-id> [--hash-prompts | --no-hash-prompts]
-```
-
-**Phase+Stage Behavior:**
-
-| Phase | Stage | Approval Action |
-|-------|-------|-----------------|
-| PLAN | PROMPT | Call provider, create response file, advance to PLAN[RESPONSE] |
-| PLAN | RESPONSE | Hash plan, set plan_approved, advance to GENERATE[PROMPT] |
-| GENERATE | PROMPT | Call provider, create response file, advance to GENERATE[RESPONSE] |
-| GENERATE | RESPONSE | Hash artifacts, advance to REVIEW[PROMPT] |
-| REVIEW | PROMPT | Call provider, create response file, advance to REVIEW[RESPONSE] |
-| REVIEW | RESPONSE | Hash review, advance to COMPLETE or REVISE[PROMPT] |
-| REVISE | PROMPT | Call provider, create response file, advance to REVISE[RESPONSE] |
-| REVISE | RESPONSE | Hash artifacts, advance to REVIEW[PROMPT] |
-
-**Options:**
-- `--hash-prompts` - Force prompt hashing (overrides config)
-- `--no-hash-prompts` - Skip prompt hashing (overrides config)
-
----
-
-#### `aiwf reject`
-
-Reject current content with feedback. Only valid when approval is pending.
-
-```bash
-aiwf reject <session-id> --feedback <message>
-```
-
-**Options:**
-- `-f, --feedback <text>` - Feedback explaining rejection (required)
-
----
-
-#### `aiwf status`
-
-Query session state and display key information.
-
-```bash
+# Check session status
 aiwf status <session-id>
+
+# List all sessions
+aiwf list [--profile PROFILE] [--status STATUS]
+
+# List available profiles
+aiwf profiles
+
+# List available AI providers
+aiwf providers
+
+# Validate provider configuration
+aiwf validate [--provider PROVIDER]
 ```
 
-**Output:**
-```
-phase=GENERATING
-status=IN_PROGRESS
-iteration=1
-session_path=.aiwf/sessions/<session-id>
-```
+### Global Flags
 
-**JSON Output:**
-```bash
-aiwf status <session-id> --json
-```
-
-```json
-{
-  "exit_code": 0,
-  "session_id": "abc123...",
-  "phase": "GENERATING",
-  "status": "IN_PROGRESS",
-  "iteration": 1,
-  "session_path": ".aiwf/sessions/abc123..."
-}
-```
+- `--project-dir PATH` - Set project root (default: current directory)
+- `--hash-prompts` - Hash prompt files during approval (audit trail)
+- `--no-hash-prompts` - Skip prompt hashing (default)
 
 ---
 
 ## Workflow Tutorial
 
-### Complete Example: Domain Entity Generation
+### Example: Generate Product Entity
 
-**Scenario:** Generate a JPA entity and repository for a Product entity in a multi-tenant product application.
-
-#### Step 1: Initialize Session
+**1. Initialize Session**
 
 ```bash
 aiwf init jpa-mt \
   -c entity=Product \
   -c table=app.products \
   -c bounded-context=catalog \
-  -c schema-file=docs/db/01-schema.sql
+  -c scope=domain \
+  -c schema-file=docker/postgres/db/init/01-schema.sql
 ```
 
-**Output:**
+Output:
 ```
-session_id=6e73d8cd7da8461189718154b3e99960
-phase=PLAN
-stage=prompt
+Session created: d8f3c2a1-4b7e-4829-9c0d-1a5e8f6b3d2c
+Phase: PLAN[PROMPT]
+Status: IN_PROGRESS, pending approval
+
+Files created:
+  .aiwf/sessions/d8f3c2a1.../iteration-1/planning-prompt.md
+
+Next step: Review prompt, then run 'aiwf approve d8f3c2a1...'
 ```
 
-**What Happened:**
-- Created session directory: `.aiwf/sessions/6e73d8cd.../`
-- Generated standards bundle from jpa-mt profile
-- Created `planning-prompt.md` in `iteration-1/`
-- Transitioned to PLAN[PROMPT] stage
-
----
-
-#### Step 2: Provide Planning Response (Manual Provider)
-
-**Manual Step:**
-1. Open `iteration-1/planning-prompt.md`
-2. Copy content to your AI (ChatGPT, Claude, etc.)
-3. Copy AI response
-4. Save to `iteration-1/planning-response.md`
-
----
-
-#### Step 3: Approve Planning Prompt
+**2. Review and Approve Prompt**
 
 ```bash
-aiwf approve 6e73d8cd7da8461189718154b3e99960
+# Optional: Edit planning-prompt.md to refine requirements
+# Then approve to trigger AI call (or manual response)
+aiwf approve d8f3c2a1
 ```
 
-**What Happened:**
-- For manual provider: Advances to PLAN[RESPONSE] (waits for response file)
-- For automated provider: Calls AI, writes response, advances
-
----
-
-#### Step 4: Approve Plan
+**3. Provide AI Response** (Manual Mode)
 
 ```bash
-aiwf approve 6e73d8cd7da8461189718154b3e99960
+# Engine creates planning-response.md
+# Copy planning-prompt.md to AI web interface
+# Paste AI response into planning-response.md
+# Approve to process
+aiwf approve d8f3c2a1
 ```
 
-**What Happened:**
-- Copied `planning-response.md` → `plan.md`
-- Computed hash of plan
-- Set `plan_approved=True`
-- Advanced to GENERATE[PROMPT], created `generation-prompt.md`
+**4. Continue Through Phases**
 
----
+Workflow advances: GENERATE → REVIEW → COMPLETE or REVISE
 
-#### Step 5: Continue Through Generation
+**5. Check Status Anytime**
 
 ```bash
-# Provide generation response (manual: copy/paste with AI)
-# Approve generation prompt
-aiwf approve 6e73d8cd...
-
-# Approve generation response (extracts code, computes hashes)
-aiwf approve 6e73d8cd...
+aiwf status d8f3c2a1
 ```
 
-**What Happened:**
-- Extracted code from `<<<FILE:>>>` markers
-- Wrote files to `iteration-1/code/`
-- Computed artifact hashes
-- Advanced to REVIEW[PROMPT]
-
----
-
-#### Step 6: Review and Complete
-
-```bash
-# Approve review prompt
-aiwf approve 6e73d8cd...
-
-# Approve review response (processes verdict)
-aiwf approve 6e73d8cd...
-```
-
-**What Happened:**
-- If verdict=PASS: Workflow transitions to COMPLETE
-- If verdict=FAIL: Advances to REVISE[PROMPT], creates `iteration-2/`
-
----
-
-#### Using Reject for Feedback
-
-At any point with pending approval, you can reject with feedback:
-
-```bash
-aiwf reject 6e73d8cd... --feedback "Missing tenant isolation in entity"
-```
-
-This triggers the provider to regenerate with your feedback incorporated
-
----
-
-### Session Directory Structure
-
-After a complete workflow:
-
-```
-.aiwf/sessions/6e73d8cd.../
-├── session.json                # Workflow state
-├── standards-bundle.md         # Immutable standards
-├── plan.md                     # Approved plan (session root)
-│
-├── iteration-1/
-│   ├── planning-prompt.md
-│   ├── planning-response.md
-│   ├── generation-prompt.md
-│   ├── generation-response.md
-│   ├── review-prompt.md
-│   ├── review-response.md
-│   └── code/
-│       ├── Product.java
-│       └── ProductRepository.java
-│
-└── iteration-2/                # Created only if revision needed
-    ├── revision-prompt.md
-    ├── revision-response.md
-    ├── review-prompt.md
-    ├── review-response.md
-    └── code/
-        ├── Product.java        # Revised version
-        └── ProductRepository.java
-```
+Output shows current phase, stage, files, and next action.
 
 ---
 
 ## Configuration
 
-### Configuration File Locations
-
-Configuration is loaded with the following precedence (highest wins):
-
-1. **CLI flags** (e.g., `--dev`, `--hash-prompts`)
-2. **Project-specific:** `./.aiwf/config.yml`
-3. **User-wide:** `~/.aiwf/config.yml`
-4. **Built-in defaults**
+Configuration cascades: CLI flags > project config > user config > defaults
 
 ### Example Configuration
 
@@ -907,9 +258,9 @@ workflow:
 
   plan:
     prompt:
-      approval_provider: manual
+      approval_provider: skip        # Auto-approve planning prompts
     response:
-      approval_provider: manual
+      approval_provider: manual      # Manual approval for plan
 
   generate:
     prompt:
@@ -921,7 +272,7 @@ workflow:
     prompt:
       approval_provider: manual
     response:
-      approval_provider: manual
+      approval_provider: manual      # Review the review
 
   revise:
     prompt:
@@ -930,413 +281,135 @@ workflow:
       approval_provider: manual
 
 hash_prompts: false
-
 dev: null
 ```
 
-### Configuration Options
+### Available Providers
 
-#### `profile`
-
-Workflow profile to use. Currently supported:
-- `jpa-mt` - JPA multi-tenant domain generation
-
-#### `workflow`
-
-Per-phase/stage workflow configuration with cascading defaults:
-- `defaults`: Default settings for all phases/stages
-- `plan`, `generate`, `review`, `revise`: Per-phase overrides
-- `prompt`, `response`: Per-stage settings within each phase
-
-**Stage settings:**
-- `ai_provider`: AI provider key (required for RESPONSE stages; ignored for PROMPT stages)
-- `approval_provider`: Approval gate provider (`skip`, `manual`, or AI provider key)
-- `approval_max_retries`: Max auto-retries on rejection (default 0; only applies to AI approvers)
-- `approval_allow_rewrite`: Whether approver can suggest content changes (default false)
-
-**Available providers:**
-- `manual` - Human-in-the-loop (copy/paste mode)
+**AI Providers:**
+- `manual` - Human-in-the-loop (copy/paste)
 - `claude-code` - Automated via Claude Code CLI
 - `gemini-cli` - Automated via Gemini CLI
+
+**Approval Providers:**
 - `skip` - Auto-approve (no gate)
+- `manual` - Pause for user decision
+- Any AI provider key - Delegate approval to AI
 
-#### `hash_prompts`
-
-Whether to hash prompt files during approval:
-- `false` (default) - Only hash outputs (plan, code, reviews)
-- `true` - Also hash prompts for complete audit trail
-
-Can be overridden via CLI: `--hash-prompts` / `--no-hash-prompts`
-
-#### `dev`
-
-Optional developer identifier (passed to templates):
-- `null` (default) - No developer ID
-- `"Scott Mulcahy"` - Your name
-- CLI flag overrides: `--dev "Scott Mulcahy"`
+See [ADR-0016](docs/adr/0016-v2-workflow-config-and-provider-naming.md) for configuration specification.
 
 ---
 
 ## JPA Multi-Tenant Profile
 
-The `jpa-mt` profile is the first production profile, designed for Java-focused teams building multi-tenant SaaS applications.
+The `jpa-mt` profile generates JPA entities, repositories, and tests for multi-tenant Spring Boot applications.
 
-**What it does:** Generates complete, production-ready Java/Spring Data JPA code for multi-tenant database entities. This includes proper tenant isolation, Row-Level Security (RLS) patterns, and Spring Data repositories.
+### What It Generates
 
-**Why it exists:** The profile encapsulates architectural decisions and best practices for multi-tenant JPA applications into reusable AI prompts, eliminating the need to reinvent patterns for every entity.
+**Domain Scope:**
+- JPA entity with tenant isolation
+- Spring Data repository interface
+- Repository unit tests
 
-### Target Stack
+**Vertical Scope:**
+- All of domain scope, plus:
+- REST controller with CRUD endpoints
+- Service layer with business logic
+- Integration tests
 
-- Java 21
-- Spring Data JPA 3.x
-- PostgreSQL 16+ with Row-Level Security (RLS)
-- Multi-tenant architecture (tenant_id foreign keys, RLS policies)
+### Required Context
 
-### Supported Scopes
-
-#### Domain Scope
-
-Generates domain layer only:
-- JPA Entity with tenant awareness
-- Spring Data Repository
-
-**Use Case:** Adding entities to existing applications
-
-**Command:**
 ```bash
-aiwf init jpa-mt -c entity=Product -c table=app.products -c bounded-context=product -c schema-file=schema.sql
+-c entity=EntityName          # Java class name
+-c table=schema.table_name    # Database table
+-c bounded-context=name       # Domain context
+-c scope=domain|vertical      # Generation scope
+-c schema-file=path/to.sql    # DDL for reference
 ```
 
-#### Vertical Scope
+### Multi-Tenant Patterns Supported
 
-Generates complete feature implementation:
-- Entity → Repository → Service → Controller
-- DTOs and Mappers
-- Complete vertical slice
+- Tenant ID columns with automatic filtering
+- Row-level security (RLS) integration
+- Global vs tenant-scoped tables
+- Composite keys with tenant discrimination
 
-**Use Case:** Full-stack feature implementation
+### Example Output Structure
 
-**Command:**
-```bash
-aiwf init jpa-mt -c scope=vertical -c entity=Product -c table=app.products -c bounded-context=product -c schema-file=schema.sql
 ```
-
-### Template System
-
-The jpa-mt profile uses a three-tier layered template system:
-
-**Layer 1: Shared (_shared/)**
-- `base.md` - AI persona, metadata, file attachments
-- `fallback-rules.md` - Deterministic defaults
-
-**Layer 2: Phase (_phases/)**
-- `planning-guidelines.md`
-- `generation-guidelines.md`
-- `review-guidelines.md`
-- `revision-guidelines.md`
-
-**Layer 3: Scope (planning/, generation/, etc.)**
-- `domain.md` - Domain-specific requirements
-- `vertical.md` - Vertical-specific requirements
-
-**Composition:** Templates use `{{include: ...}}` directives to compose layers:
-
-```markdown
-{{include: _shared/base.md}}
-{{include: _phases/planning-guidelines.md}}
-
-# Domain-Specific Content
-...
+iteration-1/code/
+├── Product.java              # JPA entity
+├── ProductRepository.java    # Spring Data repository
+└── ProductRepositoryTest.java
 ```
-
-### Standards Management
-
-Standards are scope-aware and organized by layer:
-
-```yaml
-scopes:
-  domain:
-    layers: [entity, repository]
-  vertical:
-    layers: [entity, repository, service, controller]
-
-layer_standards:
-  _universal: [CORE_CONVENTIONS.md]
-  entity: [JPA_ENTITY.md]
-  repository: [JPA_REPOSITORY.md]
-  service: [SERVICE_LAYER.md]
-  controller: [REST_CONTROLLER.md]
-```
-
-Standards are concatenated in order with deduplication, creating a scope-appropriate bundle.
-
----
-
-### Quality Considerations
-
-**Like all AI-assisted development, output quality depends on prompt quality.** The jpa-mt profile has been refined through real-world usage at Skills Harbor to produce reliable results, but several factors affect quality:
-
-**Prompt Quality Factors:**
-- **Standards completeness** - Well-documented coding conventions improve consistency
-- **Schema quality** - Clear, well-structured DDL helps AI understand data model
-- **Context clarity** - Explicit entity relationships and business rules reduce ambiguity
-- **AI model choice** - Different models have different strengths (GPT-4, Claude Opus, etc.)
-
-**Profile Design Choices:**
-- **Layered templates** - Separate shared, phase-specific, and scope-specific content
-- **Explicit standards** - JPA patterns, Spring Data conventions, multi-tenancy rules
-- **Structured extraction** - `<<<FILE:>>>` markers for reliable code parsing
-- **Review metadata** - Structured `@@@REVIEW_META` blocks for deterministic parsing
-
-**Best Practices:**
-- Start with high-quality standards documents (see `docs/samples/`)
-- Provide complete, accurate schema DDL
-- Review planning responses before approval (catch misunderstandings early)
-- Edit prompts if AI consistently misunderstands requirements
-- Iterate on standards based on review feedback
-
-**Remember:** The engine provides workflow orchestration and file management. The profile provides prompt templates and extraction logic. **You** provide the domain knowledge and quality standards that make AI output production-ready.
 
 ---
 
 ## Extending the Engine
 
-The engine is designed for extension through two primary mechanisms: **profiles** (language/tech specifics) and **providers** (AI integration).
+### Adding a New Profile
 
-### Adding New Profiles
-
-**What profiles do:** Profiles implement the language/technology-specific knowledge needed for AI to produce code. They translate workflow context into appropriate prompts and extract code from AI responses.
-
-**Profile responsibilities:**
-- Generate prompts using domain-specific templates
-- Parse AI responses and extract code/artifacts
-- Apply language-specific standards and conventions
-- Return structured results (WritePlan, ProcessingResult)
-- **Never** perform file I/O (engine's responsibility)
-- **Never** mutate workflow state (engine's responsibility)
-
-**Creating a new profile:**
-
-Profiles encapsulate all language/framework-specific generation logic. The engine is completely agnostic to what language you're generating.
-
-**Example: React/TypeScript Profile**
+1. Implement `WorkflowProfile` ABC
+2. Define prompt generation methods
+3. Implement response processing (return WritePlan)
+4. Register in `ProfileFactory`
 
 ```python
-# profiles/react_ts/react_ts_profile.py
 from aiwf.domain.profiles.workflow_profile import WorkflowProfile
-from aiwf.domain.models.processing_result import ProcessingResult
-from aiwf.domain.models.write_plan import WritePlan, WriteOp
 
-class ReactTsProfile(WorkflowProfile):
-    """Generates React components with TypeScript."""
-    
-    def generate_planning_prompt(self, context: dict) -> str:
-        """Generate component planning prompt with React patterns."""
-        return self._render_template('planning/component.md', context)
-    
-    def generate_generation_prompt(self, context: dict) -> str:
-        """Generate code generation prompt with TypeScript guidance."""
-        return self._render_template('generation/component.md', context)
-    
-    def process_generation_response(self, content: str, session_dir, iteration: int) -> ProcessingResult:
-        """Extract .tsx and .css files from response."""
-        files = self._extract_code_blocks(content)
-        
-        writes = [
-            WriteOp(path=f"code/{name}", content=code)
-            for name, code in files.items()
-        ]
-        
+class MyProfile(WorkflowProfile):
+    def generate_plan_prompt(self, context: dict) -> str:
+        return f"Generate plan for {context['entity']}"
+
+    def process_plan_response(self, content: str, context: dict) -> ProcessingResult:
+        # Parse response, return WritePlan
         return ProcessingResult(
-            status=WorkflowStatus.SUCCESS,
-            write_plan=WritePlan(writes=writes)
+            write_plan=WritePlan(operations=[...]),
+            success=True
         )
-    
-    # ... implement review and revision methods
-
-# Register in profiles/react_ts/__init__.py
-from aiwf.domain.profiles.profile_factory import ProfileFactory
-ProfileFactory.register('react-ts', ReactTsProfile)
 ```
 
-**Profile structure:**
-```
-profiles/react_ts/
-├── __init__.py              # Registration
-├── react_ts_profile.py      # Profile implementation
-├── config.yml               # Standards configuration
-├── templates/
-│   ├── _shared/             # Common content
-│   ├── _phases/             # Phase-specific guidelines
-│   ├── planning/            # Planning templates by scope
-│   ├── generation/          # Generation templates
-│   ├── review/              # Review templates
-│   └── revision/            # Revision templates
-└── tests/
-    └── test_react_ts_profile.py
-```
+See [docs/EXTENDING.md](docs/EXTENDING.md) for detailed guide.
 
-**What you control:**
-- Prompt templates (how you instruct the AI)
-- Code extraction logic (parsing AI responses)
-- Standards selection (what coding rules apply)
-- File structure (what gets written where)
-
-**What the engine handles:**
-- Workflow orchestration
-- File I/O (all writes)
-- State persistence
-- Approval gates
-- Iteration management
-
----
-
-### Adding New AI Providers
-
-**What providers do:** Providers abstract away how AI is accessed—whether via API, CLI agent, or manual workflow. They handle the mechanics of prompt delivery and response retrieval.
-
-**Creating a new provider:**
-
-Providers implement the `AIProvider` interface for automated execution. The `manual` provider serves as the reference implementation.
-
-**Current providers:**
-- `manual` - Human-in-the-loop (creates files, user handles AI interaction)
-
-**Example: Claude CLI Provider**
+### Adding a New AI Provider
 
 ```python
 from aiwf.domain.providers.ai_provider import AIProvider
-import subprocess
+from aiwf.domain.models.ai_provider_result import AIProviderResult
 
-class ClaudeCliProvider(AIProvider):
-    """Automated provider using Claude Desktop agent."""
+class MyProvider(AIProvider):
+    def validate(self) -> None:
+        # Check configuration, connectivity
+        pass
 
     def generate(self, prompt: str, context: dict | None = None) -> AIProviderResult:
-        """Call Claude CLI agent and return response."""
-        result = subprocess.run(
-            ['claude', '--prompt', prompt],
-            capture_output=True,
-            text=True,
-            timeout=300
-        )
-
-        if result.returncode != 0:
-            raise ProviderError(f"Claude CLI failed: {result.stderr}")
-
-        return AIProviderResult(files={"response.md": result.stdout})
-
-# Register in infrastructure/providers/__init__.py
-from aiwf.domain.providers.provider_factory import AIProviderFactory
-AIProviderFactory.register('claude-cli', ClaudeCliProvider)
+        # Call AI, return result
+        return AIProviderResult(files={"response.md": content})
 ```
 
-**Configuration:**
-```yaml
-# .aiwf/config.yml
-workflow:
-  defaults:
-    ai_provider: claude-cli
-    approval_provider: manual
-
-  generate:
-    response:
-      ai_provider: manual      # Override: use manual for generation
-
-  revise:
-    response:
-      ai_provider: manual      # Override: use manual for revision
-```
-
-**Provider responsibilities:**
-- Accept prompt content (string)
-- Invoke AI (API, CLI, no-op for manual)
-- Return response content (string)
-- Handle errors gracefully
-
-**Provider non-responsibilities:**
-- File I/O (engine handles prompt/response files)
-- State mutation (engine tracks everything)
-- Prompt generation (profiles handle this)
-
-**Why providers are separate:**
-- Mix automated and manual steps in same workflow
-- Swap AI services without changing profiles
-- Support CLI agents, APIs, and manual workflows
-- Test profiles without calling real AI
-
----
-
-### Design Principles
-
-**Profile isolation:**
-- Profiles are pure functions of context → prompts or WritePlans
-- No side effects (file I/O, state mutation)
-- Deterministic and testable without mocking
-
-**Engine orchestration:**
-- Engine owns all file I/O
-- Engine owns all state transitions
-- Engine enforces approval gates
-- Engine persists everything
-
-**Provider abstraction:**
-- Providers handle AI communication only
-- Profiles never call providers directly
-- Engine mediates all provider interactions
-- Manual provider is always available
-
-This separation of concerns enables:
-- Profile reuse across providers
-- Provider reuse across profiles  
-- Testing without real AI or filesystem
-- Clear responsibility boundaries
+Register in `AIProviderFactory`.
 
 ---
 
 ## Documentation
 
-### Architecture Decision Records
+### Architecture
 
-- [ADR-0001: Architecture Overview](docs/adr/0001-architecture-overview.md) - Patterns, layers, responsibility boundaries
-- [ADR-0003: Workflow State Validation](docs/adr/0003-workflow-state-validation.md) - Pydantic usage rationale
-- [ADR-0004: Structured Review Metadata](docs/adr/0004-structured-review-metadata.md) - Review parsing specification
-- [ADR-0012: Phases, Stages, and Approval Providers](docs/adr/0012-workflow-phases-stages-approval-providers.md) - Phase+Stage model
-- [All ADRs](docs/adr/README.md) - Complete index of architecture decisions
+- **[ADR Index](docs/adr/)** - All architecture decision records
+- **[ADR-0001: Architecture Overview](docs/adr/0001-architecture-overview.md)** - Start here for architecture
+- **[ADR-0012: Phase+Stage Model](docs/adr/0012-workflow-phases-stages-approval-providers.md)** - Workflow model details
+- **[ADR-0015: Approval Providers](docs/adr/0015-approval-provider-implementation.md)** - Approval gates system
+- **[API-CONTRACT.md](API-CONTRACT.md)** - Complete CLI interface specification
 
-### Specifications
+### Guides
 
-- [API-CONTRACT.md](API-CONTRACT.md) - Complete CLI interface specification
-- [TEMPLATE_RENDERING.md](profiles/jpa_mt/TEMPLATE_RENDERING.md) - Template system guide
-
-### Additional Resources
-
-- [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
-- Sample standards: `docs/samples/`
-- Database setup: [docker/postgres/docker-compose.yml](docker/postgres/docker-compose.yml) (PostgreSQL 16 with sample multi-tenant schema)
+- **[docs/CONCEPTS.md](docs/CONCEPTS.md)** - Detailed component explanations
+- **[docs/EXTENDING.md](docs/EXTENDING.md)** - Extension development guide
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
 
 ---
 
 ## Development Setup
-
-### Prerequisites
-
-- Python 3.13+
-- Poetry 1.7+
-- (Optional) Docker for PostgreSQL test database
-
-### Installation
-
-```bash
-# Clone repository
-git clone https://github.com/scottcm/ai-workflow-engine.git
-cd ai-workflow-engine
-
-# Install dependencies (includes dev dependencies)
-poetry install
-
-# Activate virtual environment
-poetry shell
-```
 
 ### Running Tests
 
@@ -1347,12 +420,17 @@ pytest
 # Run with coverage
 pytest --cov=aiwf --cov-report=html
 
-# Run specific test file
-pytest tests/unit/application/test_workflow_orchestrator_initialize_run.py
+# Run unit tests only
+pytest tests/unit/ -v
+
+# Run specific test
+pytest tests/unit/application/test_workflow_orchestrator.py -v
 
 # Run tests matching pattern
-pytest -k "test_approval"
+pytest -k "approval" -v
 ```
+
+**Test suite:** 854 unit tests with 84% code coverage
 
 ### Code Quality
 
@@ -1369,128 +447,67 @@ ruff check --fix aiwf
 
 ### Development Database (Optional)
 
-A PostgreSQL database with sample schema is provided for testing and experimentation. This database includes:
-- Multi-tenant schema patterns (tenant isolation, RLS policies)
-- Sample tables matching the jpa-mt profile's target patterns
-- Seed data for realistic testing
+PostgreSQL with multi-tenant schema for testing:
+
 ```bash
-# Start PostgreSQL with sample schema (from docker/postgres directory)
-cd docker/postgres
-docker-compose up -d
+# Start database
+docker-compose -f docker/postgres/docker-compose.yml up -d
 
-# Connection details:
-# Host: localhost
-# Port: 5432
-# Database: aiwf_test
-# User: aiwf_user
-# Password: aiwf_pass
-
-# The schema includes:
-# - app.tenants      : Tenant entity
-# - global.tiers     : Global lookup table (no tenant_id)
-# - app.products     : Tenant-scoped table with RLS
+# Connection: localhost:5432, DB: aiwf_test, User: aiwf_user, Pass: aiwf_pass
 
 # Stop when done
-docker-compose down
-cd ../..
+docker-compose -f docker/postgres/docker-compose.yml down
 ```
 
-**Use cases:**
-- Test generated JPA entities against real PostgreSQL
-- Experiment with the workflow using included [docker/postgres/db/init/01-schema.sql](docker/postgres/db/init/01-schema.sql)
-- Understand multi-tenant patterns that jpa-mt profile targets
-
-**Note:** The database is optional. The workflow engine works entirely with files and doesn't require database connectivity.
+Schema includes tenant-scoped tables with RLS patterns matching jpa-mt profile targets.
 
 ---
 
 ## Known Limitations
 
-### Intentional Design Choices
+**V2.0 Constraints:**
+- Single bundled profile (`jpa-mt`)
+- Limited AI provider ecosystem (manual, claude-code, gemini-cli)
+- File-based session storage only (no database backend)
+- Single workflow per session (no parallel phase execution)
 
-These are features we've chosen not to implement (at least initially):
+**Design Trade-offs:**
+- Convention-based component boundaries (not enforced by sandbox)
+- Trust-based audit (hash mismatches warn but don't block)
+- Manual iteration increments (no auto-loop on review rejection)
 
-- **Single profile initially** - Extension point exists; additional profiles are encouraged as community contributions
-- **No multi-user coordination** - Designed for single developer workflows
-- **No AI code sandboxing** - Security is downstream integration responsibility
-
-**Note:** The manual provider is not a limitation—it's a feature that enables:
-- Use of free AI subscriptions (ChatGPT.com, Claude.ai, Gemini)
-- Support for any AI provider (not locked to specific vendors)
-- Full prompt editing before submission
-- Review/modify AI responses before processing
-- Complete workflow transparency (all files visible)
-- Zero API costs
+See [GitHub Issues](https://github.com/scottcm/ai-workflow-engine/issues) for roadmap.
 
 ---
 
 ## Project Status
 
-**Current Version: v2.0.0**
+**Current Version:** 2.0.0 (January 2026)
 
-Complete rewrite with improved separation of concerns and extensibility. All core features implemented:
+**Production Use:** Active at Skills Harbor for JPA entity generation
 
-- ✅ Multi-phase workflows (planning → generation → review → revision)
-- ✅ Automated AI providers (Claude Code via SDK, Gemini CLI via subprocess)
-- ✅ Configurable approval gates (manual, skip, or AI-powered)
-- ✅ JPA multi-tenant profile with comprehensive standards
-- ✅ CLI interface (`init`, `approve`, `reject`, `status`, `list`)
-- ✅ Session persistence and resumability
-- ✅ Iteration tracking with complete audit trail
-- ✅ Path validation and security boundaries
-
-### Future Enhancements
-
-- **Additional Profiles**: React components, Python/FastAPI, Go microservices
-- **IDE Integration**: VS Code extension for workflow visualization
-- **CI/CD Integration**: Webhook support for automated workflows
-
----
-
-## Contributing
-
-Contributions are welcome! This is a portfolio project demonstrating architecture patterns, but improvements and additional profiles are encouraged.
-
-**Areas for Contribution:**
-- New workflow profiles (React, Python, Go, etc.)
-- Additional AI provider integrations
-- Enhanced validation and linting
-- Documentation improvements
-- Bug reports and feature requests
-
-**Before Contributing:**
-- Review [ADR-0001](docs/adr/0001-architecture-overview.md) for architectural principles
-- Ensure tests pass: `pytest`
-- Follow existing code style: `ruff check`
-- Add tests for new features
+**Maintenance:** Project is maintained and accepting contributions. Issues and PRs welcome.
 
 ---
 
 ## License
 
-MIT License
+MIT License - see [LICENSE](LICENSE) file for details.
 
-Copyright (c) 2024 Scott Mulcahy
-
-See [LICENSE](LICENSE) file for details.
+**Attribution:** Built by Scott Mulcahy for Skills Harbor. Open-sourced to share architectural patterns for AI-assisted development workflows.
 
 ---
 
-## Support
+## Author
 
-**Issues:** https://github.com/scottcm/ai-workflow-engine/issues  
-**Discussions:** https://github.com/scottcm/ai-workflow-engine/discussions
+**Scott Mulcahy**
+Email: scott@skillsharbor.com
+GitHub: [@scottcm](https://github.com/scottcm)
 
-**About the Author:**  
-Scott Mulcahy - CTO at Skills Harbor LLC  
-Portfolio: https://github.com/scottcm  
-Email: 60183134+scottcm@users.noreply.github.com
+**Seeking opportunities in:**
+- Backend architecture (Python, Java/Spring Boot)
+- AI-assisted development tooling
+- Multi-tenant SaaS platforms
+- Developer experience engineering
 
----
-
-## Acknowledgments
-
-- Built to solve real-world needs at Skills Harbor
-- Inspired by enterprise architecture patterns from production experience
-- Designed for demonstration of software engineering best practices
-- Special thanks to the open source community for foundational tools (Python, Poetry, Pydantic, Click, pytest)
+This project demonstrates production-grade system design, clean architecture, and thoughtful API design. Available for contract work or full-time roles.
