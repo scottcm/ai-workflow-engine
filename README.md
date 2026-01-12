@@ -898,11 +898,36 @@ Configuration is loaded with the following precedence (highest wins):
 ```yaml
 profile: jpa-mt
 
-providers:
-  planner: manual
-  generator: manual
-  reviewer: manual
-  reviser: manual
+workflow:
+  defaults:
+    ai_provider: manual
+    approval_provider: manual
+    approval_max_retries: 0
+    approval_allow_rewrite: false
+
+  plan:
+    prompt:
+      approval_provider: manual
+    response:
+      approval_provider: manual
+
+  generate:
+    prompt:
+      approval_provider: manual
+    response:
+      approval_provider: manual
+
+  review:
+    prompt:
+      approval_provider: manual
+    response:
+      approval_provider: manual
+
+  revise:
+    prompt:
+      approval_provider: manual
+    response:
+      approval_provider: manual
 
 hash_prompts: false
 
@@ -916,13 +941,24 @@ dev: null
 Workflow profile to use. Currently supported:
 - `jpa-mt` - JPA multi-tenant domain generation
 
-#### `providers`
+#### `workflow`
 
-AI provider for each workflow role:
-- `planner`, `generator`, `reviewer`, `reviser`
+Per-phase/stage workflow configuration with cascading defaults:
+- `defaults`: Default settings for all phases/stages
+- `plan`, `generate`, `review`, `revise`: Per-phase overrides
+- `prompt`, `response`: Per-stage settings within each phase
 
-Currently supported providers:
-- `manual` - Human-in-the-loop (prompt/response files)
+**Stage settings:**
+- `ai_provider`: AI provider key (required for RESPONSE stages; ignored for PROMPT stages)
+- `approval_provider`: Approval gate provider (`skip`, `manual`, or AI provider key)
+- `approval_max_retries`: Max auto-retries on rejection (default 0; only applies to AI approvers)
+- `approval_allow_rewrite`: Whether approver can suggest content changes (default false)
+
+**Available providers:**
+- `manual` - Human-in-the-loop (copy/paste mode)
+- `claude-code` - Automated via Claude Code CLI
+- `gemini-cli` - Automated via Gemini CLI
+- `skip` - Auto-approve (no gate)
 
 #### `hash_prompts`
 
@@ -1174,8 +1210,8 @@ import subprocess
 
 class ClaudeCliProvider(AIProvider):
     """Automated provider using Claude Desktop agent."""
-    
-    async def generate(self, prompt: str, context: dict | None) -> str:
+
+    def generate(self, prompt: str, context: dict | None = None) -> AIProviderResult:
         """Call Claude CLI agent and return response."""
         result = subprocess.run(
             ['claude', '--prompt', prompt],
@@ -1183,11 +1219,11 @@ class ClaudeCliProvider(AIProvider):
             text=True,
             timeout=300
         )
-        
+
         if result.returncode != 0:
             raise ProviderError(f"Claude CLI failed: {result.stderr}")
-        
-        return result.stdout
+
+        return AIProviderResult(files={"response.md": result.stdout})
 
 # Register in infrastructure/providers/__init__.py
 from aiwf.domain.providers.provider_factory import AIProviderFactory
@@ -1197,11 +1233,18 @@ AIProviderFactory.register('claude-cli', ClaudeCliProvider)
 **Configuration:**
 ```yaml
 # .aiwf/config.yml
-providers:
-  planner: claude-cli      # Automated via Claude
-  generator: manual         # User copies to AI manually
-  reviewer: claude-cli      # Automated via Claude
-  reviser: manual           # User copies to AI manually
+workflow:
+  defaults:
+    ai_provider: claude-cli
+    approval_provider: manual
+
+  generate:
+    response:
+      ai_provider: manual      # Override: use manual for generation
+
+  revise:
+    response:
+      ai_provider: manual      # Override: use manual for revision
 ```
 
 **Provider responsibilities:**
@@ -1255,9 +1298,10 @@ This separation of concerns enables:
 ### Architecture Decision Records
 
 - [ADR-0001: Architecture Overview](docs/adr/0001-architecture-overview.md) - Patterns, layers, responsibility boundaries
-- [ADR-0002: Template Layering System](docs/adr/0002-template-layering-system.md) - Template composition with includes
 - [ADR-0003: Workflow State Validation](docs/adr/0003-workflow-state-validation.md) - Pydantic usage rationale
 - [ADR-0004: Structured Review Metadata](docs/adr/0004-structured-review-metadata.md) - Review parsing specification
+- [ADR-0012: Phases, Stages, and Approval Providers](docs/adr/0012-workflow-phases-stages-approval-providers.md) - Phase+Stage model
+- [All ADRs](docs/adr/README.md) - Complete index of architecture decisions
 
 ### Specifications
 
@@ -1268,7 +1312,7 @@ This separation of concerns enables:
 
 - [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
 - Sample standards: `docs/samples/`
-- Database setup: `docker-compose.yml` (PostgreSQL 16 with sample multi-tenant schema)
+- Database setup: [docker/postgres/docker-compose.yml](docker/postgres/docker-compose.yml) (PostgreSQL 16 with sample multi-tenant schema)
 
 ---
 
@@ -1330,7 +1374,8 @@ A PostgreSQL database with sample schema is provided for testing and experimenta
 - Sample tables matching the jpa-mt profile's target patterns
 - Seed data for realistic testing
 ```bash
-# Start PostgreSQL with sample schema
+# Start PostgreSQL with sample schema (from docker/postgres directory)
+cd docker/postgres
 docker-compose up -d
 
 # Connection details:
@@ -1347,11 +1392,12 @@ docker-compose up -d
 
 # Stop when done
 docker-compose down
+cd ../..
 ```
 
 **Use cases:**
 - Test generated JPA entities against real PostgreSQL
-- Experiment with the workflow using included `docs/db/01-schema.sql`
+- Experiment with the workflow using included [docker/postgres/db/init/01-schema.sql](docker/postgres/db/init/01-schema.sql)
 - Understand multi-tenant patterns that jpa-mt profile targets
 
 **Note:** The database is optional. The workflow engine works entirely with files and doesn't require database connectivity.
