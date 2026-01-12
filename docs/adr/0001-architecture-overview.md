@@ -219,12 +219,9 @@ class WorkflowState(BaseModel):
     # Identity
     session_id: str
     profile: str
-    scope: str
-    entity: str
 
-    # Context
-    bounded_context: str | None = None
-    table: str | None = None
+    # Profile-specific context (generic in v2.0 per ADR-0008)
+    context: dict[str, Any] = Field(default_factory=dict)
 
     # State
     phase: WorkflowPhase
@@ -232,19 +229,26 @@ class WorkflowState(BaseModel):
     status: WorkflowStatus
     current_iteration: int = 1
 
-    # Approval
-    approval_feedback: str | None = None  # Feedback from reject/retry
+    # Approval gates
+    pending_approval: bool = False
+    approval_feedback: str | None = None
+    suggested_content: str | None = None
+    retry_count: int = 0
 
     # Hashing
-    standards_hash: str
+    standards_hash: str | None = None
     plan_hash: str | None = None
-    prompt_hashes: dict[str, str] = {}
+    prompt_hashes: dict[str, str] = Field(default_factory=dict)
+    response_hashes: dict[str, str] = Field(default_factory=dict)
 
-    # Multi-provider strategy
-    providers: dict[str, str]  # role -> provider_key
+    # AI providers per role (v2.0 per ADR-0016)
+    ai_providers: dict[str, str] = Field(default_factory=dict)  # role -> provider_key
 
     # Artifacts
-    artifacts: list[Artifact] = []
+    artifacts: list[Artifact] = Field(default_factory=list)
+
+    # Messages
+    messages: list[str] = Field(default_factory=list)
 
     # Error tracking
     last_error: str | None = None

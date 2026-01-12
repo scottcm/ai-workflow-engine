@@ -1,9 +1,13 @@
 # ADR-0005: Chain of Responsibility for Approval Handling
 
-**Status:** Superseded by ADR-0012
+**Status:** Superseded by ADR-0012 (v2.0)
 **Date:** December 24, 2024
 **Superseded:** December 30, 2024
+**Last Updated:** January 12, 2025 (archived)
+**Superseded By:** [ADR-0012: TransitionTable State Machine](../0012-workflow-phases-stages-approval-providers.md)
 **Deciders:** Scott
+
+> **Archive Note:** This ADR describes the Chain of Responsibility pattern implemented in v1.x for handling approval flow across ING/ED phases. In v2.0, the entire phase model was redesigned (Phase+Stage replaces ING/ED), and approval handling was replaced by the TransitionTable declarative state machine. See [ADR-0012](../0012-workflow-phases-stages-approval-providers.md) for the current v2.0 architecture.
 
 ---
 
@@ -94,20 +98,20 @@ Refactor `ApprovalHandler` to use Chain of Responsibility pattern with handler c
 ```python
 class ApprovalHandlerBase(ABC):
     """Base class for approval handlers."""
-    
+
     def __init__(self, successor: ApprovalHandlerBase | None = None):
         self._successor = successor
-    
+
     @abstractmethod
     def can_handle(self, state: WorkflowState) -> bool:
         """Return True if this handler can process the given state."""
         ...
-    
+
     @abstractmethod
     def handle(self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool) -> WorkflowState:
         """Process approval for the given state."""
         ...
-    
+
     def approve(self, *, session_dir: Path, state: WorkflowState, hash_prompts: bool) -> WorkflowState:
         """Chain method: handle if possible, otherwise delegate to successor."""
         if self.can_handle(state):
@@ -122,40 +126,40 @@ class ApprovalHandlerBase(ABC):
 ```python
 class IngPhaseApprovalHandler(ApprovalHandlerBase):
     """Handles ING phases: PLANNING, GENERATING, REVIEWING, REVISING.
-    
+
     Responsibility: Read prompt, call provider, write response.
     """
-    
+
     def can_handle(self, state: WorkflowState) -> bool:
         return state.phase in ING_APPROVAL_SPECS
 
 
 class PlannedApprovalHandler(ApprovalHandlerBase):
     """Handles PLANNED phase.
-    
+
     Responsibility: Copy planning-response to plan.md, hash, set plan_approved.
     """
-    
+
     def can_handle(self, state: WorkflowState) -> bool:
         return state.phase == WorkflowPhase.PLANNED
 
 
 class CodeArtifactApprovalHandler(ApprovalHandlerBase):
     """Handles GENERATED and REVISED phases.
-    
+
     Responsibility: Hash code files, create/update Artifact records.
     """
-    
+
     def can_handle(self, state: WorkflowState) -> bool:
         return state.phase in {WorkflowPhase.GENERATED, WorkflowPhase.REVISED}
 
 
 class ReviewedApprovalHandler(ApprovalHandlerBase):
     """Handles REVIEWED phase.
-    
+
     Responsibility: Hash review response, set review_approved.
     """
-    
+
     def can_handle(self, state: WorkflowState) -> bool:
         return state.phase == WorkflowPhase.REVIEWED
 ```
@@ -180,17 +184,17 @@ class WorkflowOrchestrator:
     def __init__(self, ...):
         ...
         self._approval_chain = build_approval_chain()
-    
+
     def approve(self, session_id: str, hash_prompts: bool = False) -> WorkflowState:
         state = self.session_store.load(session_id)
         session_dir = self.sessions_root / session_id
-        
+
         updated = self._approval_chain.approve(
             session_dir=session_dir,
             state=state,
             hash_prompts=hash_prompts,
         )
-        
+
         self.session_store.save(updated)
         return updated
 ```
@@ -238,4 +242,3 @@ class WorkflowOrchestrator:
 
 - ADR-0001: Architecture Overview (defines approval semantics)
 - ADR-0006: Observer Pattern for Events (handlers may emit events)
-

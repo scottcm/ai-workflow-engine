@@ -2,7 +2,7 @@
 
 This directory contains Architecture Decision Records (ADRs) for the AI Workflow Engine.
 
-## Current Architecture
+## Current Architecture (v2.0)
 
 **Start here:** [ADR-0001: Architecture Overview](0001-architecture-overview.md)
 
@@ -11,6 +11,10 @@ ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design
 - **TransitionTable**: Declarative state machine for workflow transitions
 - **Commands**: `init`, `approve`, `reject`, `status`, `list`, `validate`, `profiles`, `providers`
 
+## V1 Archive
+
+ADRs from v1.x that were superseded in v2.0 are preserved in the [`v1-archive/`](v1-archive/) directory for historical context. See the [v1 archive README](v1-archive/README.md) for what changed between versions.
+
 ---
 
 ## ADR Index
@@ -18,16 +22,14 @@ ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design
 | ADR | Status | Title | Notes |
 |-----|--------|-------|-------|
 | [0001](0001-architecture-overview.md) | Accepted | Architecture Overview | **Start here** - Current architecture |
-| [0002](0002-template-layering-system.md) | Accepted | Template Layering System | Valid - Profile template composition |
-| [0003](0003-workflow-state-validation.md) | Accepted | Workflow State Validation | Valid - Pydantic for state validation |
-| [0004](0004-structured-review-metadata.md) | Accepted | Structured Review Metadata | Valid - `@@@REVIEW_META` format |
-| [0005](0005-approval-handler-chain.md) | **Superseded** | Chain of Responsibility | Replaced by TransitionTable in ADR-0012 |
-| [0006](0006-observer-pattern-events-v2.md) | Accepted | Observer Pattern for Events | Valid - Event emission pattern |
-| [0007](0007-plugin-architecture.md) | Accepted | Plugin Architecture | Valid - AI/Standards provider plugins |
+| [0003](0003-workflow-state-validation.md) | Accepted | Workflow State Validation | Pydantic for state validation |
+| [0004](0004-structured-review-metadata.md) | Accepted | Structured Review Metadata | `@@@REVIEW_META` format |
+| [0006](0006-observer-pattern-events-v2.md) | Accepted | Observer Pattern for Events | Event emission pattern |
+| [0007](0007-plugin-architecture.md) | Accepted | Plugin Architecture | AI/Standards provider plugins |
 | [0008](0008-engine-profile-separation-of-concerns.md) | Accepted | Engine-Profile Separation | Profile CLI commands, generic context |
 | [0009](0009-prompt-structure-and-ai-provider-capabilities.md) | Draft | Prompt Structure | Future design - PromptBundle |
 | [0010](0010-profile-provider-access.md) | Proposed | Profile Provider Access | Future - Multi-pass generation |
-| [0011](0011-prompt-builder-api.md) | Draft | Prompt Builder API | Valid - PromptSections design |
+| [0011](0011-prompt-builder-api.md) | Draft | Prompt Builder API | PromptSections design |
 | [0012](0012-workflow-phases-stages-approval-providers.md) | **Accepted** | Phases, Stages, Approval Providers | **Current architecture** |
 | [0013](0013-claude-code-provider.md) | Accepted | Claude Code AI Provider | SDK-based provider |
 | [0014](0014-gemini-cli-provider.md) | Accepted | Gemini CLI AI Provider | Subprocess-based provider |
@@ -45,11 +47,10 @@ ADR-0001 provides the high-level architecture. ADR-0012 provides detailed design
 2. **[ADR-0012](0012-workflow-phases-stages-approval-providers.md)** - Phase+Stage model details
 3. **[ADR-0007](0007-plugin-architecture.md)** - How providers work
 4. **[ADR-0015](0015-approval-provider-implementation.md)** - Approval provider system
-5. **[ADR-0002](0002-template-layering-system.md)** - Profile template system
 
 ### For Understanding History
 
-- **[ADR-0005](0005-approval-handler-chain.md)** - Why we tried Chain of Responsibility and replaced it
+- **[v1-archive/](v1-archive/)** - V1 architecture decisions superseded in v2.0
 
 ### Status Definitions
 
