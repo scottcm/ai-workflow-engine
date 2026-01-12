@@ -131,7 +131,6 @@ Each transition specifies:
 | Command | Purpose |
 |---------|---------|
 | `init` | Initialize session, enter PLAN[PROMPT], create planning prompt |
-| `step` | Perform deterministic engine work (deprecated for most uses) |
 | `approve` | Accept pending content, advance to next stage/phase |
 | `reject` | Reject pending content with feedback, halt workflow |
 | `retry` | Re-invoke AI provider with feedback to regenerate |

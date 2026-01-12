@@ -3,7 +3,7 @@ packages = [{include = "aiwf"}]
 
 [project]
 name = "ai-workflow-engine"
-version = "1.0.0"
+version = "2.0.0"
 description = "AI-assisted development workflow orchestration"
 authors = [
     {name = "\"Scott Mulcahy\""}

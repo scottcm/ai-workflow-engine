@@ -262,7 +262,7 @@ class WorkflowOrchestrator:
 For out-of-process consumers (IDE extensions via CLI), events are emitted as structured stderr lines **when the `--events` flag is provided**:
 
 ```bash
-$ aiwf step abc123 --events
+$ aiwf approve abc123 --events
 [EVENT] phase_entered phase=GENERATE stage=PROMPT iteration=1
 [EVENT] artifact_created path=iteration-1/code/Entity.java
 {"exit_code":0,"session_id":"abc123",...}
@@ -291,16 +291,9 @@ class StderrEventObserver:
 
 ### CLI Command Changes
 
-Both `step` and `approve` commands accept `--events`:
+The `approve` command accepts `--events`:
 
 ```bash
-$ aiwf step --help
-Usage: aiwf step [OPTIONS] SESSION_ID
-
-Options:
-  --events  Emit workflow events to stderr.
-  --help    Show this message and exit.
-
 $ aiwf approve --help
 Usage: aiwf approve [OPTIONS] SESSION_ID
 

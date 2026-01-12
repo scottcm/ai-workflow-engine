@@ -92,7 +92,7 @@ If metadata is missing or malformed:
 The human remains in control:
 - Review response files can be edited before `approve`
 - Verdict can be changed from FAIL to PASS (or vice versa) by editing the file
-- `approve` captures the final state; `step` processes it
+- `approve` captures and processes the final state
 
 This preserves the principle: **"engine facilitates, human decides"**.
 

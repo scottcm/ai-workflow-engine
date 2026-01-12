@@ -89,11 +89,14 @@ class PromptService:
         # Calculate response path for output instructions
         response_relpath = f"iteration-{state.current_iteration}/{response_filename}"
 
+        # Get provider fs_ability
+        fs_ability = self._get_fs_ability(state)
+
         # Assemble prompt
         assembler = PromptAssembler(session_dir, state)
         assembled = assembler.assemble(
             profile_prompt,
-            fs_ability="local-write",
+            fs_ability=fs_ability,
             response_relpath=response_relpath,
         )
 
@@ -124,5 +127,54 @@ class PromptService:
         Returns:
             Assembled prompt string
         """
-        # Profile always returns strings for regenerated prompts
-        return prompt_content
+        from aiwf.application.prompt_assembler import PromptAssembler
+
+        # Get provider fs_ability
+        fs_ability = self._get_fs_ability(state)
+
+        # Assemble with engine variables and output instructions
+        assembler = PromptAssembler(session_dir, state)
+        assembled = assembler.assemble(
+            prompt_content,
+            fs_ability=fs_ability,
+            response_relpath=response_relpath,
+        )
+
+        return assembled["user_prompt"]
+
+    def _get_fs_ability(self, state: WorkflowState) -> str:
+        """Get fs_ability for the provider assigned to the current phase.
+
+        Args:
+            state: Current workflow state
+
+        Returns:
+            Provider's fs_ability capability (local-write, local-read, write-only, none)
+        """
+        from aiwf.domain.providers.provider_factory import AIProviderFactory
+
+        # Map phase to provider role
+        phase_to_role = {
+            WorkflowPhase.PLAN: "planner",
+            WorkflowPhase.GENERATE: "generator",
+            WorkflowPhase.REVIEW: "reviewer",
+            WorkflowPhase.REVISE: "revisor",
+        }
+
+        # Get provider key for current phase
+        role = phase_to_role.get(state.phase)
+        provider_key = None
+        if role and state.ai_providers:
+            provider_key = state.ai_providers.get(role)
+
+        # Default to manual if no provider configured
+        if not provider_key:
+            provider_key = "manual"
+
+        # Create provider and get fs_ability
+        try:
+            provider = AIProviderFactory.create(provider_key, {})
+            return provider.get_metadata().get("fs_ability", "none")
+        except Exception:
+            # Fallback to none if provider creation fails
+            return "none"

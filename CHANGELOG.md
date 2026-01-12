@@ -214,12 +214,7 @@ This release includes complete core workflow functionality with a CLI interface.
   - Optional developer and task-id metadata
   - Creates session directory and standards bundle
   
-- `aiwf step` - Advance workflow by one deterministic step
-  - Generates prompts on phase entry
-  - Processes responses when available
-  - Reports blocking conditions (awaiting artifacts)
-  
-- `aiwf approve` - Approve phase outputs
+- `aiwf approve` - Approve phase outputs and advance workflow
   - Hashes artifacts (deferred to capture user edits)
   - Sets approval flags (plan_approved, review_approved)
   - Optionally hashes prompts (configurable)

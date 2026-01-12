@@ -62,20 +62,20 @@ This violates separation of concerns: profiles should focus on domain expertise,
 
 ## Decision
 
-### 1. Namespaced Profile Commands
+### 1. Engine-Owned Init with Profile Context
 
-Profile commands live under their profile name:
+The `init` command is owned by the engine with profile-specific context passed via `-c` flags:
 
 ```bash
-# Profile-specific init
-aiwf jpa-mt init --entity Foo --table foo --bounded-context bar --schema-file ./schema.sql
+# Initialize workflow with profile context
+aiwf init jpa-mt -c entity=Foo -c table=foo -c bounded-context=bar -c schema-file=./schema.sql
 
-# Profile-specific commands
+# Profile-specific query commands
 aiwf jpa-mt schema-info <session-id>
 aiwf jpa-mt layers
 
 # Another profile with different parameters
-aiwf react-component init --component Button --variant primary --with-tests
+aiwf init react-component -c component=Button -c variant=primary -c with-tests=true
 aiwf react-component preview <session-id>
 ```
 
@@ -83,7 +83,6 @@ Core commands remain at the top level:
 
 ```bash
 # Core commands (profile-agnostic)
-aiwf step <session-id>
 aiwf approve <session-id>
 aiwf reject <session-id> --feedback "..."
 aiwf retry <session-id> --feedback "..."

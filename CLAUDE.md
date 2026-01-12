@@ -9,13 +9,14 @@ AI agent guide for the AI Workflow Engine codebase.
 - **Run tests:** `poetry run pytest tests/unit/ -v`
 - **Run CLI:**
   ```bash
+  # Initialize workflow session
+  poetry run aiwf init jpa-mt -c entity=X -c table=Y -c bounded-context=Z -c scope=domain -c schema-file=PATH
+
   # Profile-specific commands (jpa-mt example)
-  poetry run aiwf jpa-mt init --entity X --table Y --bounded-context Z --scope domain --schema-file PATH
   poetry run aiwf jpa-mt scopes
   poetry run aiwf jpa-mt info
 
   # Generic workflow commands
-  poetry run aiwf step <session-id>
   poetry run aiwf approve <session-id>
   poetry run aiwf reject <session-id>
   poetry run aiwf status <session-id>
