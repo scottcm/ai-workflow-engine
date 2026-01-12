@@ -503,10 +503,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 Email: scott@skillsharbor.com
 GitHub: [@scottcm](https://github.com/scottcm)
 
-**Seeking opportunities in:**
-- Backend architecture (Python, Java/Spring Boot)
-- AI-assisted development tooling
-- Multi-tenant SaaS platforms
-- Developer experience engineering
-
-This project demonstrates production-grade system design, clean architecture, and thoughtful API design. Available for contract work or full-time roles.
+This project demonstrates production-grade system design, clean architecture, and thoughtful API design for AI-assisted development workflows.
