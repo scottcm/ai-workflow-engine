@@ -1,5 +1,16 @@
 # AI Workflow Engine
 
+## Why This Project Exists
+
+Modern AI-assisted code generation workflows often fail when large, human-oriented standards are used directly as model context. aiwf was created to orchestrate AI workflows deterministically, where structured inputs and phase-based workflows improve consistency and review outcomes over ad-hoc prompts.
+
+## Key Features
+
+- **Multi-phase workflow**: PLAN → GENERATE → REVIEW → REVISE with approval gates at each stage
+- **Standards as Structured Inputs**: Domain standards are integrated via structured rule identifiers and bundles, enabling precise, efficient AI consumption.
+- **Deferred hashing**: Captures user edits before locking artifacts
+...
+
 **Production workflow engine for AI-assisted code generation**
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
