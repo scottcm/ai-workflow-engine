@@ -104,10 +104,10 @@ The SDK wraps the Claude Code CLI and inherits credentials from `claude login`. 
 The SDK is async-only. Use `asyncio.run()` wrapper in provider to maintain sync interface:
 
 ```python
-def generate(self, prompt: str, context: dict) -> str | None:
+def generate(self, prompt: str, context: dict) -> AIProviderResult | None:
     return asyncio.run(self._async_generate(prompt, context))
 
-async def _async_generate(self, prompt: str, context: dict) -> str | None:
+async def _async_generate(self, prompt: str, context: dict) -> AIProviderResult | None:
     async for message in query(prompt=prompt, options=self.options):
         # ... collect response
 ```
@@ -244,7 +244,7 @@ class ClaudeCodeAIProvider(AIProvider):
     def validate(self) -> None:
         """Verify Claude Code CLI is available."""
 
-    def generate(self, prompt: str, context: dict[str, Any] | None = None) -> str | None:
+    def generate(self, prompt: str, context: dict[str, Any] | None = None) -> AIProviderResult | None:
         """Generate response using Claude Code Agent SDK."""
 
     @classmethod

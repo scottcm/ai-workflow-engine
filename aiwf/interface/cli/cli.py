@@ -88,7 +88,7 @@ def cli(ctx: click.Context, json_output: bool, project_dir: str | None) -> None:
 @click.option("--planner", help="Provider for planning phase")
 @click.option("--generator", help="Provider for generation phase")
 @click.option("--reviewer", help="Provider for review phase")
-@click.option("--revisor", help="Provider for revision phase")
+@click.option("--reviser", help="Provider for revision phase")
 @click.option("--dev", help="Developer identifier")
 @click.option("--task-id", help="Task/ticket identifier")
 @click.pass_context
@@ -99,7 +99,7 @@ def init_cmd(
     planner: str | None,
     generator: str | None,
     reviewer: str | None,
-    revisor: str | None,
+    reviser: str | None,
     dev: str | None,
     task_id: str | None,
 ) -> None:
@@ -151,7 +151,7 @@ def init_cmd(
             "planner": planner or "manual",
             "generator": generator or "manual",
             "reviewer": reviewer or "manual",
-            "revisor": revisor or "manual",
+            "reviser": reviser or "manual",
         }
 
         sessions_root = _get_sessions_root(ctx)

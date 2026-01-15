@@ -313,20 +313,23 @@ See [ADR-0016](docs/adr/0016-v2-workflow-config-and-provider-naming.md) for conf
 
 ## JPA Multi-Tenant Profile
 
-The `jpa-mt` profile generates JPA entities, repositories, and tests for multi-tenant Spring Boot applications.
+The `jpa-mt` profile generates JPA entities, repositories, services, and controllers for multi-tenant Spring Boot applications.
 
 ### What It Generates
 
 **Domain Scope:**
 - JPA entity with tenant isolation
 - Spring Data repository interface
-- Repository unit tests
 
-**Vertical Scope:**
-- All of domain scope, plus:
-- REST controller with CRUD endpoints
+**Service Scope:**
 - Service layer with business logic
-- Integration tests
+
+**API Scope:**
+- REST controller with CRUD endpoints
+- DTOs and mappers
+
+**Full Scope:**
+- All artifacts from domain, service, and API scopes
 
 ### Required Context
 
@@ -334,7 +337,7 @@ The `jpa-mt` profile generates JPA entities, repositories, and tests for multi-t
 -c entity=EntityName          # Java class name
 -c table=schema.table_name    # Database table
 -c bounded-context=name       # Domain context
--c scope=domain|vertical      # Generation scope
+-c scope=domain|service|api|full  # Generation scope
 -c schema-file=path/to.sql    # DDL for reference
 ```
 
@@ -350,8 +353,7 @@ The `jpa-mt` profile generates JPA entities, repositories, and tests for multi-t
 ```
 iteration-1/code/
 ├── Product.java              # JPA entity
-├── ProductRepository.java    # Spring Data repository
-└── ProductRepositoryTest.java
+└── ProductRepository.java    # Spring Data repository
 ```
 
 ---
@@ -366,17 +368,19 @@ iteration-1/code/
 4. Register in `ProfileFactory`
 
 ```python
-from aiwf.domain.profiles.workflow_profile import WorkflowProfile
+from aiwf.domain.profiles.workflow_profile import WorkflowProfile, PromptResult
+from aiwf.domain.models.processing_result import ProcessingResult
+from aiwf.domain.models.workflow_state import WorkflowStatus
 
 class MyProfile(WorkflowProfile):
-    def generate_plan_prompt(self, context: dict) -> str:
+    def generate_planning_prompt(self, context: dict) -> PromptResult:
         return f"Generate plan for {context['entity']}"
 
-    def process_plan_response(self, content: str, context: dict) -> ProcessingResult:
+    def process_planning_response(self, content: str) -> ProcessingResult:
         # Parse response, return WritePlan
         return ProcessingResult(
-            write_plan=WritePlan(operations=[...]),
-            success=True
+            status=WorkflowStatus.IN_PROGRESS,
+            messages=["Planning response received"],
         )
 ```
 
@@ -393,9 +397,10 @@ class MyProvider(AIProvider):
         # Check configuration, connectivity
         pass
 
-    def generate(self, prompt: str, context: dict | None = None) -> AIProviderResult:
-        # Call AI, return result
-        return AIProviderResult(files={"response.md": content})
+    def generate(self, prompt: str, context: dict | None = None, **kwargs) -> AIProviderResult | None:
+        # Call AI, return result (None for manual providers)
+        response_content = "..."  # Your AI call here
+        return AIProviderResult(files={"response.md": response_content})
 ```
 
 Register in `AIProviderFactory`.

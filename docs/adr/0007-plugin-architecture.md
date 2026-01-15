@@ -199,7 +199,7 @@ class StandardsProviderFactory:
 **Current:** Session stores `providers: dict[str, str]` mapping role → provider key.
 
 ```python
-providers = {"planning": "manual", "generating": "claude", ...}
+providers = {"planner": "manual", "generator": "claude", ...}
 ```
 
 **This already supports per-phase configuration!** The gap is that providers aren't invoked.
@@ -735,18 +735,22 @@ class AIProvider(ABC):
         self,
         prompt: str,
         context: dict[str, Any] | None = None,
-        timeout: int | None = None,
-    ) -> str | None:
+        system_prompt: str | None = None,
+        connection_timeout: int | None = None,
+        response_timeout: int | None = None,
+    ) -> AIProviderResult | None:
         """
         Generate AI response for the given prompt.
 
         Args:
             prompt: The prompt text
             context: Optional metadata
-            timeout: Response timeout in seconds (None = use default)
+            system_prompt: Optional system prompt
+            connection_timeout: Connection timeout in seconds
+            response_timeout: Response timeout in seconds
 
         Returns:
-            Response string, or None for ManualProvider
+            AIProviderResult, or None for ManualProvider
 
         Raises:
             ProviderError: On failure (network, auth, timeout, etc.)

@@ -191,10 +191,10 @@ init ──► PLAN[PROMPT] (prompt created)
 ```
 .aiwf/sessions/{session-id}/
 ├── iteration-1/
-│   ├── plan-prompt.md
-│   ├── plan-response.md
-│   ├── generate-prompt.md
-│   ├── generate-response.md
+│   ├── planning-prompt.md
+│   ├── planning-response.md
+│   ├── generation-prompt.md
+│   ├── generation-response.md
 │   ├── review-prompt.md
 │   ├── review-response.md
 │   └── code/
@@ -202,8 +202,8 @@ init ──► PLAN[PROMPT] (prompt created)
 │       └── EntityRepository.java
 │
 └── iteration-2/                 # Created only if revision needed
-    ├── revise-prompt.md
-    ├── revise-response.md
+    ├── revision-prompt.md
+    ├── revision-response.md
     ├── review-prompt.md
     ├── review-response.md
     └── code/
@@ -299,7 +299,7 @@ ai-workflow-engine/
 
 ```python
 class AIProvider(ABC):
-    def generate(self, prompt: str, **kwargs) -> str | None:
+    def generate(self, prompt: str, **kwargs) -> AIProviderResult | None:
         """Generate response. Returns None for manual mode."""
         ...
 ```
@@ -313,10 +313,10 @@ class AIProvider(ABC):
 ```python
 class WorkflowProfile(ABC):
     def get_standards_provider(self) -> StandardsProvider: ...
-    def generate_plan_prompt(self, context: dict) -> str: ...
-    def generate_generate_prompt(self, context: dict) -> str: ...
-    def process_plan_response(self, content: str) -> ProcessingResult: ...
-    def process_generate_response(self, content: str, ...) -> ProcessingResult: ...
+    def generate_planning_prompt(self, context: dict) -> PromptResult: ...
+    def generate_generation_prompt(self, context: dict) -> PromptResult: ...
+    def process_planning_response(self, content: str) -> ProcessingResult: ...
+    def process_generation_response(self, content: str, ...) -> ProcessingResult: ...
 ```
 
 ### 3. Factory Pattern
@@ -417,11 +417,12 @@ This engine is **not adversarial**.
 
 ## Related Decisions
 
-- ADR-0002: Template Layering System
 - ADR-0003: Workflow State Validation with Pydantic
 - ADR-0004: Structured Review Metadata
 - ADR-0007: Plugin Architecture
+- ADR-0008: Engine-Profile Separation of Concerns
 - ADR-0012: Workflow Phases, Stages, and Approval Providers (defines current model)
+- ADR-0016: V2 Workflow Config and Provider Naming
 
 ---
 

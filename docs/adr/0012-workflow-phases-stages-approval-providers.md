@@ -359,8 +359,8 @@ Alternatively, treat v2.0 as a clean break with no migration (acceptable for pre
 ## Related Decisions
 
 - ADR-0001: Architecture Overview (superseded in part)
-- ADR-0005: Chain of Responsibility (may need updates)
 - ADR-0007: Plugin Architecture (approval providers extend this)
+- ADR-0015: Approval Provider Implementation (extends this ADR)
 
 ---
 

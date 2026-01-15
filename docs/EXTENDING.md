@@ -22,53 +22,70 @@ Profiles implement language/framework-specific generation logic. This guide walk
 ### Step 1: Create Profile Directory
 
 ```bash
-mkdir -p profiles/react-ts
-cd profiles/react-ts
+mkdir -p profiles/react_ts
+cd profiles/react_ts
 ```
 
 ### Step 2: Implement WorkflowProfile
 
-Create `react_ts_profile.py`:
+Create `profile.py`:
 
 ```python
 from pathlib import Path
 from typing import Any
 
-from aiwf.domain.profiles.workflow_profile import WorkflowProfile
+from aiwf.domain.profiles.workflow_profile import WorkflowProfile, PromptResult
 from aiwf.domain.models.processing_result import ProcessingResult
 from aiwf.domain.models.write_plan import WritePlan, WriteOp
-from aiwf.domain.providers.standards_provider import StandardsProvider
+from aiwf.domain.models.workflow_state import WorkflowStatus
 
 
 class ReactTsProfile(WorkflowProfile):
     """React/TypeScript component generation profile."""
 
-    def __init__(self, config: dict[str, Any]):
-        self.config = config
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
         self.templates_dir = Path(__file__).parent / "templates"
 
-    def get_metadata(self) -> dict[str, Any]:
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
         return {
             "name": "react-ts",
             "description": "React/TypeScript component generation",
-            "version": "1.0.0",
-            "required_context": ["component", "type"],  # component name, type (functional/class)
+            "target_stack": "React 18+ / TypeScript 5+",
+            "scopes": ["component", "hook", "page"],
+            "phases": ["planning", "generation", "review", "revision"],
+            "requires_config": False,
+            "config_keys": [],
+            "context_schema": {
+                "component": {"type": "string", "required": True},
+                "type": {
+                    "type": "string",
+                    "required": False,
+                    "default": "functional",
+                    "choices": ["functional", "class"],
+                },
+            },
         }
 
-    def get_standards_provider(self) -> StandardsProvider:
-        """Return standards provider for React/TS."""
-        from aiwf.domain.providers.bundle_standards_provider import BundleStandardsProvider
+    def get_default_standards_provider_key(self) -> str:
+        return "scoped-layer-fs"  # Or create your own provider
 
-        standards_file = Path(__file__).parent / "standards" / "react-standards.md"
-        return BundleStandardsProvider(str(standards_file))
+    def get_standards_config(self) -> dict[str, Any]:
+        # Config structure depends on your standards provider
+        return {
+            "standards": {"root": str(Path(__file__).parent / "standards")},
+            "scopes": {"component": {"layers": ["react"]}},
+            "layer_standards": {"react": ["react-standards.md"]},
+        }
 
     # PLAN phase
-    def generate_plan_prompt(self, context: dict[str, Any]) -> str:
+    def generate_planning_prompt(self, context: dict) -> PromptResult:
         """Generate planning prompt for React component."""
         component = context["component"]
         comp_type = context.get("type", "functional")
 
-        prompt = f"""# React Component Planning Request
+        return f"""# React Component Planning Request
 
 ## Component Details
 - **Component Name:** {component}
@@ -87,26 +104,20 @@ Provide a structured plan with:
 - Key functionality
 - Testing approach
 """
-        return prompt
 
-    def process_plan_response(self, content: str, context: dict[str, Any]) -> ProcessingResult:
-        """Process planning response, save as plan.md."""
+    def process_planning_response(self, content: str) -> ProcessingResult:
+        """Process planning response."""
         return ProcessingResult(
-            write_plan=WritePlan(
-                operations=[
-                    WriteOp(type="write", path="plan.md", content=content)
-                ]
-            ),
-            success=True,
-            message="Plan processed successfully"
+            status=WorkflowStatus.IN_PROGRESS,
+            messages=["Plan processed successfully"],
         )
 
     # GENERATE phase
-    def generate_generate_prompt(self, context: dict[str, Any]) -> str:
+    def generate_generation_prompt(self, context: dict) -> PromptResult:
         """Generate code generation prompt."""
         component = context["component"]
 
-        prompt = f"""# Generate React Component
+        return f"""# Generate React Component
 
 Based on the plan, generate:
 1. {component}.tsx - Component implementation
@@ -120,59 +131,47 @@ Based on the plan, generate:
 - Props interface exported
 
 ## Output Format
-```typescript:Component.tsx
+Use <<<FILE: filename>>> markers for each file:
+
+<<<FILE: {component}.tsx>>>
 // Component code here
-```
+<<<END_FILE>>>
 
-```typescript:Component.test.tsx
+<<<FILE: {component}.test.tsx>>>
 // Test code here
-```
-
-```typescript:index.ts
-// Export here
-```
+<<<END_FILE>>>
 """
-        return prompt
 
-    def process_generate_response(
+    def process_generation_response(
         self,
         content: str,
         session_dir: Path,
-        state: Any,  # WorkflowState
         iteration: int,
     ) -> ProcessingResult:
         """Extract React component code from response."""
-        # Parse code blocks from markdown
         files = self._extract_code_blocks(content)
 
         if not files:
             return ProcessingResult(
-                write_plan=WritePlan(operations=[]),
-                success=False,
-                message="No code blocks found in response"
+                status=WorkflowStatus.IN_PROGRESS,
+                error_message="No code blocks found in response",
             )
 
-        # Build WritePlan
-        operations = []
-        code_dir = session_dir / f"iteration-{iteration}" / "code"
-
-        for filename, code_content in files.items():
-            operations.append(
-                WriteOp(
-                    type="write",
-                    path=str(code_dir / filename),
-                    content=code_content
-                )
-            )
+        # Build WritePlan with filename-only paths
+        # Engine adds iteration-{N}/code/ prefix
+        writes = [
+            WriteOp(path=filename, content=code)
+            for filename, code in files.items()
+        ]
 
         return ProcessingResult(
-            write_plan=WritePlan(operations=operations),
-            success=True,
-            message=f"Extracted {len(files)} files"
+            status=WorkflowStatus.IN_PROGRESS,
+            write_plan=WritePlan(writes=writes),
+            messages=[f"Extracted {len(files)} files"],
         )
 
     # REVIEW phase
-    def generate_review_prompt(self, context: dict[str, Any]) -> str:
+    def generate_review_prompt(self, context: dict) -> PromptResult:
         """Generate review prompt."""
         return """# Review React Component
 
@@ -185,44 +184,42 @@ Review the generated component for:
 Provide structured feedback with specific issues and suggested fixes.
 """
 
-    def process_review_response(self, content: str, context: dict[str, Any]) -> ProcessingResult:
+    def process_review_response(self, content: str) -> ProcessingResult:
         """Process review response."""
+        # Parse for pass/fail verdict if needed
+        passed = "PASS" in content.upper() or "APPROVED" in content.upper()
+
         return ProcessingResult(
-            write_plan=WritePlan(
-                operations=[
-                    WriteOp(type="write", path="review-response.md", content=content)
-                ]
-            ),
-            success=True
+            status=WorkflowStatus.SUCCESS if passed else WorkflowStatus.FAILED,
+            messages=["Review processed"],
+            metadata={"verdict": "pass" if passed else "fail"},
         )
 
     # REVISE phase
-    def generate_revise_prompt(self, context: dict[str, Any]) -> str:
+    def generate_revision_prompt(self, context: dict) -> PromptResult:
         """Generate revision prompt."""
         return """# Revise React Component
 
 Address the issues identified in the review.
-
-Output revised files in the same format as generation.
+Output revised files using the same <<<FILE: filename>>> format.
 """
 
-    def process_revise_response(
+    def process_revision_response(
         self,
         content: str,
         session_dir: Path,
-        state: Any,
         iteration: int,
     ) -> ProcessingResult:
         """Process revision response (same as generate)."""
-        return self.process_generate_response(content, session_dir, state, iteration)
+        return self.process_generation_response(content, session_dir, iteration)
 
     # Helper methods
-    def _extract_code_blocks(self, markdown: str) -> dict[str, str]:
-        """Extract ```language:filename code blocks from markdown."""
+    def _extract_code_blocks(self, content: str) -> dict[str, str]:
+        """Extract <<<FILE: filename>>> code blocks from content."""
         import re
 
-        pattern = r"```(?:typescript|tsx?):([^\n]+)\n(.*?)```"
-        matches = re.findall(pattern, markdown, re.DOTALL)
+        pattern = r"<<<FILE:\s*([^>]+)>>>\s*(.*?)<<<END_FILE>>>"
+        matches = re.findall(pattern, content, re.DOTALL)
 
         files = {}
         for filename, code in matches:
@@ -234,19 +231,39 @@ Output revised files in the same format as generation.
 
 ### Step 3: Register Profile
 
-In `profiles/react-ts/__init__.py`:
+Create `__init__.py`:
 
 ```python
-from aiwf.domain.profiles.profile_factory import ProfileFactory
-from .react_ts_profile import ReactTsProfile
+"""React/TypeScript Profile CLI Commands."""
 
-# Register profile
-ProfileFactory.register("react-ts", ReactTsProfile)
+from typing import TYPE_CHECKING
+
+import click
+
+from .profile import ReactTsProfile
+
+if TYPE_CHECKING:
+    from aiwf.domain.profiles.workflow_profile import WorkflowProfile
+
+
+def register(cli_group: click.Group) -> type["WorkflowProfile"]:
+    """Entry point for profile registration."""
+
+    @cli_group.command("info")
+    def info() -> None:
+        """Show react-ts profile information."""
+        metadata = ReactTsProfile.get_metadata()
+        click.echo(f"Profile: {metadata['name']}")
+        click.echo(f"Description: {metadata['description']}")
+        click.echo(f"Target Stack: {metadata['target_stack']}")
+        click.echo(f"Scopes: {', '.join(metadata['scopes'])}")
+
+    return ReactTsProfile
 ```
 
 ### Step 4: Create Standards Bundle
 
-Create `profiles/react-ts/standards/react-standards.md`:
+Create `standards/react-standards.md`:
 
 ```markdown
 # React/TypeScript Standards
@@ -265,45 +282,45 @@ Create `profiles/react-ts/standards/react-standards.md`:
 - One test file per component
 - Test user interactions, not implementation
 - Aim for 80%+ coverage
-
-## Accessibility
-- Semantic HTML elements
-- ARIA labels where needed
-- Keyboard navigation support
 ```
 
 ### Step 5: Test Profile
 
 ```python
-# tests/unit/profiles/react_ts/test_react_ts_profile.py
+# tests/unit/profiles/react_ts/test_profile.py
+from pathlib import Path
+from unittest.mock import Mock
 
-def test_generate_plan_prompt():
-    profile = ReactTsProfile({})
+from profiles.react_ts.profile import ReactTsProfile
+
+
+def test_generate_planning_prompt():
+    profile = ReactTsProfile()
     context = {"component": "Button", "type": "functional"}
 
-    prompt = profile.generate_plan_prompt(context)
+    prompt = profile.generate_planning_prompt(context)
 
     assert "Button" in prompt
     assert "functional" in prompt
 
-def test_process_generate_response():
-    profile = ReactTsProfile({})
-    response = """
-```typescript:Button.tsx
-export const Button = () => <button>Click</button>;
-```
 
-```typescript:Button.test.tsx
+def test_process_generation_response(tmp_path):
+    profile = ReactTsProfile()
+    response = """
+<<<FILE: Button.tsx>>>
+export const Button = () => <button>Click</button>;
+<<<END_FILE>>>
+
+<<<FILE: Button.test.tsx>>>
 test('renders button', () => {});
-```
+<<<END_FILE>>>
 """
 
-    result = profile.process_generate_response(
-        response, Path("/tmp/session"), mock_state, 1
-    )
+    result = profile.process_generation_response(response, tmp_path, 1)
 
-    assert result.success
-    assert len(result.write_plan.operations) == 2
+    assert result.write_plan is not None
+    assert len(result.write_plan.writes) == 2
+    assert result.write_plan.writes[0].path == "Button.tsx"
 ```
 
 ---
@@ -317,6 +334,8 @@ AI providers abstract how AI is accessed. This guide creates an OpenAI API provi
 Create `aiwf/domain/providers/openai_provider.py`:
 
 ```python
+from typing import Any
+
 from aiwf.domain.providers.ai_provider import AIProvider
 from aiwf.domain.models.ai_provider_result import AIProviderResult
 from aiwf.domain.errors import ProviderError
@@ -325,13 +344,14 @@ from aiwf.domain.errors import ProviderError
 class OpenAIProvider(AIProvider):
     """OpenAI API provider."""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict[str, Any] | None = None):
+        config = config or {}
         self.api_key = config.get("api_key")
         self.model = config.get("model", "gpt-4")
         self.base_url = config.get("base_url", "https://api.openai.com/v1")
 
     @classmethod
-    def get_metadata(cls) -> dict:
+    def get_metadata(cls) -> dict[str, Any]:
         return {
             "name": "openai",
             "description": "OpenAI API provider (GPT-4, GPT-3.5, etc.)",
@@ -341,7 +361,6 @@ class OpenAIProvider(AIProvider):
             "default_response_timeout": 300,
             "fs_ability": "none",  # API-only, no filesystem access
             "supports_system_prompt": True,
-            "supports_file_attachments": False,
         }
 
     def validate(self) -> None:
@@ -349,23 +368,14 @@ class OpenAIProvider(AIProvider):
         if not self.api_key:
             raise ProviderError("OpenAI API key not configured")
 
-        # Optional: Test connectivity
-        try:
-            import openai
-            client = openai.OpenAI(api_key=self.api_key)
-            # Test with minimal request
-            client.models.list()
-        except Exception as e:
-            raise ProviderError(f"OpenAI API validation failed: {e}")
-
     def generate(
         self,
         prompt: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
         system_prompt: str | None = None,
         connection_timeout: int | None = None,
         response_timeout: int | None = None,
-    ) -> AIProviderResult:
+    ) -> AIProviderResult | None:
         """Call OpenAI API and return result."""
         import openai
 
@@ -389,21 +399,17 @@ class OpenAIProvider(AIProvider):
             content = response.choices[0].message.content
 
             # Determine response filename from context
-            response_file = context.get("expected_outputs", ["response.md"])[0] if context else "response.md"
+            response_file = "response.md"
+            if context and "expected_outputs" in context:
+                response_file = context["expected_outputs"][0]
 
             return AIProviderResult(
                 files={response_file: content},
-                metadata={
-                    "model": self.model,
-                    "tokens": response.usage.total_tokens,
-                    "finish_reason": response.choices[0].finish_reason,
-                }
+                response=content,  # Optional text response
             )
 
-        except openai.APIError as e:
-            raise ProviderError(f"OpenAI API error: {e}")
         except Exception as e:
-            raise ProviderError(f"Unexpected error calling OpenAI: {e}")
+            raise ProviderError(f"OpenAI API error: {e}")
 ```
 
 ### Step 2: Register Provider
@@ -419,72 +425,49 @@ AIProviderFactory.register("openai", OpenAIProvider)
 
 ### Step 3: Configure Provider
 
-Create `.aiwf/config.yml`:
+In `.aiwf/config.yml`:
 
 ```yaml
-workflow:
-  defaults:
-    ai_provider: openai
-    approval_provider: manual
-
 providers:
+  planner: openai
+  generator: openai
+  reviewer: manual
+  reviser: openai
+
+provider_config:
   openai:
     api_key: ${OPENAI_API_KEY}  # From environment
     model: gpt-4
-```
-
-### Step 4: Test Provider
-
-```python
-# tests/unit/domain/providers/test_openai_provider.py
-
-def test_openai_provider_validate():
-    config = {"api_key": "test-key"}
-    provider = OpenAIProvider(config)
-
-    # Should not raise
-    provider.validate()
-
-def test_openai_provider_generate(mocker):
-    config = {"api_key": "test-key"}
-    provider = OpenAIProvider(config)
-
-    # Mock OpenAI client
-    mock_client = mocker.patch("openai.OpenAI")
-    mock_response = mocker.Mock()
-    mock_response.choices = [mocker.Mock(message=mocker.Mock(content="Generated code"))]
-    mock_client.return_value.chat.completions.create.return_value = mock_response
-
-    result = provider.generate("Generate a function")
-
-    assert result.files["response.md"] == "Generated code"
 ```
 
 ---
 
 ## Creating a New Approval Provider
 
-Approval providers evaluate content at gates. This guide creates a custom linter-based approver.
+Approval providers evaluate content at gates. This guide creates a linter-based approver.
 
 ### Step 1: Implement ApprovalProvider
 
 Create `aiwf/domain/providers/linter_approver.py`:
 
 ```python
+import subprocess
+from typing import Any
+
 from aiwf.domain.providers.approval_provider import ApprovalProvider
 from aiwf.domain.models.approval_result import ApprovalResult, ApprovalDecision
 from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
-import subprocess
 
 
 class LinterApprovalProvider(ApprovalProvider):
     """Approval provider that runs linters on code."""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict[str, Any] | None = None):
+        config = config or {}
         self.linter_command = config.get("command", "ruff check")
 
     @classmethod
-    def get_metadata(cls) -> dict:
+    def get_metadata(cls) -> dict[str, Any]:
         return {
             "name": "linter",
             "description": "Linter-based approval (ruff, eslint, etc.)",
@@ -497,7 +480,7 @@ class LinterApprovalProvider(ApprovalProvider):
         phase: WorkflowPhase,
         stage: WorkflowStage,
         files: dict[str, str | None],
-        context: dict,
+        context: dict[str, Any],
     ) -> ApprovalResult:
         """Run linter on generated code."""
 
@@ -508,9 +491,13 @@ class LinterApprovalProvider(ApprovalProvider):
         if stage != WorkflowStage.RESPONSE:
             return ApprovalResult(decision=ApprovalDecision.APPROVED)
 
-        # Get code directory
+        # Get code directory from context
         session_dir = context.get("session_dir")
         iteration = context.get("iteration", 1)
+
+        if not session_dir:
+            return ApprovalResult(decision=ApprovalDecision.APPROVED)
+
         code_dir = session_dir / f"iteration-{iteration}" / "code"
 
         if not code_dir.exists():
@@ -553,8 +540,6 @@ class LinterApprovalProvider(ApprovalProvider):
 
 ### Step 2: Register Provider
 
-In `aiwf/domain/providers/__init__.py`:
-
 ```python
 from aiwf.domain.providers.approval_factory import ApprovalProviderFactory
 from aiwf.domain.providers.linter_approver import LinterApprovalProvider
@@ -580,26 +565,49 @@ workflow:
 
 Standards providers retrieve coding standards. This guide creates a Git-based provider.
 
-### Step 1: Implement StandardsProvider
-
-Create `aiwf/domain/providers/git_standards_provider.py`:
+### Step 1: Implement StandardsProvider Protocol
 
 ```python
 from pathlib import Path
 import subprocess
+from typing import Any
 
-from aiwf.domain.providers.standards_provider import StandardsProvider
+from aiwf.domain.errors import ProviderError
 
 
-class GitStandardsProvider(StandardsProvider):
-    """Load standards from a specific Git commit."""
+class GitStandardsProvider:
+    """Load standards from a specific Git commit.
 
-    def __init__(self, repo_path: Path, commit: str, standards_file: str):
-        self.repo_path = repo_path
-        self.commit = commit
-        self.standards_file = standards_file
+    Implements the StandardsProvider Protocol.
+    """
 
-    def get_standards(self) -> str:
+    def __init__(self, config: dict[str, Any]):
+        self.repo_path = Path(config.get("repo_path", "."))
+        self.commit = config.get("commit", "HEAD")
+        self.standards_file = config.get("standards_file", "STANDARDS.md")
+
+    @classmethod
+    def get_metadata(cls) -> dict[str, Any]:
+        return {
+            "name": "git-standards",
+            "description": "Load standards from Git history",
+            "requires_config": True,
+            "config_keys": ["repo_path", "commit", "standards_file"],
+            "default_connection_timeout": None,
+            "default_response_timeout": 30,
+        }
+
+    def validate(self) -> None:
+        """Verify repo exists and commit is accessible."""
+        if not self.repo_path.exists():
+            raise ProviderError(f"Repo not found: {self.repo_path}")
+
+    def create_bundle(
+        self,
+        context: dict[str, Any],
+        connection_timeout: int | None = None,
+        response_timeout: int | None = None,
+    ) -> str:
         """Retrieve standards from Git history."""
         try:
             result = subprocess.run(
@@ -608,11 +616,12 @@ class GitStandardsProvider(StandardsProvider):
                 capture_output=True,
                 text=True,
                 check=True,
+                timeout=response_timeout or 30,
             )
             return result.stdout
 
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to load standards from git: {e}")
+            raise ProviderError(f"Failed to load standards from git: {e}")
 ```
 
 ---
@@ -625,27 +634,34 @@ class GitStandardsProvider(StandardsProvider):
 
 ```python
 def test_profile_generate_prompt():
-    profile = MyProfile({})
-    prompt = profile.generate_plan_prompt({"entity": "User"})
+    profile = MyProfile()
+    prompt = profile.generate_planning_prompt({"entity": "User"})
     assert "User" in prompt
 
-def test_profile_process_response():
-    profile = MyProfile({})
-    result = profile.process_generate_response("code here", Path("/tmp"), mock_state, 1)
 
-    assert result.success
-    assert len(result.write_plan.operations) > 0
-    assert result.write_plan.operations[0].type == "write"
+def test_profile_process_response(tmp_path):
+    profile = MyProfile()
+    result = profile.process_generation_response(
+        "<<<FILE: User.java>>>\ncode\n<<<END_FILE>>>",
+        tmp_path,
+        iteration=1,
+    )
+
+    assert result.write_plan is not None
+    assert len(result.write_plan.writes) > 0
+    assert result.write_plan.writes[0].path == "User.java"
 ```
 
 **Test providers with mocking:**
 
 ```python
 def test_ai_provider_generate(mocker):
-    mock_api = mocker.patch("my_provider.api_client")
-    mock_api.call.return_value = "response"
+    mock_api = mocker.patch("openai.OpenAI")
+    mock_response = mocker.Mock()
+    mock_response.choices = [mocker.Mock(message=mocker.Mock(content="response"))]
+    mock_api.return_value.chat.completions.create.return_value = mock_response
 
-    provider = MyProvider({"api_key": "test"})
+    provider = OpenAIProvider({"api_key": "test"})
     result = provider.generate("prompt")
 
     assert result.files["response.md"] == "response"
@@ -657,18 +673,16 @@ Test full workflow with your extension:
 
 ```python
 def test_full_workflow_with_react_profile(tmp_path):
-    # Initialize session
+    from aiwf.application.workflow_orchestrator import WorkflowOrchestrator
+
     orchestrator = WorkflowOrchestrator(...)
     state = orchestrator.initialize_run(
         profile="react-ts",
         context={"component": "Button", "type": "functional"},
-        session_dir=tmp_path
+        session_dir=tmp_path,
     )
 
-    # Verify profile was loaded
     assert state.profile == "react-ts"
-
-    # Continue workflow...
 ```
 
 ---
@@ -677,7 +691,7 @@ def test_full_workflow_with_react_profile(tmp_path):
 
 ### Profile Development
 
-1. **Start simple**: Implement one scope (domain) before adding complexity
+1. **Start simple**: Implement one scope before adding complexity
 2. **Test incrementally**: Write tests for each method as you implement
 3. **Reuse patterns**: Study jpa-mt profile for proven patterns
 4. **Document context**: Clearly specify required context keys in metadata
@@ -694,16 +708,14 @@ def test_full_workflow_with_react_profile(tmp_path):
 ### General Guidelines
 
 1. **Follow conventions**: Profiles return WritePlans, don't do I/O
-2. **Type everything**: Use Pydantic models and mypy
+2. **Type everything**: Use Pydantic models and type hints
 3. **Document decisions**: Add ADRs for non-obvious choices
 4. **Consider future**: Design for extensibility, not just current needs
-5. **Contribute back**: Share useful profiles/providers with community
 
 ---
 
 ## Next Steps
 
-- Review [ADR-0007: Plugin Architecture](../adr/0007-plugin-architecture.md) for design rationale
-- Study [jpa-mt profile](../../profiles/jpa_mt/) for complete example
-- Check [provider implementation guide](../provider-implementation-guide.md) for details
-- Join discussions on [GitHub Issues](https://github.com/scottcm/ai-workflow-engine/issues)
+- Review [ADR-0007: Plugin Architecture](adr/0007-plugin-architecture.md) for design rationale
+- Study [jpa-mt profile](../profiles/jpa_mt/) for complete example
+- Check [provider implementation guide](provider-implementation-guide.md) for details

@@ -103,25 +103,60 @@ The **AI Workflow Engine** (aiwf) orchestrates workflow state and file managemen
 ### Profile Interface
 
 ```python
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any
+
+from aiwf.domain.profiles.workflow_profile import PromptResult
+from aiwf.domain.models.processing_result import ProcessingResult
+
 class WorkflowProfile(ABC):
     @abstractmethod
-    def generate_plan_prompt(self, context: dict) -> str:
+    def generate_planning_prompt(self, context: dict) -> PromptResult:
         """Generate planning phase prompt."""
+        ...
 
     @abstractmethod
-    def process_plan_response(self, content: str, context: dict) -> ProcessingResult:
-        """Parse plan response, return WritePlan."""
+    def process_planning_response(self, content: str) -> ProcessingResult:
+        """Parse plan response, return ProcessingResult."""
+        ...
 
     @abstractmethod
-    def generate_generate_prompt(self, context: dict) -> str:
+    def generate_generation_prompt(self, context: dict) -> PromptResult:
         """Generate code generation prompt."""
+        ...
 
     @abstractmethod
-    def process_generate_response(self, content: str, ...) -> ProcessingResult:
-        """Extract code, return WritePlan."""
+    def process_generation_response(
+        self, content: str, session_dir: Path, iteration: int
+    ) -> ProcessingResult:
+        """Extract code, return ProcessingResult with WritePlan."""
+        ...
 
-    # Similar for review and revise phases...
+    @abstractmethod
+    def generate_review_prompt(self, context: dict) -> PromptResult:
+        """Generate review prompt."""
+        ...
+
+    @abstractmethod
+    def process_review_response(self, content: str) -> ProcessingResult:
+        """Parse review response."""
+        ...
+
+    @abstractmethod
+    def generate_revision_prompt(self, context: dict) -> PromptResult:
+        """Generate revision prompt."""
+        ...
+
+    @abstractmethod
+    def process_revision_response(
+        self, content: str, session_dir: Path, iteration: int
+    ) -> ProcessingResult:
+        """Extract revised code."""
+        ...
 ```
+
+**Note:** `PromptResult` is `str | PromptSections` - profiles can return a raw string or structured sections.
 
 ### Profile Responsibilities
 
@@ -136,8 +171,8 @@ class WorkflowProfile(ABC):
 - Return WritePlan (what files to create/update)
 
 **What Profiles Return:**
-- Prompts (strings)
-- ProcessingResult with WritePlan
+- Prompts (strings or PromptSections)
+- ProcessingResult with optional WritePlan
 - Never modify files directly
 
 ### Profile Constraints
@@ -179,14 +214,27 @@ Profiles are **pure functions** of context → output:
 ### Provider Interface
 
 ```python
+from abc import ABC, abstractmethod
+from typing import Any
+from aiwf.domain.models.ai_provider_result import AIProviderResult
+
 class AIProvider(ABC):
     @abstractmethod
     def validate(self) -> None:
         """Verify provider is configured and accessible."""
+        ...
 
     @abstractmethod
-    def generate(self, prompt: str, context: dict | None = None) -> AIProviderResult | None:
+    def generate(
+        self,
+        prompt: str,
+        context: dict[str, Any] | None = None,
+        system_prompt: str | None = None,
+        connection_timeout: int | None = None,
+        response_timeout: int | None = None,
+    ) -> AIProviderResult | None:
         """Generate response. Returns None for manual mode."""
+        ...
 ```
 
 ### fs_ability Metadata
@@ -197,6 +245,7 @@ Providers declare file system capability:
 |------------|---------|---------|
 | `local-write` | Can read/write project files | claude-code, gemini-cli |
 | `local-read` | Can read but not write files | Future: RAG-enabled approver |
+| `write-only` | Can write but not read files | Some sandboxed providers |
 | `none` | No filesystem access | Future: API-only providers |
 
 Engine uses `fs_ability` to:
@@ -229,23 +278,27 @@ Approval gates are **quality checkpoints** asking "is this ready to proceed?" Th
 - Not validation of technical correctness
 - Not enforcement of coding standards
 
-### Example: REVIEW[RESPONSE] Gate
+### Approval Provider Interface
 
-The gate evaluates **the review document itself** (review-response.md):
+```python
+from abc import ABC, abstractmethod
+from typing import Any
+from aiwf.domain.models.approval_result import ApprovalResult, ApprovalDecision
+from aiwf.domain.models.workflow_state import WorkflowPhase, WorkflowStage
 
-**Checks:**
-- ✅ Well-formatted, follows expected structure
-- ✅ Actionable feedback (specific line numbers, concrete suggestions)
-- ✅ Aligned with coding standards
-- ✅ Complete (addresses all aspects)
-- ✅ Findings are valid (not false positives)
-
-**Can reject with feedback:**
-- "Too vague - says 'improve error handling' without specifics"
-- "Doesn't cite which standards rules are violated"
-- "Flagged @Transactional as wrong but it's correct per Spring docs"
-
-On rejection, the provider **regenerates the review** using feedback as guidance.
+class ApprovalProvider(ABC):
+    @abstractmethod
+    def evaluate(
+        self,
+        *,
+        phase: WorkflowPhase,
+        stage: WorkflowStage,
+        files: dict[str, str | None],
+        context: dict[str, Any],
+    ) -> ApprovalResult:
+        """Evaluate content and return approval decision."""
+        ...
+```
 
 ### Built-in Approval Providers
 
@@ -274,14 +327,12 @@ On rejection, the provider **regenerates the review** using feedback as guidance
 | **Output** | APPROVED/REJECTED | review-response.md |
 
 **GENERATE[RESPONSE] approval gate:**
-- ❌ Does NOT ask: "Is this code well-designed?" (that's REVIEW)
-- ✅ Does ask: "Did the AI follow the plan?" (completeness check)
+- Does NOT ask: "Is this code well-designed?" (that's REVIEW)
+- Does ask: "Did the AI follow the plan?" (completeness check)
 
 **REVIEW[RESPONSE] approval gate:**
-- ❌ Does NOT ask: "Is the code good?" (the review already did that)
-- ✅ Does ask: "Is the review itself useful?" (quality of review)
-
-**Technical note:** Approvers with filesystem access can read any session file, not just what the engine explicitly passes. The separation between "review of review" and "code review" is enforced through prompt engineering and convention, not technical restrictions.
+- Does NOT ask: "Is the code good?" (the review already did that)
+- Does ask: "Is the review itself useful?" (quality of review)
 
 ---
 
@@ -291,15 +342,16 @@ On rejection, the provider **regenerates the review** using feedback as guidance
 
 ### Provider Types
 
-**BundleStandardsProvider:**
-- Loads pre-assembled markdown bundle
-- Fast, deterministic
-- Current default for jpa-mt
+**ScopedLayerFsProvider** (`scoped-layer-fs`):
+- Scope-aware filesystem provider
+- Selects standards files based on scope→layer mappings
+- Concatenates multiple files into a bundle
+- Built-in, registered in engine
 
-**FileSystemStandardsProvider:**
-- Aggregates standards from multiple files
-- Supports glob patterns
-- Useful for large standard sets
+**JpaMtStandardsProvider** (`yaml-rules`):
+- YAML-based standards provider
+- Profile-specific for jpa-mt
+- Registered when jpa-mt profile is imported
 
 **Future providers:**
 - RAG-based (semantic search over standards)
@@ -321,11 +373,14 @@ On rejection, the provider **regenerates the review** using feedback as guidance
 Workflow progresses through 8 phases:
 
 ```
-INIT → PLAN → GENERATE → REVIEW → REVISE → COMPLETE
-                                    ↓
-                                  ERROR
-                                    ↓
-                                CANCELLED
+INIT → PLAN → GENERATE → REVIEW → COMPLETE
+                  ↑          │
+                  └── REVISE ←┘ (on FAIL verdict)
+
+                         ↓
+                       ERROR
+                         ↓
+                     CANCELLED
 ```
 
 **Active phases** (PLAN, GENERATE, REVIEW, REVISE) have two stages each:

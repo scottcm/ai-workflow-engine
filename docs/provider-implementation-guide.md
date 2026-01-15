@@ -4,7 +4,7 @@ This guide explains how to implement a custom AI provider for the AI Workflow En
 
 ## Overview
 
-AI providers enable automated workflow execution by calling external AI services (LLMs). The engine invokes providers during the `approve` command for ING phases (PLANNING, GENERATING, REVIEWING, REVISING).
+AI providers enable automated workflow execution by calling external AI services (LLMs). The engine invokes providers during the `approve` command for active phases (PLAN, GENERATE, REVIEW, REVISE).
 
 **Naming Convention (ADR-0016):** As of v2, providers are named `AIProvider` (not `ResponseProvider`) to clarify their role.
 
@@ -22,6 +22,7 @@ Providers declare their file system access level via `fs_ability` metadata:
 |------------|----------|-----------|----------|
 | `local-write` | Yes | Yes | Claude Code, Aider |
 | `local-read` | Yes | No | Standards providers |
+| `write-only` | No | Yes | Claude.ai web chat (downloadable files) |
 | `none` | No | No | API-only (Claude API, OpenAI) |
 
 **Local-write providers** write code files directly. The engine validates files exist after execution.
@@ -232,7 +233,7 @@ from my_module import MyProvider
 AIProviderFactory.register("my-provider", MyProvider)
 ```
 
-Users can then specify `--provider planner=my-provider` when initializing a workflow.
+Users can then specify `--planner my-provider` when initializing a workflow.
 
 ## Error Handling
 
@@ -265,7 +266,7 @@ class FailingProvider(AIProvider):
     def validate(self) -> None:
         raise ProviderError("Intentional failure for testing")
 
-    def generate(self, prompt, context=None, connection_timeout=None, response_timeout=None):
+    def generate(self, prompt, context=None, system_prompt=None, connection_timeout=None, response_timeout=None):
         return None
 ```
 

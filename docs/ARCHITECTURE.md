@@ -283,7 +283,7 @@ PROMPT stage                    RESPONSE stage
 
 ```
 .aiwf/sessions/{session-id}/
-├── state.json              # WorkflowState snapshot
+├── session.json            # WorkflowState snapshot
 ├── standards-bundle.md     # Materialized standards
 ├── plan.md                 # Approved plan (copied from iteration-1)
 └── iteration-{N}/

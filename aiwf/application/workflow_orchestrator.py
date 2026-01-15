@@ -247,7 +247,7 @@ class WorkflowOrchestrator:
             WorkflowPhase.PLAN: "planner",
             WorkflowPhase.GENERATE: "generator",
             WorkflowPhase.REVIEW: "reviewer",
-            WorkflowPhase.REVISE: "revisor",
+            WorkflowPhase.REVISE: "reviser",
         }
         role = phase_to_role.get(state.phase)
         if role and state.ai_providers:

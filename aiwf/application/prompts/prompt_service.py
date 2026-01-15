@@ -158,7 +158,7 @@ class PromptService:
             WorkflowPhase.PLAN: "planner",
             WorkflowPhase.GENERATE: "generator",
             WorkflowPhase.REVIEW: "reviewer",
-            WorkflowPhase.REVISE: "revisor",
+            WorkflowPhase.REVISE: "reviser",
         }
 
         # Get provider key for current phase

@@ -599,7 +599,7 @@ Only `ManualProvider` exists. Update is straightforward.
 ## Related Decisions
 
 - ADR-0007: Plugin Architecture (provider as plugin)
-- ADR-0005: Chain of Responsibility for Approval (where generate() is called)
+- ADR-0012: Workflow Phases, Stages, and Approval Providers (where generate() is called)
 - ADR-0006: Observer Pattern for Events (emit events on provider failure)
 
 ---

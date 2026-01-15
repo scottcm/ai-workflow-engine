@@ -99,7 +99,7 @@ poetry run pytest -m "not claude_code and not gemini_cli"
 - Report counts: "45 passed, 2 failed" not full test output
 - Show full output only for failures
 
-**Rationale:** Full suite is 777+ tests. Running all after every edit consumes context and time. Targeted tests catch issues faster. (rejected: running full suite after every change)
+**Rationale:** Full suite is 850+ tests. Running all after every edit consumes context and time. Targeted tests catch issues faster. (rejected: running full suite after every change)
 
 ## Project Overview
 
@@ -139,11 +139,11 @@ ai-workflow-engine/
 │           └── output_models.py     # JSON output Pydantic models
 ├── profiles/                    # Profile implementations (outside aiwf/)
 │   └── jpa_mt/
-│       ├── jpa_mt_profile.py        # JpaMtProfile implementation
-│       ├── jpa_mt_config.py         # Pydantic config model
-│       ├── jpa_mt_standards_provider.py
+│       ├── __init__.py              # Profile registration and CLI commands
+│       ├── profile.py               # JpaMtProfile implementation
+│       ├── config.py                # Pydantic config model
+│       ├── standards.py             # Standards provider
 │       ├── config.yml               # Profile configuration (gitignored)
-│       ├── bundle_extractor.py      # Code extraction from responses
 │       ├── review_metadata.py       # @@@REVIEW_META parsing
 │       └── templates/               # Prompt templates with {{include:}}
 ├── docs/
@@ -184,7 +184,7 @@ Providers enable automated workflow execution:
 - `generate()` returns `AIProviderResult` with `files: dict[str, str | None]`
 - `None` value in files dict = provider wrote file directly (local-write)
 - String value = content for engine to write (API-only providers)
-- `fs_ability` metadata: `local-write`, `local-read`, `none`
+- `fs_ability` metadata: `local-write`, `local-read`, `write-only`, `none`
 
 **Registered providers:** `manual`, `claude-code`, `gemini-cli`
 
@@ -228,16 +228,21 @@ Keep it simple. No Claude co-author citations.
 | ADR | Status | Summary |
 |-----|--------|---------|
 | 0001 | Accepted | Architecture overview, patterns (Strategy, Factory, Repository, State) |
-| 0002 | Accepted | Template layering with {{include:}} directives |
 | 0003 | Accepted | Pydantic for workflow state validation |
 | 0004 | Accepted | Structured review metadata (@@@REVIEW_META) |
-| 0005 | Superseded | Chain of Responsibility (replaced by ADR-0012) |
 | 0006 | Accepted | Observer pattern for workflow events |
-| 0007 | Draft | Plugin architecture (AI providers, standards providers) |
-| 0008 | Draft | Configuration management |
-| 0009 | Draft | Session state schema versioning |
+| 0007 | Accepted | Plugin architecture (AI providers, standards providers) |
+| 0008 | Accepted | Engine-Profile separation of concerns |
+| 0009 | Draft | Prompt structure and AI provider capabilities |
+| 0010 | Accepted | Profile access to AI providers |
+| 0011 | Draft | Prompt Builder API |
 | 0012 | Accepted | Phase+Stage model, TransitionTable state machine |
 | 0013 | Accepted | Claude Code provider via Agent SDK |
+| 0014 | Accepted | Gemini CLI provider |
+| 0015 | Accepted | Approval provider implementation |
+| 0016 | Accepted | V2 workflow config and provider naming |
+| 0017 | Proposed | Plugin dependency injection |
+| 0018 | Proposed | JPA-MT test generation scopes |
 
 ## Extension Points
 

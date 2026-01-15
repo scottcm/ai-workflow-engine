@@ -85,7 +85,7 @@ aiwf init <profile> [options]
 - `--planner <provider>` - Provider for planning phase (default: manual)
 - `--generator <provider>` - Provider for generation phase (default: manual)
 - `--reviewer <provider>` - Provider for review phase (default: manual)
-- `--revisor <provider>` - Provider for revision phase (default: manual)
+- `--reviser <provider>` - Provider for revision phase (default: manual)
 - `--dev <name>` - Developer identifier
 - `--task-id <id>` - Task/ticket reference
 
@@ -141,7 +141,7 @@ aiwf approve <session_id> [options]
 ```
 
 **Options:**
-- `--fs-ability <mode>` - Override provider filesystem capability (`local-write`, `local-read`, `none`)
+- `--fs-ability <mode>` - Override provider filesystem capability (`local-write`, `local-read`, `write-only`, `none`)
 - `--hash-prompts` - Hash prompt files
 - `--no-hash-prompts` - Skip prompt hashing
 - `--events` - Emit workflow events to stderr
@@ -442,7 +442,7 @@ providers:
   planner: manual
   generator: manual
   reviewer: manual
-  revisor: manual
+  reviser: manual
 
 hash_prompts: false
 ```
